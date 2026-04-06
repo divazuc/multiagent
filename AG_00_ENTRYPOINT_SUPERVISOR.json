@@ -2,138 +2,129 @@
   "name": "AG_00_ENTRYPOINT_SUPERVISOR",
   "nodes": [
     {
-      "id": "a0000000-0001-4000-8000-000000000001",
-      "name": "Webhook - Entry",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        300
-      ],
-      "webhookId": "ag00-webhook-entry-001",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/supervisor/entry",
         "responseMode": "responseNode",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0002-4000-8000-000000000001",
-      "name": "Webhook - Clarification Reply",
+      },
+      "id": "4424f06a-4c3a-4f87-b225-8c6408285bb9",
+      "name": "Webhook - Entry",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        250,
-        520
+        608,
+        144
       ],
-      "webhookId": "ag00-webhook-clarify-001",
+      "webhookId": "ag00-webhook-entry-001"
+    },
+    {
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/supervisor/clarification-reply",
         "responseMode": "responseNode",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0003-4000-8000-000000000001",
-      "name": "Webhook - Approval",
+      },
+      "id": "79d4b4fa-96c6-4bea-b433-e048236632bd",
+      "name": "Webhook - Clarification Reply",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        250,
-        720
+        608,
+        368
       ],
-      "webhookId": "ag00-webhook-approval-001",
+      "webhookId": "ag00-webhook-clarify-001"
+    },
+    {
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/supervisor/approval",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "011cb23f-9b50-49a9-b2c0-bdc6aa7b6731",
+      "name": "Webhook - Approval",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        608,
+        576
+      ],
+      "webhookId": "ag00-webhook-approval-001"
     },
     {
-      "id": "a0000000-0004-4000-8000-000000000001",
-      "name": "Sticky Note - Credentials",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        250,
-        60
-      ],
       "parameters": {
         "content": "## AG_00 — Entrypoint Supervisor\n**Classifier model:** claude-sonnet-4-6 | **Max tokens:** 512\n**API:** HTTP → api.anthropic.com/v1/messages\n\n### Credential Required\n- Create a **Header Auth** credential named **ANTHROPIC_HTTP_HEADER_AUTH**\n  - Header name: `x-api-key`\n  - Header value: your Anthropic API key\n\n### Webhooks\n- POST /ag/supervisor/entry\n- POST /ag/supervisor/clarification-reply\n- POST /ag/supervisor/approval\n- **POST /ag/supervisor/status** ← async status poll endpoint",
         "height": 200,
         "width": 620,
         "color": 7
-      }
-    },
-    {
-      "id": "a0000000-0005-4000-8000-000000000001",
-      "name": "Sticky Note - Workflow IDs",
+      },
+      "id": "245b9f0f-4487-4054-bc4c-5d80a9d4539c",
+      "name": "Sticky Note - Credentials",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1500,
-        60
-      ],
+        608,
+        -96
+      ]
+    },
+    {
       "parameters": {
         "content": "## REQUIRED: Update Workflow IDs After Import\n\nFor each Execute Workflow node, open it and set the workflow ID\n(URL: /workflow/XXXXXXX after opening each workflow).\n\n### Pre-filled placeholders (replace with real IDs):\n- AG_01_PRODUCT_DISCOVERY → all nodes named \"Execute AG_01 (*)\"\n- AG_02_SOLUTION_ARCHITECT → all nodes named \"Execute AG_02 (*)\"\n- AG_03_TECH_LEAD → all nodes named \"Execute AG_03 (*)\"\n- AG_05_DELIVERY_PLANNER → all nodes named \"Execute AG_05 (*)\"\n- AG_08_QA_REVIEWER → Execute AG_08 (QA)\n- AG_09_DEV_INTELLIGENCE → Execute AG_09 (DevIntel)\n- AG_10_RESPONSE_FORMATTER → Execute AG_10 (Formatter)\n\n### NEW — must be filled manually after import:\n- **AG_04_UX_UI_PLANNER** → Execute AG_04 (SD) and Execute AG_04 (FPF)\n- **AG_06_FRONTEND_ENGINEER** → Execute AG_06 (Impl) and Execute AG_06 (FPF)\n- **AG_07_BACKEND_ENGINEER** → Execute AG_07 (Impl) and Execute AG_07 (FPF)",
         "height": 360,
         "width": 620,
         "color": 5
-      }
+      },
+      "id": "546ae66c-f0d0-470a-97ad-dc32c1706539",
+      "name": "Sticky Note - Workflow IDs",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1872,
+        -96
+      ]
     },
     {
-      "id": "a0000000-0006-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nconst msg = String(item.message || item.user_request || (item.brief && item.brief.request_summary) || '').trim();\n\nconst backCmds = ['back', '\\u05d7\\u05d6\\u05d5\\u05e8', '\\u05e8\\u05e9\\u05d9\\u05de\\u05ea \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8\\u05d9\\u05dd'];\nconst back_to_list = backCmds.includes(msg.toLowerCase());\nconst mode = item.mode || null;\n\nvar action_choice = null;\nif (item.action_choice !== undefined && item.action_choice !== null && item.action_choice !== '') {\n  var acParsed = parseInt(String(item.action_choice), 10);\n  if (!isNaN(acParsed)) action_choice = acParsed;\n} else if (mode === 'project_action_menu' && msg.match(/^\\d+$/)) {\n  action_choice = parseInt(msg, 10);\n}\n\nvar project_choice = null;\nif (item.project_choice !== undefined && item.project_choice !== null && item.project_choice !== '') {\n  var pcParsed = parseInt(String(item.project_choice), 10);\n  if (!isNaN(pcParsed)) project_choice = pcParsed;\n} else if (action_choice === null && !back_to_list && (mode === 'project_selection' || mode === null) && msg.match(/^\\d+$/)) {\n  project_choice = parseInt(msg, 10);\n}\n\nvar project_title = item.project_title || null;\nif (!project_title && mode === 'new_project_intake' && msg && !back_to_list && !msg.match(/^\\d+$/)) {\n  project_title = msg;\n}\n\nvar approved = false;\nif (item.approved === true || (typeof item.approved === 'string' && item.approved.toLowerCase() === 'true')) {\n  approved = true;\n} else if (msg.match(/^(yes|approve|proceed|start|go ahead|\\u05db\\u05df|\\u05d0\\u05d9\\u05e9\\u05d5\\u05e8)$/i)) {\n  approved = true;\n}\n\nconst hasActionable = item.project_id || project_choice !== null || action_choice !== null || project_title || back_to_list || mode;\nif (!msg && !hasActionable) {\n  return [{ json: { error: true, error_type: 'VALIDATION_FAILED', message: '\\u05e7\\u05dc\\u05d8 \\u05d7\\u05e1\\u05e8.', request_id: item.request_id || ('req_' + Date.now()), timestamp: new Date().toISOString() } }];\n}\n\nreturn [{ json: {\n  request_id: item.request_id || ('req_' + Date.now()),\n  user_id: item.user_id || 'anonymous',\n  message: msg,\n  project_id: item.project_id || null,\n  project_choice: project_choice,\n  project_title: project_title,\n  action_choice: action_choice,\n  mode: mode,\n  back_to_list: back_to_list,\n  approved: approved,\n  brief: item.brief || {},\n  source: item.source || 'chatgpt',\n  context: item.context || {},\n  preferences: item.preferences || {},\n  is_valid: true,\n  timestamp: new Date().toISOString()\n} }];"
+      },
+      "id": "ec1172ee-7606-4b5a-8f19-ffebaf24c639",
       "name": "Code - Validate Entry Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        300
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nconst msg = item.message || item.user_request || (item.brief && item.brief.request_summary) || '';\nif (!msg || !String(msg).trim()) {\n  return [{ json: { error: true, error_type: 'VALIDATION_FAILED', message: 'Missing required field: message', request_id: item.request_id || ('req_' + Date.now()), timestamp: new Date().toISOString() } }];\n}\nreturn [{ json: {\n  request_id: item.request_id || ('req_' + Date.now()),\n  user_id: item.user_id || 'anonymous',\n  message: msg,\n  project_id: item.project_id || null,\n  brief: item.brief || {},\n  source: item.source || 'chatgpt',\n  context: item.context || {},\n  preferences: item.preferences || {},\n  is_valid: true,\n  timestamp: new Date().toISOString()\n} }];"
-      }
+        864,
+        144
+      ]
     },
     {
-      "id": "a0000000-0007-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nif(item.error){return [{json:item}];}\nvar body={model:'claude-sonnet-4-6',max_tokens:256,messages:[{role:'user',content:'Classify this request into exactly one task_type. Return ONLY JSON: {\"task_type\":\"<type>\",\"rationale\":\"<1 sentence>\"}\\nTypes: discovery|system_design|implementation_planning|full_product_flow|default\\nREQUEST: '+item.message+'\\nCONTEXT: '+JSON.stringify(item.context||{})}]};\nreturn [{json:{...item,apiBody:body}}];"
+      },
+      "id": "a37af427-a74e-4491-9187-30c5ebeb2d81",
       "name": "Code - Build Classification Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        750,
-        300
-      ],
-      "parameters": {
-        "jsCode": "const item=$input.first().json;\nif(item.error){return [{json:item}];}\nvar body={model:'claude-sonnet-4-6',max_tokens:256,messages:[{role:'user',content:'Classify this request into exactly one task_type. Return ONLY JSON: {\"task_type\":\"<type>\",\"rationale\":\"<1 sentence>\"}\\nTypes: discovery|system_design|implementation_planning|full_product_flow|default\\nREQUEST: '+item.message+'\\nCONTEXT: '+JSON.stringify(item.context||{})}]};\nreturn [{json:{...item,apiBody:body}}];"
-      }
+        1120,
+        144
+      ]
     },
     {
-      "id": "a0000000-0010-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nvar rawText='';\ntry{\n  if(item.content&&Array.isArray(item.content)){rawText=item.content[0].text||'';}\n  else if(typeof item.content==='string'){rawText=item.content;}\n}catch(e){}\nvar cls={task_type:'default',rationale:''};\ntry{var m=rawText.match(/\\{[\\s\\S]*\\}/);if(m)cls=JSON.parse(m[0]);}catch(e){}\nvar now=new Date().toISOString();\nreturn [{json:{\n  request_id:item.request_id,\n  task_type:cls.task_type||'default',\n  user_request:item.message,\n  context:item.context||{},\n  constraints:item.preferences||{},\n  upstream_outputs:{},\n  metadata:{timestamp:now,workflow_name:'AG_00_ENTRYPOINT_SUPERVISOR',persona_name:'SUPERVISOR'},\n  classification_rationale:cls.rationale||'',\n  user_id:item.user_id||'anonymous'\n}}];"
+      },
+      "id": "ab3382d7-0a42-4061-866c-69661bc2e031",
       "name": "Code - Parse and Build Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1250,
-        300
-      ],
-      "parameters": {
-        "jsCode": "const item=$input.first().json;\nvar rawText='';\ntry{\n  if(item.content&&Array.isArray(item.content)){rawText=item.content[0].text||'';}\n  else if(typeof item.content==='string'){rawText=item.content;}\n}catch(e){}\nvar cls={task_type:'default',rationale:''};\ntry{var m=rawText.match(/\\{[\\s\\S]*\\}/);if(m)cls=JSON.parse(m[0]);}catch(e){}\nvar now=new Date().toISOString();\nreturn [{json:{\n  request_id:item.request_id,\n  task_type:cls.task_type||'default',\n  user_request:item.message,\n  context:item.context||{},\n  constraints:item.preferences||{},\n  upstream_outputs:{},\n  metadata:{timestamp:now,workflow_name:'AG_00_ENTRYPOINT_SUPERVISOR',persona_name:'SUPERVISOR'},\n  classification_rationale:cls.rationale||'',\n  user_id:item.user_id||'anonymous'\n}}];"
-      }
+        1616,
+        144
+      ]
     },
     {
-      "id": "a0000000-0011-4000-8000-000000000001",
-      "name": "Switch - Route by Task Type",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.2,
-      "position": [
-        1500,
-        300
-      ],
       "parameters": {
-        "mode": "rules",
         "rules": {
           "values": [
             {
@@ -155,8 +146,7 @@
                   }
                 ],
                 "combinator": "and"
-              },
-              "renameOutput": false
+              }
             },
             {
               "conditions": {
@@ -177,8 +167,7 @@
                   }
                 ],
                 "combinator": "and"
-              },
-              "renameOutput": false
+              }
             },
             {
               "conditions": {
@@ -199,8 +188,7 @@
                   }
                 ],
                 "combinator": "and"
-              },
-              "renameOutput": false
+              }
             },
             {
               "conditions": {
@@ -221,161 +209,160 @@
                   }
                 ],
                 "combinator": "and"
-              },
-              "renameOutput": false
+              }
             }
           ]
         },
         "options": {
           "fallbackOutput": "extra"
         }
-      }
+      },
+      "id": "bb7cf963-1174-4230-ada8-755fbff90e47",
+      "name": "Switch - Route by Task Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1872,
+        144
+      ]
     },
     {
-      "id": "a0000000-0012-4000-8000-000000000001",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5w3blU5ib1dspRTj",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "992bd640-334e-450b-a6b6-122207f62d86",
       "name": "Execute AG_01 (Discovery)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        1750,
-        100
+        2112,
+        -64
       ],
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "5w3blU5ib1dspRTj",
-          "mode": "id"
-        },
-        "options": {}
-      },
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0013-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.error) {\n  up.__failed_personas__ = [{error: String(p.error), type: 'execution_error'}];\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { up.__failed_personas__ = [{persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}]; }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "8eeed404-eb90-4fd9-b123-607c3d524b15",
       "name": "Pack Discovery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
-        100
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.error) {\n  up.__failed_personas__ = [{error: String(p.error), type: 'execution_error'}];\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { up.__failed_personas__ = [{persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}]; }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
-      }
+        2368,
+        -64
+      ]
     },
     {
-      "id": "a0000000-0014-4000-8000-000000000001",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yGIQJaQvGNaPTvRK",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "9c338c3c-f9c3-4a18-b002-7f33fca69ced",
       "name": "Execute AG_02 (SD)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        1750,
-        260
+        2112,
+        112
       ],
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "yGIQJaQvGNaPTvRK",
-          "mode": "id"
-        },
-        "options": {}
-      },
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0015-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "abaeec46-d32d-4b46-a66f-8037d00b30a3",
       "name": "Chain Builder SD-1",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
-        260
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2368,
+        112
+      ]
     },
     {
-      "id": "a0000000-0016-4000-8000-000000000001",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "aa4cd00d-05ea-4778-bfd7-5247108340a8",
       "name": "Execute AG_03 (SD)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        2750,
-        260
+        3120,
+        112
       ],
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "VlIw08f7wg6Jza3l",
-          "mode": "id"
-        },
-        "options": {}
-      },
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0017-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder SD-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "1f0a4e99-70fd-4977-9c9a-cec6ebfdb05f",
       "name": "Pack SD",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3000,
-        260
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder SD-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        3360,
+        112
+      ]
     },
     {
-      "id": "a0000000-0018-4000-8000-000000000001",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "1a4c3211-c628-4889-a4c1-b32b5d67d0a3",
       "name": "Execute AG_03 (Impl)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        1750,
-        420
+        2112,
+        272
       ],
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "VlIw08f7wg6Jza3l",
-          "mode": "id"
-        },
-        "options": {}
-      },
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0019-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "71999edd-b961-4343-b4ac-75c92879cf84",
       "name": "Chain Builder Impl-1",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2368,
+        272
+      ]
     },
     {
-      "id": "a0000000-0020-4000-8000-000000000001",
-      "name": "Execute AG_05 (Impl)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        3250,
-        420
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -384,32 +371,32 @@
         },
         "options": {}
       },
+      "id": "add75842-e79e-444e-b552-a281aa490ce1",
+      "name": "Execute AG_05 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        3616,
+        272
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0021-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-3').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "721ef8be-f948-4387-bccb-1b701af02e36",
       "name": "Pack Impl",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3500,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-3').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        3872,
+        272
+      ]
     },
     {
-      "id": "a0000000-0022-4000-8000-000000000001",
-      "name": "Execute AG_01 (FPF)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        1750,
-        580
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -418,32 +405,32 @@
         },
         "options": {}
       },
+      "id": "d2e9bec2-2090-4b26-84b9-23a8ebbe5111",
+      "name": "Execute AG_01 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2112,
+        432
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0023-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "24b87996-ffe6-4500-b035-f10e5dc19b69",
       "name": "Chain Builder FPF-1",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
-        580
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2368,
+        432
+      ]
     },
     {
-      "id": "a0000000-0024-4000-8000-000000000001",
-      "name": "Execute AG_02 (FPF)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        2250,
-        580
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -452,32 +439,32 @@
         },
         "options": {}
       },
+      "id": "6c7f6df4-197d-418b-bb8e-a41581d5fe1e",
+      "name": "Execute AG_02 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2608,
+        432
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0025-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "0e0f97e3-beb5-4e4e-bac9-cdcd31aa007f",
       "name": "Chain Builder FPF-2",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2500,
-        580
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2864,
+        432
+      ]
     },
     {
-      "id": "a0000000-0026-4000-8000-000000000001",
-      "name": "Execute AG_03 (FPF)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        3250,
-        580
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -486,32 +473,32 @@
         },
         "options": {}
       },
+      "id": "7c2dbd90-1f80-42c9-9821-c7f850965514",
+      "name": "Execute AG_03 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        3616,
+        432
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0027-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "b69c6c65-fee8-4e1d-9f87-9dc014f04582",
       "name": "Chain Builder FPF-3",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3000,
-        580
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        3360,
+        432
+      ]
     },
     {
-      "id": "a0000000-0028-4000-8000-000000000001",
-      "name": "Execute AG_05 (FPF)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        4750,
-        580
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -520,32 +507,32 @@
         },
         "options": {}
       },
+      "id": "c77f1c5b-5e7a-4ef6-8584-9486d2148f6a",
+      "name": "Execute AG_05 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        5120,
+        432
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0029-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-6').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "c7fc4f79-d42b-4475-a151-90c413244d4e",
       "name": "Pack FPF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5000,
-        580
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-6').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        5360,
+        432
+      ]
     },
     {
-      "id": "a0000000-0030-4000-8000-000000000001",
-      "name": "Execute AG_01 (Default)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        1750,
-        740
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -554,32 +541,32 @@
         },
         "options": {}
       },
+      "id": "c51a1ae1-06e8-4a5a-8b30-544d1ebdf726",
+      "name": "Execute AG_01 (Default)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2112,
+        592
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0031-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "3d3b4b0b-dc7a-4f4c-892f-fe2a271dc46b",
       "name": "Chain Builder Default-1",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
-        740
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2368,
+        592
+      ]
     },
     {
-      "id": "a0000000-0032-4000-8000-000000000001",
-      "name": "Execute AG_02 (Default)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        2250,
-        740
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -588,59 +575,56 @@
         },
         "options": {}
       },
+      "id": "1a50e08d-61d8-4d36-ad00-3a792cf7ac1a",
+      "name": "Execute AG_02 (Default)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2608,
+        592
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0033-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Default-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "b35e2b3c-f3a1-4639-9743-b752e97e9b02",
       "name": "Pack Default",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2500,
-        740
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Default-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2864,
+        592
+      ]
     },
     {
-      "id": "a0000000-0034-4000-8000-000000000001",
+      "parameters": {},
+      "id": "57fff4e7-8a15-456d-a325-d52b45f871ac",
       "name": "Merge - Collect Outputs",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        5500,
-        420
-      ],
-      "parameters": {
-        "mode": "append",
-        "options": {}
-      }
+        5872,
+        272
+      ]
     },
     {
-      "id": "a0000000-0035-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nconst failures = [];\nitems.forEach(function(item) {\n  if (!item.json) return;\n  if (item.json.error) { failures.push({error: String(item.json.error), type: 'merge_error'}); return; }\n  if (item.json.upstream_outputs) {\n    Object.keys(item.json.upstream_outputs).forEach(function(k) {\n      if (k === '__failed_personas__') {\n        if (Array.isArray(item.json.upstream_outputs[k])) failures.push.apply(failures, item.json.upstream_outputs[k]);\n      } else {\n        up[k] = item.json.upstream_outputs[k];\n      }\n    });\n  }\n  if (item.json.persona_name) {\n    if (item.json.status === 'failed') failures.push({persona: item.json.persona_name, error: item.json.summary||'failed', type: 'workflow_failure'});\n    up[item.json.persona_name] = { status: item.json.status, summary: item.json.summary, structured_output: item.json.structured_output||{}, risks: item.json.risks||[], assumptions: item.json.assumptions||[], blocking_questions: item.json.blocking_questions||[], metrics: item.json.metrics||{} };\n  }\n});\nif (failures.length > 0) up.__failed_personas__ = failures;\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
+      },
+      "id": "45cbc209-9cb8-42cb-8f2a-3a5d4fb8193c",
       "name": "Code - Build QA Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5750,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const items = $input.all();\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nconst failures = [];\nitems.forEach(function(item) {\n  if (!item.json) return;\n  if (item.json.error) { failures.push({error: String(item.json.error), type: 'merge_error'}); return; }\n  if (item.json.upstream_outputs) {\n    Object.keys(item.json.upstream_outputs).forEach(function(k) {\n      if (k === '__failed_personas__') {\n        if (Array.isArray(item.json.upstream_outputs[k])) failures.push.apply(failures, item.json.upstream_outputs[k]);\n      } else {\n        up[k] = item.json.upstream_outputs[k];\n      }\n    });\n  }\n  if (item.json.persona_name) {\n    if (item.json.status === 'failed') failures.push({persona: item.json.persona_name, error: item.json.summary||'failed', type: 'workflow_failure'});\n    up[item.json.persona_name] = { status: item.json.status, summary: item.json.summary, structured_output: item.json.structured_output||{}, risks: item.json.risks||[], assumptions: item.json.assumptions||[], blocking_questions: item.json.blocking_questions||[], metrics: item.json.metrics||{} };\n  }\n});\nif (failures.length > 0) up.__failed_personas__ = failures;\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
-      }
+        6112,
+        272
+      ]
     },
     {
-      "id": "a0000000-0036-4000-8000-000000000001",
-      "name": "Execute AG_08 (QA)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        6000,
-        420
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -649,32 +633,32 @@
         },
         "options": {}
       },
+      "id": "e9a27bf3-844f-4471-997d-fd832fb58892",
+      "name": "Execute AG_08 (QA)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        6368,
+        272
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0037-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build QA Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nconst failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_08_QA_REVIEWER', error: String(p.error), type: 'execution_error'});\n  up.__failed_personas__ = failures;\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') failures.push({persona: p.persona_name, error: p.summary||'failed', type: 'workflow_failure'});\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n  if (failures.length > 0) up.__failed_personas__ = failures;\n}\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
+      },
+      "id": "4a3fd2dc-bd31-4d91-b509-b4c0d5d466f9",
       "name": "Code - Build DevIntel Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6250,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build QA Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nconst failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_08_QA_REVIEWER', error: String(p.error), type: 'execution_error'});\n  up.__failed_personas__ = failures;\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') failures.push({persona: p.persona_name, error: p.summary||'failed', type: 'workflow_failure'});\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n  if (failures.length > 0) up.__failed_personas__ = failures;\n}\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
-      }
+        6608,
+        272
+      ]
     },
     {
-      "id": "a0000000-0038-4000-8000-000000000001",
-      "name": "Execute AG_09 (DevIntel)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        6500,
-        420
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -683,32 +667,32 @@
         },
         "options": {}
       },
+      "id": "0cc675b8-c919-4267-9281-bbbd7d60a20d",
+      "name": "Execute AG_09 (DevIntel)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        6864,
+        272
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0039-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build DevIntel Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nconst failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_09_DEV_INTELLIGENCE', error: String(p.error), type: 'execution_error'});\n  up.__failed_personas__ = failures;\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') failures.push({persona: p.persona_name, error: p.summary||'failed', type: 'workflow_failure'});\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n  if (failures.length > 0) up.__failed_personas__ = failures;\n}\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
+      },
+      "id": "1fed541a-beea-4e4d-a816-20ed08bf3dcf",
       "name": "Code - Build Formatter Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6750,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build DevIntel Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nconst failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_09_DEV_INTELLIGENCE', error: String(p.error), type: 'execution_error'});\n  up.__failed_personas__ = failures;\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') failures.push({persona: p.persona_name, error: p.summary||'failed', type: 'workflow_failure'});\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n  if (failures.length > 0) up.__failed_personas__ = failures;\n}\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
-      }
+        7120,
+        272
+      ]
     },
     {
-      "id": "a0000000-0040-4000-8000-000000000001",
-      "name": "Execute AG_10 (Formatter)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        7000,
-        420
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -717,96 +701,96 @@
         },
         "options": {}
       },
+      "id": "7b5cb300-af11-4914-9e72-4243d42e75f1",
+      "name": "Execute AG_10 (Formatter)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7360,
+        272
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0041-4000-8000-000000000001",
-      "name": "Respond to Webhook - Entry",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        1000,
-        180
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 202
         }
-      }
+      },
+      "id": "70a51880-7918-4c75-9c74-d220474a08b6",
+      "name": "Respond to Webhook - Entry",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        32
+      ]
     },
     {
-      "id": "a0000000-0042-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'clarification_acknowledged',\n  message: 'Clarification received and logged. To resume execution with updated context, re-submit to the entry webhook with the original request_id and updated context field.',\n  clarification_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full stateful clarification loop requires database integration. See README section: Clarification Flow.'\n} }];"
+      },
+      "id": "c5df4b5c-d993-47d4-8a3d-e0364415e4c2",
       "name": "Code - Handle Clarification",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        520
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'clarification_acknowledged',\n  message: 'Clarification received and logged. To resume execution with updated context, re-submit to the entry webhook with the original request_id and updated context field.',\n  clarification_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full stateful clarification loop requires database integration. See README section: Clarification Flow.'\n} }];"
-      }
+        864,
+        368
+      ]
     },
     {
-      "id": "a0000000-0043-4000-8000-000000000001",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "81c20043-84de-4444-8995-ecbaa24aee72",
       "name": "Respond to Webhook - Clarification",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        750,
-        520
-      ],
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}",
-        "options": {
-          "responseCode": 200
-        }
-      }
+        1120,
+        368
+      ]
     },
     {
-      "id": "a0000000-0044-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'approval_acknowledged',\n  approved: item.approved !== false,\n  message: item.approved !== false ? 'Approval received. Execution can proceed to next phase.' : 'Rejection received. Workflow halted pending revision.',\n  approval_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full approval gate with execution resume requires database integration. See README section: Approval Flow.'\n} }];"
+      },
+      "id": "1313f900-68bb-4e67-b9fa-ad541dc97240",
       "name": "Code - Handle Approval",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        720
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'approval_acknowledged',\n  approved: item.approved !== false,\n  message: item.approved !== false ? 'Approval received. Execution can proceed to next phase.' : 'Rejection received. Workflow halted pending revision.',\n  approval_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full approval gate with execution resume requires database integration. See README section: Approval Flow.'\n} }];"
-      }
+        864,
+        576
+      ]
     },
     {
-      "id": "a0000000-0045-4000-8000-000000000001",
-      "name": "Respond to Webhook - Approval",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        750,
-        720
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "458ec158-df85-4e5e-a701-fd70e7ddc1a7",
+      "name": "Respond to Webhook - Approval",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        576
+      ]
     },
     {
-      "id": "a0000000-0099-4000-8000-000000000010",
-      "name": "HTTP Request - Classify Task",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1000,
-        300
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
@@ -830,69 +814,69 @@
         "jsonBody": "={{ JSON.stringify($json.apiBody) }}",
         "options": {}
       },
+      "id": "3353a0e8-ce7b-4710-808c-6f16cfd4d036",
+      "name": "HTTP Request - Classify Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        144
+      ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "7QsxxfdhdsOrA00W",
+          "id": "7QsxxfdhdsOrA0OW",
           "name": "ANTHROPIC_HTTP_HEADER_AUTH"
         }
       }
     },
     {
-      "id": "a0000000-0051-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder SD-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "717703f6-8d56-4489-bbb6-dd372aaf6783",
       "name": "Chain Builder SD-2",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2500,
-        260
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder SD-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2864,
+        112
+      ]
     },
     {
-      "id": "a0000000-0052-4000-8000-000000000001",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "s3YBVr8eGvvGrmcv",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "3ea85221-e756-49a7-85e5-9cd0d3b5ced3",
       "name": "Execute AG_06 (Impl)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        2250,
-        420
+        2608,
+        272
       ],
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "s3YBVr8eGvvGrmcv",
-          "mode": "id"
-        },
-        "options": {}
-      },
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0053-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "3649a1f5-07cb-44b0-b8af-2bb25b644b5e",
       "name": "Chain Builder Impl-2",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2500,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        2864,
+        272
+      ]
     },
     {
-      "id": "a0000000-0054-4000-8000-000000000001",
-      "name": "Execute AG_07 (Impl)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        2750,
-        420
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -901,45 +885,45 @@
         },
         "options": {}
       },
+      "id": "bcfaec56-0010-4bf0-9691-1e008b0f6638",
+      "name": "Execute AG_07 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        3120,
+        272
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0055-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "c733468a-f57f-46d9-878d-b8c6b9e69b5c",
       "name": "Chain Builder Impl-3",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3000,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        3360,
+        272
+      ]
     },
     {
-      "id": "a0000000-0057-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-3').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "fba79bbb-ea11-4828-87d5-12a313e2de28",
       "name": "Chain Builder FPF-4",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3500,
-        580
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-3').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        3872,
+        432
+      ]
     },
     {
-      "id": "a0000000-0058-4000-8000-000000000001",
-      "name": "Execute AG_06 (FPF)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        3750,
-        580
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -948,32 +932,32 @@
         },
         "options": {}
       },
+      "id": "f50c1d9c-ecc8-4f1d-8c14-3f5675a566c2",
+      "name": "Execute AG_06 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        4112,
+        432
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0059-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-4').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "a85b4a18-10ea-40b8-b220-3ad21982f559",
       "name": "Chain Builder FPF-5",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4000,
-        580
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-4').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        4368,
+        432
+      ]
     },
     {
-      "id": "a0000000-0060-4000-8000-000000000001",
-      "name": "Execute AG_07 (FPF)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.1,
-      "position": [
-        4250,
-        580
-      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -982,137 +966,155 @@
         },
         "options": {}
       },
+      "id": "2f5cf0ac-48b9-404b-beb4-a3568d2c7219",
+      "name": "Execute AG_07 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        4608,
+        432
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0061-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-5').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "5a7ec026-7a2e-4e96-bae8-e22f3c030a87",
       "name": "Chain Builder FPF-6",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4500,
-        580
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-5').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
-      }
+        4864,
+        432
+      ]
     },
     {
-      "id": "a0000000-0070-4000-8000-000000000001",
-      "name": "Webhook - Status",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        960
-      ],
-      "webhookId": "ag00-webhook-status-001",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/supervisor/status",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "70939046-78b7-4b1c-ae4c-bcc29d9b43d0",
+      "name": "Webhook - Status",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        608,
+        816
+      ],
+      "webhookId": "ag00-webhook-status-001"
     },
     {
-      "id": "a0000000-0071-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nif (item.error) return [{ json: item }];\nconst now = item.timestamp || new Date().toISOString();\n// run_id must come from Code - Set Project Context (via create-or-resume). Never generate a local fallback.\nconst run_id = item.run_id || null;\nif (!run_id) {\n  return [{ json: { error: true, error_type: 'RUN_ID_UNAVAILABLE', message: 'run_id is null after project context setup. Cannot proceed safely.', project_id: item.project_id || null } }];\n}\nreturn [{ json: Object.assign({}, item, { submitted_at: now, run_id: run_id }) }];"
+      },
+      "id": "1bb45177-9cbe-4743-b044-c15c9d71712b",
       "name": "Code - Store Initial Status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        625,
-        300
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nif (item.error) return [{ json: item }];\nconst now = item.timestamp || new Date().toISOString();\nconst fallback_run_id = item.run_id || ('run_' + Date.now().toString() + '_' + Math.random().toString(36).slice(2,8));\nreturn [{ json: Object.assign({}, item, { submitted_at: now, run_id: fallback_run_id }) }];"
-      }
+        992,
+        144
+      ]
     },
     {
-      "id": "a0000000-0072-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nvar prev = {};\ntry { prev = $('Code - Build Formatter Input').first().json; } catch(e) {}\nvar projectCtx = {};\ntry { projectCtx = $('Code - Set Project Context').first().json; } catch(e) {}\nvar project_id = projectCtx.project_id || null;\nvar run_id = projectCtx.run_id || null;\nvar rid = prev.request_id || p.request_id || 'unknown';\nvar fmt = {};\nvar ag09Out = {};\nvar hasFail = prev._has_failures || false;\nvar failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_10_RESPONSE_FORMATTER', error: String(p.error), type: 'execution_error'});\n  hasFail = true;\n} else {\n  fmt = (p && p.structured_output) || {};\n  try { ag09Out = (prev.upstream_outputs['AG_09_DEV_INTELLIGENCE'] || {}).structured_output || {}; } catch(e) {}\n  if (p && p.status === 'failed') { hasFail = true; failures.push({persona: (p.persona_name || 'AG_10'), error: p.summary || 'failed', type: 'workflow_failure'}); }\n}\nvar now = new Date().toISOString();\nvar status, errorMsg, summary, highlights, next_action;\nif (hasFail) {\n  var successPersonas = Object.keys(prev.upstream_outputs || {}).filter(function(k) { return k !== '__failed_personas__' && prev.upstream_outputs[k] && prev.upstream_outputs[k].status === 'success'; });\n  var hasPartial = successPersonas.length > 0;\n  status = hasPartial ? 'partial_failure' : 'failed';\n  errorMsg = 'One or more agent steps failed: ' + failures.map(function(f) { return f.persona || f.node || 'unknown'; }).join(', ');\n  summary = hasPartial ? ('Request completed with errors: ' + errorMsg) : 'Request failed. Critical agent steps could not complete.';\n  highlights = failures.map(function(f) { return 'FAILED: ' + (f.persona || 'unknown') + ' — ' + (f.error || 'execution error'); });\n  next_action = 'retry';\n} else {\n  status = 'completed';\n  errorMsg = null;\n  summary = fmt.executive_summary || (p && p.summary) || 'Supervisor execution completed successfully.';\n  highlights = (fmt.key_findings || []).filter(function(f) { return f && (f.priority === 'critical' || f.priority === 'high'); }).map(function(f) { return typeof f === 'string' ? f : (f.finding || JSON.stringify(f)); });\n  next_action = (fmt.next_steps && fmt.next_steps[0]) ? (fmt.next_steps[0].action || JSON.stringify(fmt.next_steps[0])) : 'review_output';\n}\nreturn [{ json: {\n  request_id: rid,\n  status: status,\n  completed_at: now,\n  project_id: project_id,\n  run_id: run_id,\n  error: errorMsg,\n  summary: summary,\n  highlights: highlights,\n  next_action: next_action,\n  failed_personas: failures\n} }];"
+      },
+      "id": "2aeac24c-d1a5-47c6-a6cc-8008fb97d550",
       "name": "Code - Store Final Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        7500,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const p = $input.first().json;\nvar prev = {};\ntry { prev = $('Code - Build Formatter Input').first().json; } catch(e) {}\nvar projectCtx = {};\ntry { projectCtx = $('Code - Set Project Context').first().json; } catch(e) {}\nvar project_id = projectCtx.project_id || '6gQXa9oUAJVQi85J';\nvar run_id = projectCtx.run_id || null;\nvar rid = prev.request_id || p.request_id || 'unknown';\nvar fmt = {};\nvar ag09Out = {};\nvar hasFail = prev._has_failures || false;\nvar failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_10_RESPONSE_FORMATTER', error: String(p.error), type: 'execution_error'});\n  hasFail = true;\n} else {\n  fmt = (p && p.structured_output) || {};\n  try { ag09Out = (prev.upstream_outputs['AG_09_DEV_INTELLIGENCE'] || {}).structured_output || {}; } catch(e) {}\n  if (p && p.status === 'failed') { hasFail = true; failures.push({persona: (p.persona_name || 'AG_10'), error: p.summary || 'failed', type: 'workflow_failure'}); }\n}\nvar now = new Date().toISOString();\nvar status, errorMsg, summary, highlights, next_action;\nif (hasFail) {\n  var successPersonas = Object.keys(prev.upstream_outputs || {}).filter(function(k) { return k !== '__failed_personas__' && prev.upstream_outputs[k] && prev.upstream_outputs[k].status === 'success'; });\n  var hasPartial = successPersonas.length > 0;\n  status = hasPartial ? 'partial_failure' : 'failed';\n  errorMsg = 'One or more agent steps failed: ' + failures.map(function(f) { return f.persona || f.node || 'unknown'; }).join(', ');\n  summary = hasPartial ? ('Request completed with errors: ' + errorMsg) : 'Request failed. Critical agent steps could not complete.';\n  highlights = failures.map(function(f) { return 'FAILED: ' + (f.persona || 'unknown') + ' — ' + (f.error || 'execution error'); });\n  next_action = 'retry';\n} else {\n  status = 'completed';\n  errorMsg = null;\n  summary = fmt.executive_summary || (p && p.summary) || 'Supervisor execution completed successfully.';\n  highlights = (fmt.key_findings || []).filter(function(f) { return f && (f.priority === 'critical' || f.priority === 'high'); }).map(function(f) { return typeof f === 'string' ? f : (f.finding || JSON.stringify(f)); });\n  next_action = (fmt.next_steps && fmt.next_steps[0]) ? (fmt.next_steps[0].action || JSON.stringify(fmt.next_steps[0])) : 'review_output';\n}\nreturn [{ json: {\n  request_id: rid,\n  status: status,\n  completed_at: now,\n  project_id: project_id,\n  run_id: run_id,\n  error: errorMsg,\n  summary: summary,\n  highlights: highlights,\n  next_action: next_action,\n  failed_personas: failures\n} }];"
-      }
+        7872,
+        272
+      ]
     },
     {
-      "id": "a0000000-0073-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "// Reads from HTTP Request - AG11 Status Query (upstream AG11 /latest-snapshot response)\nvar snap = $input.first().json;\nvar project_id = (snap && snap.data && snap.data.project_id) || ($('Webhook - Status').first().json.body && $('Webhook - Status').first().json.body.project_id) || null;\nif (!snap || snap.success === false) {\n  var errMsg = (snap && snap.message) || 'Failed to retrieve project state from AG11.';\n  var errDetail = (snap && snap.data && snap.data.error) || 'ag11_query_failed';\n  return [{ json: { success: false, message: errMsg, data: { project_id: project_id, error: errDetail } } }];\n}\nvar d = snap.data || {};\nvar status = d.status || 'unknown';\nswitch (status) {\n  case 'processing':\n    return [{ json: { success: true, message: 'Project is still processing.', data: { project_id: project_id, status: 'processing', current_step: d.current_step || null } } }];\n  case 'completed':\n    return [{ json: { success: true, message: 'Project completed.', data: { project_id: project_id, status: 'completed', current_step: d.current_step || null, last_completed_step: d.last_completed_step || null, next_action: d.next_action || null, artifacts: d.artifacts || [], step_highlights: d.step_highlights || [] } } }];\n  case 'failed':\n    return [{ json: { success: false, message: 'Project failed.', data: { project_id: project_id, status: 'failed', current_step: d.current_step || null, last_completed_step: d.last_completed_step || null, next_action: d.next_action || 'retry' } } }];\n  case 'not_found':\n    return [{ json: { success: false, message: 'Project not found in AG11.', data: { project_id: project_id, error: 'not_found' } } }];\n  default:\n    return [{ json: { success: true, message: 'Project state: ' + status + '.', data: { project_id: project_id, status: status, current_step: d.current_step || null, step_highlights: d.step_highlights || [] } } }];\n}"
+      },
+      "id": "c491abb4-c623-4127-b077-070b50d64c7d",
       "name": "Code - Handle Status Query",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        960
-      ],
-      "parameters": {
-        "jsCode": "// Reads from HTTP Request - AG11 Status Query (upstream AG11 /latest-snapshot response)\nvar snap = $input.first().json;\nvar project_id = '6gQXa9oUAJVQi85J';\nif (!snap || snap.success === false) {\n  var errMsg = (snap && snap.message) || 'Failed to retrieve project state from AG11.';\n  var errDetail = (snap && snap.data && snap.data.error) || 'ag11_query_failed';\n  return [{ json: { success: false, message: errMsg, data: { project_id: project_id, error: errDetail } } }];\n}\nvar d = snap.data || {};\nvar status = d.status || 'unknown';\nswitch (status) {\n  case 'processing':\n    return [{ json: { success: true, message: 'Project is still processing.', data: { project_id: project_id, status: 'processing', current_step: d.current_step || null } } }];\n  case 'completed':\n    return [{ json: { success: true, message: 'Project completed.', data: { project_id: project_id, status: 'completed', current_step: d.current_step || null, last_completed_step: d.last_completed_step || null, next_action: d.next_action || null, artifacts: d.artifacts || [], step_highlights: d.step_highlights || [] } } }];\n  case 'failed':\n    return [{ json: { success: false, message: 'Project failed.', data: { project_id: project_id, status: 'failed', current_step: d.current_step || null, last_completed_step: d.last_completed_step || null, next_action: d.next_action || 'retry' } } }];\n  case 'not_found':\n    return [{ json: { success: false, message: 'Project not found in AG11.', data: { project_id: project_id, error: 'not_found' } } }];\n  default:\n    return [{ json: { success: true, message: 'Project state: ' + status + '.', data: { project_id: project_id, status: status, current_step: d.current_step || null, step_highlights: d.step_highlights || [] } } }];\n}"
-      }
+        864,
+        816
+      ]
     },
     {
-      "id": "a0000000-0074-4000-8000-000000000001",
-      "name": "Respond to Webhook - Status",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        750,
-        960
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "21033a1f-55cb-42db-8671-58cb6e915e33",
+      "name": "Respond to Webhook - Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        816
+      ]
     },
     {
-      "id": "a0000000-0075-4000-8000-000000000001",
-      "name": "Sticky Note - Async Architecture",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        250,
-        860
-      ],
       "parameters": {
         "content": "## Async Execution — AG11-First Architecture\n\n**Entry Flow:**\nBRANCH A — Fast Ack: Code - Store Initial Status → Code - Build Entry Response → Respond to Webhook - Entry (HTTP 202)\nBRANCH B — Long Exec: Code - Store Initial Status → HTTP AG11 Save Start → HTTP AG11 Verify Start → IF Start Verified OK → classification → routing → personas → QA → DevIntel → Formatter → Code - Store Final Result → IF Final Status → [AG11 Mark Failed | AG11 Save Completion] → AG11 Verify Snapshot → Code - Build Verified Response\n\n**AG11 is the ONLY source of truth. Static data is NOT used.**\n\n**Start-of-run write (fail loud):**\n- AG11 Save Start: POST /save-step-result (step: supervisor_started, no continueOnFail)\n- AG11 Verify Start: POST /latest-snapshot (continueOnFail: true so IF can branch)\n- IF Start Verified OK: true → classify | false → AG11 Mark Start Failed (terminal)\n\n**Final write (fail loud):**\n- AG11 Mark Failed / Save Completion: no continueOnFail — hard failure if AG11 unreachable\n- AG11 Verify Snapshot: POST /latest-snapshot (continueOnFail: true for branching)\n- Code - Build Verified Response: returns structured success or explicit verification failure\n\n**Status endpoint /ag/supervisor/status:**\n- Queries AG11 /latest-snapshot live (HTTP Request - AG11 Status Query)\n- Returns AG11 state directly — never reads from static data\n- If AG11 returns no record or error: explicit not_found / verification_error response\n\n**Execution statuses:** processing | completed | failed | not_found\n⚠ ChatGPT must NOT assume success until AG11 confirms status = completed",
         "height": 430,
         "width": 760,
         "color": 3
-      }
+      },
+      "id": "c2500d2b-73fd-443e-a0ed-227249764747",
+      "name": "Sticky Note - Async Architecture",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        608,
+        704
+      ]
     },
     {
-      "id": "a0000000-0080-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nif (item.error) {\n  return [{ json: {\n    success: false,\n    message: item.message || 'Validation failed',\n    data: { error_type: item.error_type || 'UNKNOWN', request_id: item.request_id || null }\n  } }];\n}\nreturn [{ json: {\n  success: true,\n  message: 'Request accepted and processing started.',\n  data: {\n    request_id: item.request_id,\n    status: 'processing',\n    submitted_at: item.submitted_at || item.timestamp || new Date().toISOString()\n  }\n} }];"
+      },
+      "id": "09450b1a-4eaf-481d-8618-615c55a75553",
       "name": "Code - Build Entry Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        750,
-        180
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nif (item.error) {\n  return [{ json: {\n    success: false,\n    message: item.message || 'Validation failed',\n    data: { error_type: item.error_type || 'UNKNOWN', request_id: item.request_id || null }\n  } }];\n}\nreturn [{ json: {\n  success: true,\n  message: 'Request accepted and processing started.',\n  data: {\n    request_id: item.request_id,\n    status: 'processing',\n    submitted_at: item.submitted_at || item.timestamp || new Date().toISOString()\n  }\n} }];"
-      }
+        1120,
+        32
+      ]
     },
     {
-      "id": "a0000000-0090-4000-8000-000000000001",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "mZt2ROYB2J7VuSdY",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "6d8b5fae-0b7d-41ee-9338-a236d430789e",
       "name": "Execute AG_04 (SD)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        2250,
-        260
+        2608,
+        112
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000,
+      "waitBetweenTries": 2000
+    },
+    {
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -1120,70 +1122,52 @@
           "mode": "id"
         },
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0091-4000-8000-000000000001",
+      },
+      "id": "f6af3003-a7b5-40c5-b076-4f10be746d7d",
       "name": "Execute AG_04 (FPF)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        2750,
-        580
+        3120,
+        432
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000,
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "mZt2ROYB2J7VuSdY",
-          "mode": "id"
-        },
-        "options": {}
-      }
+      "waitBetweenTries": 2000
     },
     {
-      "id": "a0000000-0100-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Load State",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        500,
-        480
-      ],
-      "continueOnFail": true,
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/state",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $json.project_id }) }}",
         "options": {}
-      }
+      },
+      "id": "95c44dc4-0ed8-446a-9324-6e58647826c1",
+      "name": "HTTP Request - AG11 Load State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        864,
+        336
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0101-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst orig = $('Code - Validate Entry Input').first().json;\nconst stateData = (resp && resp.success && resp.data && resp.data.project_id) ? resp.data : null;\nconst project_id = $('Code - Resolve Project Selection').first().json.project_id || null;\nconst run_id = stateData ? (stateData.latest_run_id || stateData.run_id || null) : null;\nreturn [{ json: Object.assign({}, orig, {\n  project_id,\n  run_id,\n  project_found: !!stateData,\n  project_state: stateData || null\n}) }];"
+      },
+      "id": "d07b30d6-1e83-49ac-bc01-f9b07d664226",
       "name": "Code - Resolve Project State",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        700,
-        480
-      ],
-      "parameters": {
-        "jsCode": "const resp = $input.first().json;\nconst orig = $('Code - Validate Entry Input').first().json;\nconst stateData = (resp && resp.success && resp.data && resp.data.project_id) ? resp.data : null;\nconst project_id = '6gQXa9oUAJVQi85J';\nconst run_id = stateData ? (stateData.latest_run_id || stateData.run_id || null) : null;\nreturn [{ json: Object.assign({}, orig, {\n  project_id,\n  run_id,\n  project_found: !!stateData,\n  project_state: stateData || null\n}) }];"
-      }
+        1072,
+        336
+      ]
     },
     {
-      "id": "a0000000-0102-4000-8000-000000000001",
-      "name": "IF - Project Needs Create",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        900,
-        480
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1203,50 +1187,51 @@
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "85c5c065-a484-4170-bc72-b3f71a28974e",
+      "name": "IF - Project Needs Create",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1264,
+        336
+      ]
     },
     {
-      "id": "a0000000-0103-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Create Project",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        380
-      ],
-      "continueOnFail": true,
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/create-or-resume",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", title: ($json.brief && $json.brief.project_title) || $json.message || \"Untitled Project\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Resolve Project Selection').first().json.project_id, title: ($json.brief && $json.brief.project_title) || $json.message || \"Untitled Project\" }) }}",
         "options": {}
-      }
+      },
+      "id": "37af6760-97c6-4cf9-a3f2-4974034a9054",
+      "name": "HTTP Request - AG11 Create Project",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1472,
+        224
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0104-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst orig = $('Code - Resolve Project State').first().json;\n// project_id resolved by the project selection flow — never hardcoded\nconst project_id = (item && item.data && item.data.project_id) || (orig && orig.project_id) || null;\nif (!project_id) {\n  return [{ json: { error: true, error_type: 'PROJECT_ID_UNAVAILABLE', message: 'Could not resolve project_id from project selection flow.', project_id: null } }];\n}\n// run_id from create-or-resume response; fallback to latest_run_id from state query\nconst run_id = (item && item.data && item.data.run_id) || (orig && orig.run_id) || null;\nif (!run_id) {\n  return [{ json: { error: true, error_type: 'RUN_ID_UNAVAILABLE', message: 'AG11 create-or-resume failed and no existing run_id found. Cannot proceed.', project_id } }];\n}\nreturn [{ json: Object.assign({}, orig, { project_id, run_id }) }];"
+      },
+      "id": "3fbcd5fa-501b-4ce6-976e-8246ae682c58",
       "name": "Code - Set Project Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1300,
-        480
-      ],
-      "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst orig = $('Code - Resolve Project State').first().json;\nconst project_id = '6gQXa9oUAJVQi85J';\nconst fallback_run_id = 'run_' + Date.now().toString() + '_' + Math.random().toString(36).slice(2,8);\nconst run_id = (item.data && item.data.run_id) || orig.run_id || fallback_run_id;\nreturn [{ json: Object.assign({}, orig, { project_id, run_id }) }];"
-      }
+        1664,
+        336
+      ]
     },
     {
-      "id": "a0000000-0105-4000-8000-000000000001",
-      "name": "IF - Final Status Failed",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        7700,
-        420
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1275,123 +1260,124 @@
             }
           ],
           "combinator": "or"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "885d17c9-d912-4c54-b936-ecb0116586cb",
+      "name": "IF - Final Status Failed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        8064,
+        272
+      ]
     },
     {
-      "id": "a0000000-0106-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Mark Failed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        7950,
-        340
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/mark-step-failed",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $json.run_id, step_name: \"supervisor_final\", error: $json.error || (\"Execution ended with status: \" + $json.status), retry_count: 0, next_action: \"retry\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $json.run_id, step_name: \"supervisor_final\", error: $json.error || (\"Execution ended with status: \" + $json.status), retry_count: 0, next_action: \"retry\" }) }}",
         "options": {}
-      }
+      },
+      "id": "8d1fa132-9351-437e-84d3-e6cbafbdc3cc",
+      "name": "HTTP Request - AG11 Mark Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8320,
+        192
+      ]
     },
     {
-      "id": "a0000000-0107-4000-8000-000000000001",
+      "parameters": {
+        "method": "POST",
+        "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $json.run_id, step_name: \"supervisor_completed\", status: \"success\", summary: \"Full supervisor execution completed successfully.\" }) }}",
+        "options": {}
+      },
+      "id": "c83fc28e-5b3a-4f1a-9627-67eb9add5e06",
       "name": "HTTP Request - AG11 Save Completion",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        7950,
-        500
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $json.run_id, step_name: \"supervisor_completed\", status: \"success\", summary: \"Full supervisor execution completed successfully.\" }) }}",
-        "options": {}
-      }
+        8320,
+        352
+      ]
     },
     {
-      "id": "a0000000-0109-4000-8000-000000000001",
+      "parameters": {
+        "method": "POST",
+        "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id }) }}",
+        "options": {}
+      },
+      "id": "42c06cbf-87e4-498a-a83b-a1600a042641",
       "name": "HTTP Request - AG11 Verify Snapshot",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        8200,
-        420
+        8560,
+        272
       ],
-      "continueOnFail": true,
-      "parameters": {
-        "method": "POST",
-        "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
-        "options": {}
-      }
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0110-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "// Verification: checks success flag + data exists + status is a non-empty string.\n// AG11 schema is limited; this is the strongest check available without step-name matching.\nvar snap = $input.first().json;\nvar project_id = (snap && snap.data && snap.data.project_id) || $('Code - Set Project Context').first().json.project_id || null;\nvar verified = snap && snap.success === true && snap.data != null;\nif (verified) {\n  var d = snap.data;\n  var hasStatus = d.status && typeof d.status === 'string' && d.status.length > 0;\n  if (hasStatus) {\n    return [{ json: {\n      success: true,\n      project_id: project_id,\n      status: d.status,\n      current_step: d.current_step || null,\n      last_completed_step: d.last_completed_step || null,\n      next_action: d.next_action || null,\n      artifacts: d.artifacts || [],\n      step_highlights: d.step_highlights || [],\n      _verified: true\n    } }];\n  }\n  return [{ json: {\n    success: false,\n    message: 'Execution finished but DB verification failed: snapshot missing status field.',\n    data: { project_id: project_id, error: 'snapshot_incomplete: status field missing or empty' }\n  } }];\n}\nreturn [{ json: {\n  success: false,\n  message: 'Execution finished but DB verification failed.',\n  data: {\n    project_id: project_id,\n    error: snap && snap.success ? 'snapshot_empty: data field null or missing' : 'ag11_unreachable_or_rejected',\n    raw_success: snap ? snap.success : null\n  }\n} }];"
+      },
+      "id": "a248b2fe-ea99-4b3f-9a16-a4ea9b54c662",
       "name": "Code - Build Verified Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        8450,
-        420
-      ],
-      "parameters": {
-        "jsCode": "// Verification: checks success flag + data exists + status is a non-empty string.\n// AG11 schema is limited; this is the strongest check available without step-name matching.\nvar snap = $input.first().json;\nvar project_id = '6gQXa9oUAJVQi85J';\nvar verified = snap && snap.success === true && snap.data != null;\nif (verified) {\n  var d = snap.data;\n  var hasStatus = d.status && typeof d.status === 'string' && d.status.length > 0;\n  if (hasStatus) {\n    return [{ json: {\n      success: true,\n      project_id: project_id,\n      status: d.status,\n      current_step: d.current_step || null,\n      last_completed_step: d.last_completed_step || null,\n      next_action: d.next_action || null,\n      artifacts: d.artifacts || [],\n      step_highlights: d.step_highlights || [],\n      _verified: true\n    } }];\n  }\n  return [{ json: {\n    success: false,\n    message: 'Execution finished but DB verification failed: snapshot missing status field.',\n    data: { project_id: project_id, error: 'snapshot_incomplete: status field missing or empty' }\n  } }];\n}\nreturn [{ json: {\n  success: false,\n  message: 'Execution finished but DB verification failed.',\n  data: {\n    project_id: project_id,\n    error: snap && snap.success ? 'snapshot_empty: data field null or missing' : 'ag11_unreachable_or_rejected',\n    raw_success: snap ? snap.success : null\n  }\n} }];"
-      }
+        8816,
+        272
+      ]
     },
     {
-      "id": "a0000000-0111-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Save Start",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        850,
-        520
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $json.run_id, step_name: \"supervisor_started\", status: \"processing\", summary: \"Supervisor execution started.\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $json.run_id, step_name: \"supervisor_started\", status: \"processing\", summary: \"Supervisor execution started.\" }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0112-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Verify Start",
+      },
+      "id": "0c958530-e73c-4bc4-b2d7-498c0859727f",
+      "name": "HTTP Request - AG11 Save Start",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1050,
-        520
-      ],
-      "continueOnFail": true,
+        1216,
+        368
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id }) }}",
         "options": {}
-      }
+      },
+      "id": "e77fc5b4-2af7-41a4-8623-2eb839988c88",
+      "name": "HTTP Request - AG11 Verify Start",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        368
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0113-4000-8000-000000000001",
-      "name": "IF - Start Verified OK",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1250,
-        520
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -1420,92 +1406,93 @@
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "d5f29c7e-dfb3-4597-bd3e-35bd12400c3c",
+      "name": "IF - Start Verified OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1616,
+        368
+      ]
     },
     {
-      "id": "a0000000-0114-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Mark Start Failed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1450,
-        640
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/mark-step-failed",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Store Initial Status').first().json.run_id, step_name: \"supervisor_started\", error: \"Start verification failed: AG11 did not confirm state after save-step-result.\", retry_count: 0, next_action: \"retry\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Store Initial Status').first().json.run_id, step_name: \"supervisor_started\", error: \"Start verification failed: AG11 did not confirm state after save-step-result.\", retry_count: 0, next_action: \"retry\" }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0115-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Status Query",
+      },
+      "id": "9ce3a19c-22a5-427a-a184-5df74e09f76d",
+      "name": "HTTP Request - AG11 Mark Start Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        400,
-        1160
-      ],
-      "continueOnFail": true,
+        1808,
+        496
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: ($json.body && $json.body.project_id) || $json.project_id || null }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0201-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Save Discovery",
+      },
+      "id": "710a9499-b680-4f59-becd-2f291bdf1425",
+      "name": "HTTP Request - AG11 Status Query",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
-        280
+        768,
+        1008
       ],
+      "continueOnFail": true
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"discovery_completed\", status: \"success\", summary: \"Product discovery branch completed.\", highlights: [] }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"discovery_completed\", status: \"success\", summary: \"Product discovery branch completed.\", highlights: [] }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0202-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Verify Discovery",
+      },
+      "id": "1701d1bc-a226-46ef-be4f-82aae2807e22",
+      "name": "HTTP Request - AG11 Save Discovery",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2400,
-        280
-      ],
-      "continueOnFail": true,
+        2560,
+        128
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id }) }}",
         "options": {}
-      }
+      },
+      "id": "e4a8322e-30c4-4ac4-a978-ad628a6c33dd",
+      "name": "HTTP Request - AG11 Verify Discovery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2768,
+        128
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0203-4000-8000-000000000001",
-      "name": "IF - Discovery Persist OK",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        2600,
-        280
-      ],
       "parameters": {
         "conditions": {
           "conditions": [
@@ -1532,84 +1519,77 @@
                 "type": "string",
                 "operation": "equals"
               }
-            },
-            {
-              "leftValue": "={{ ($json.data && $json.data.status) ? $json.data.status : '' }}",
-              "rightValue": "processing",
-              "operator": {
-                "type": "string",
-                "operation": "contains"
-              }
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "acd8a977-1892-461b-b104-05f49d44192d",
+      "name": "IF - Discovery Persist OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2960,
+        128
+      ]
     },
     {
-      "id": "a0000000-0204-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Mark Discovery Failed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2800,
-        360
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/mark-step-failed",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"discovery_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"discovery_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0205-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Save SD",
+      },
+      "id": "8407488d-58cb-4e4a-b15c-9efafcfa7c70",
+      "name": "HTTP Request - AG11 Mark Discovery Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3200,
-        440
-      ],
+        3168,
+        208
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"system_design_completed\", status: \"success\", summary: \"System design branch completed.\", highlights: [] }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"system_design_completed\", status: \"success\", summary: \"System design branch completed.\", highlights: [] }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0206-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Verify SD",
+      },
+      "id": "71951673-dbed-4278-908a-2d8bf8d5ff4e",
+      "name": "HTTP Request - AG11 Save SD",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3400,
-        440
-      ],
-      "continueOnFail": true,
+        3568,
+        288
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id }) }}",
         "options": {}
-      }
+      },
+      "id": "c68dafc0-2809-43a6-aa14-bae509b48b75",
+      "name": "HTTP Request - AG11 Verify SD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3760,
+        288
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0207-4000-8000-000000000001",
-      "name": "IF - SD Persist OK",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        3600,
-        440
-      ],
       "parameters": {
         "conditions": {
           "conditions": [
@@ -1636,84 +1616,77 @@
                 "type": "string",
                 "operation": "equals"
               }
-            },
-            {
-              "leftValue": "={{ ($json.data && $json.data.status) ? $json.data.status : '' }}",
-              "rightValue": "processing",
-              "operator": {
-                "type": "string",
-                "operation": "contains"
-              }
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "3dab21bd-a96b-47fb-a328-77a4e3e0f21d",
+      "name": "IF - SD Persist OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3968,
+        288
+      ]
     },
     {
-      "id": "a0000000-0208-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Mark SD Failed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3800,
-        520
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/mark-step-failed",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"system_design_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"system_design_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0209-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Save Impl",
+      },
+      "id": "df3db6ec-6a78-4e10-9e85-d7f7cf6b9247",
+      "name": "HTTP Request - AG11 Mark SD Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3700,
-        600
-      ],
+        4160,
+        368
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"implementation_planning_completed\", status: \"success\", summary: \"Implementation planning branch completed.\", highlights: [] }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"implementation_planning_completed\", status: \"success\", summary: \"Implementation planning branch completed.\", highlights: [] }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0210-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Verify Impl",
+      },
+      "id": "14db0df2-8616-4072-82b5-ba028a22d586",
+      "name": "HTTP Request - AG11 Save Impl",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3900,
-        600
-      ],
-      "continueOnFail": true,
+        4064,
+        448
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id }) }}",
         "options": {}
-      }
+      },
+      "id": "54b44496-e84d-4383-8863-b6ee370a746f",
+      "name": "HTTP Request - AG11 Verify Impl",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4272,
+        448
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0211-4000-8000-000000000001",
-      "name": "IF - Impl Persist OK",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        4100,
-        600
-      ],
       "parameters": {
         "conditions": {
           "conditions": [
@@ -1740,84 +1713,77 @@
                 "type": "string",
                 "operation": "equals"
               }
-            },
-            {
-              "leftValue": "={{ ($json.data && $json.data.status) ? $json.data.status : '' }}",
-              "rightValue": "processing",
-              "operator": {
-                "type": "string",
-                "operation": "contains"
-              }
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "e383b07f-5591-4240-8835-b098abf30598",
+      "name": "IF - Impl Persist OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4464,
+        448
+      ]
     },
     {
-      "id": "a0000000-0212-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Mark Impl Failed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        4300,
-        680
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/mark-step-failed",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"implementation_planning_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"implementation_planning_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0213-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Save FPF",
+      },
+      "id": "54eec031-f049-4234-8c86-834b4f12072a",
+      "name": "HTTP Request - AG11 Mark Impl Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5200,
-        760
-      ],
+        4672,
+        528
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"full_product_flow_completed\", status: \"success\", summary: \"Full product flow branch completed.\", highlights: [] }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"full_product_flow_completed\", status: \"success\", summary: \"Full product flow branch completed.\", highlights: [] }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0214-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Verify FPF",
+      },
+      "id": "28e46399-84e8-4a28-a128-60419e557d29",
+      "name": "HTTP Request - AG11 Save FPF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5400,
-        760
-      ],
-      "continueOnFail": true,
+        5568,
+        608
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id }) }}",
         "options": {}
-      }
+      },
+      "id": "54766af0-8c12-43df-90eb-412a0c4f6047",
+      "name": "HTTP Request - AG11 Verify FPF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5760,
+        608
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0215-4000-8000-000000000001",
-      "name": "IF - FPF Persist OK",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        5600,
-        760
-      ],
       "parameters": {
         "conditions": {
           "conditions": [
@@ -1844,88 +1810,87 @@
                 "type": "string",
                 "operation": "equals"
               }
-            },
-            {
-              "leftValue": "={{ ($json.data && $json.data.status) ? $json.data.status : '' }}",
-              "rightValue": "processing",
-              "operator": {
-                "type": "string",
-                "operation": "contains"
-              }
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "e9ba6342-5508-424b-91e7-fede85e35ac4",
+      "name": "IF - FPF Persist OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5968,
+        608
+      ]
     },
     {
-      "id": "a0000000-0216-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Mark FPF Failed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        5800,
-        840
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/mark-step-failed",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"full_product_flow_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"full_product_flow_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0217-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Save Default",
+      },
+      "id": "86d708a3-8736-445e-a96d-636660474354",
+      "name": "HTTP Request - AG11 Mark FPF Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2700,
-        920
-      ],
+        6160,
+        688
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/save-step-result",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"default_flow_completed\", status: \"success\", summary: \"Default flow branch completed.\", highlights: [] }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"default_flow_completed\", status: \"success\", summary: \"Default flow branch completed.\", highlights: [] }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "a0000000-0218-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Verify Default",
+      },
+      "id": "51683d32-4c1f-4214-bd20-1c613baa0722",
+      "name": "HTTP Request - AG11 Save Default",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2900,
-        920
-      ],
-      "continueOnFail": true,
+        3072,
+        768
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id }) }}",
         "options": {}
-      }
+      },
+      "id": "70241553-890e-479f-bc93-c33e28e85209",
+      "name": "HTTP Request - AG11 Verify Default",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3264,
+        768
+      ],
+      "continueOnFail": true
     },
     {
-      "id": "a0000000-0219-4000-8000-000000000001",
-      "name": "IF - Default Persist OK",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        3100,
-        920
-      ],
       "parameters": {
         "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
+              "id": "def-ok-1",
               "leftValue": "={{ $json.success }}",
               "rightValue": true,
               "operator": {
@@ -1934,199 +1899,404 @@
               }
             },
             {
-              "leftValue": "={{ $json.data !== null && $json.data !== undefined ? 'exists' : 'missing' }}",
-              "rightValue": "exists",
+              "id": "def-ok-2",
+              "leftValue": "={{ !!$json.data }}",
+              "rightValue": true,
               "operator": {
-                "type": "string",
+                "type": "boolean",
                 "operation": "equals"
               }
             },
             {
-              "leftValue": "={{ ($json.data && $json.data.last_completed_step) ? $json.data.last_completed_step : '' }}",
+              "id": "def-ok-3",
+              "leftValue": "={{ $json.data?.last_completed_step || '' }}",
               "rightValue": "default_flow_completed",
               "operator": {
                 "type": "string",
                 "operation": "equals"
               }
-            },
-            {
-              "leftValue": "={{ ($json.data && $json.data.status) ? $json.data.status : '' }}",
-              "rightValue": "processing",
-              "operator": {
-                "type": "string",
-                "operation": "contains"
-              }
             }
           ],
           "combinator": "and"
-        }
-      }
+        },
+        "options": {}
+      },
+      "id": "9ef215c5-21a2-4474-9957-76cc25210b58",
+      "name": "IF - Default Persist OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3472,
+        768
+      ]
     },
     {
-      "id": "a0000000-0220-4000-8000-000000000001",
-      "name": "HTTP Request - AG11 Mark Default Failed",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3300,
-        1000
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/mark-step-failed",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_id: \"6gQXa9oUAJVQi85J\", run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"default_flow_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
+        "jsonBody": "={{ JSON.stringify({ project_id: $('Code - Set Project Context').first().json.project_id, run_id: $('Code - Set Project Context').first().json.run_id, step_name: \"default_flow_completed\", error: \"verify failed: \" + ($json.message || $json.error || \"snapshot did not confirm step\"), retry_count: 0, next_action: \"retry\" }) }}",
         "options": {}
-      }
+      },
+      "id": "6e3a6b6a-1688-437d-9247-0a09bac6ab87",
+      "name": "HTTP Request - AG11 Mark Default Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3664,
+        848
+      ]
     },
     {
-      "id": "a0000000-0301-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = $('Pack Discovery').first().json;\nreturn [{ json: packData }];"
+      },
+      "id": "2c6658c2-256b-409d-bd43-e31f7142d47e",
       "name": "Code - Gate Discovery OK",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2800,
-        200
-      ],
-      "parameters": {
-        "jsCode": "var packData = $('Pack Discovery').first().json;\nreturn [{ json: packData }];"
-      }
+        3168,
+        48
+      ]
     },
     {
-      "id": "a0000000-0302-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = {};\ntry { packData = $('Pack Discovery').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: discovery_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'discovery_completed' }) }];"
+      },
+      "id": "c78244fa-3761-467d-b073-4111848d0c2b",
       "name": "Code - Gate Discovery Failed",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3000,
-        380
-      ],
-      "parameters": {
-        "jsCode": "var packData = {};\ntry { packData = $('Pack Discovery').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: discovery_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'discovery_completed' }) }];"
-      }
+        3360,
+        224
+      ]
     },
     {
-      "id": "a0000000-0303-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = $('Pack SD').first().json;\nreturn [{ json: packData }];"
+      },
+      "id": "083e0a74-3f42-428c-a44a-21875e308f69",
       "name": "Code - Gate SD OK",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3800,
-        360
-      ],
-      "parameters": {
-        "jsCode": "var packData = $('Pack SD').first().json;\nreturn [{ json: packData }];"
-      }
+        4160,
+        208
+      ]
     },
     {
-      "id": "a0000000-0304-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = {};\ntry { packData = $('Pack SD').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: system_design_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'system_design_completed' }) }];"
+      },
+      "id": "292042b2-ca92-40ca-b248-afdb1b76c48f",
       "name": "Code - Gate SD Failed",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4000,
-        560
-      ],
-      "parameters": {
-        "jsCode": "var packData = {};\ntry { packData = $('Pack SD').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: system_design_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'system_design_completed' }) }];"
-      }
+        4368,
+        416
+      ]
     },
     {
-      "id": "a0000000-0305-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = $('Pack Impl').first().json;\nreturn [{ json: packData }];"
+      },
+      "id": "5d148d03-6ae9-415b-afc6-d54e77ccc17e",
       "name": "Code - Gate Impl OK",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4300,
-        520
-      ],
-      "parameters": {
-        "jsCode": "var packData = $('Pack Impl').first().json;\nreturn [{ json: packData }];"
-      }
+        4672,
+        368
+      ]
     },
     {
-      "id": "a0000000-0306-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = {};\ntry { packData = $('Pack Impl').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: implementation_planning_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'implementation_planning_completed' }) }];"
+      },
+      "id": "923bcc23-3f3e-4773-a3bb-92f7f2e84534",
       "name": "Code - Gate Impl Failed",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4500,
-        720
-      ],
-      "parameters": {
-        "jsCode": "var packData = {};\ntry { packData = $('Pack Impl').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: implementation_planning_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'implementation_planning_completed' }) }];"
-      }
+        4864,
+        576
+      ]
     },
     {
-      "id": "a0000000-0307-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = $('Pack FPF').first().json;\nreturn [{ json: packData }];"
+      },
+      "id": "b2074d7a-03bf-4aa8-89d7-965edeabd720",
       "name": "Code - Gate FPF OK",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5800,
-        680
-      ],
-      "parameters": {
-        "jsCode": "var packData = $('Pack FPF').first().json;\nreturn [{ json: packData }];"
-      }
+        6160,
+        528
+      ]
     },
     {
-      "id": "a0000000-0308-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = {};\ntry { packData = $('Pack FPF').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: full_product_flow_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'full_product_flow_completed' }) }];"
+      },
+      "id": "957f949e-8179-4a3d-8f02-87ddd2b94dea",
       "name": "Code - Gate FPF Failed",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6000,
-        880
-      ],
-      "parameters": {
-        "jsCode": "var packData = {};\ntry { packData = $('Pack FPF').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: full_product_flow_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'full_product_flow_completed' }) }];"
-      }
+        6368,
+        736
+      ]
     },
     {
-      "id": "a0000000-0309-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = $('Pack Default').first().json;\nreturn [{ json: packData }];"
+      },
+      "id": "5aab6a05-a51c-49e2-8c3e-6324105717d2",
       "name": "Code - Gate Default OK",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3300,
-        840
-      ],
-      "parameters": {
-        "jsCode": "var packData = $('Pack Default').first().json;\nreturn [{ json: packData }];"
-      }
+        3664,
+        688
+      ]
     },
     {
-      "id": "a0000000-0310-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "var packData = {};\ntry { packData = $('Pack Default').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: default_flow_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'default_flow_completed' }) }];"
+      },
+      "id": "7c128df7-c191-428b-9c99-04ee6e02bc52",
       "name": "Code - Gate Default Failed",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3500,
-        1040
-      ],
-      "parameters": {
-        "jsCode": "var packData = {};\ntry { packData = $('Pack Default').first().json; } catch(e) {}\nvar up = Object.assign({}, packData.upstream_outputs || {});\nvar fails = Array.isArray(up.__failed_personas__) ? up.__failed_personas__.slice() : [];\nfails.push({ persona: 'persistence_gate', error: 'AG11 persistence verification failed: default_flow_completed not confirmed in snapshot', type: 'persistence_failure' });\nup.__failed_personas__ = fails;\nreturn [{ json: Object.assign({}, packData, { upstream_outputs: up, persistence_gate_failed: true, failed_step_name: 'default_flow_completed' }) }];"
-      }
+        3872,
+        896
+      ]
     },
     {
-      "id": "a0000000-0108-4000-8000-000000000001",
+      "parameters": {
+        "content": "## AG_11 Integration Notes\n\n**AG11 base URL:** `https://divazuc.app.n8n.cloud/webhook/ag/project/...`\n**project_id:** `6gQXa9oUAJVQi85J` (static, hardcoded in all AG11 HTTP nodes)\n\n**Endpoints used:**\n- /state — load project state at entry\n- /create-or-resume — auto-create if not found\n- /save-step-result — start-of-run, per-step Pack writes, final completion\n- /mark-step-failed — on start/step/final verify failure, on execution failure\n- /latest-snapshot — verification after every critical write; also used for status polling\n\n**Per-step persistence is now GATED (not dead-end only):**\n- Pack Discovery → save discovery_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack SD → save system_design_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack Impl → save implementation_planning_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack FPF → save full_product_flow_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack Default → save default_flow_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n\n**Execution rule:**\nA branch reaches `Merge - Collect Outputs` only after AG11 persistence verification passes.\n\n**Verification semantics (per-step IFs — 3 conditions AND):**\n- Check 1: `$json.success === true` (boolean)\n- Check 2: `$json.data` exists and is not null\n- Check 3: `$json.data.last_completed_step === expected_step_name` (e.g. 'discovery_completed')\n- `Code - Build Verified Response` (final snapshot): also checks `data.status` is a non-empty string\n\n**continueOnFail rules:**\n- Save nodes (all writes): NO continueOnFail — fail loud\n- Verify nodes: continueOnFail: true — allows IF to branch on AG11/network failure\n- Load State, Create Project: continueOnFail: true — entry is best-effort",
+        "height": 240,
+        "width": 680,
+        "color": 4
+      },
+      "id": "e6cceddc-c03d-4082-8cf2-66f5d9c74a23",
       "name": "Sticky Note - AG11 Integration",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        250,
-        1960
-      ],
+        608,
+        1808
+      ]
+    },
+    {
       "parameters": {
-        "content": "## AG_11 Integration Notes\n\n**AG11 base URL:** `https://divazuc.app.n8n.cloud/webhook/ag/project/...`\n**project_id:** `6gQXa9oUAJVQi85J` (static, hardcoded in all AG11 HTTP nodes)\n\n**Endpoints used:**\n- /state — load project state at entry\n- /create-or-resume — auto-create if not found\n- /save-step-result — start-of-run, per-step Pack writes, final completion\n- /mark-step-failed — on start/step/final verify failure, on execution failure\n- /latest-snapshot — verification after every critical write; also used for status polling\n\n**Per-step persistence is now GATED (not dead-end only):**\n- Pack Discovery → save discovery_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack SD → save system_design_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack Impl → save implementation_planning_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack FPF → save full_product_flow_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n- Pack Default → save default_flow_completed → verify → IF → {true: Gate OK → Merge | false: Gate Failed + mark-step-failed}\n\n**Execution rule:**\nA branch reaches `Merge - Collect Outputs` only after AG11 persistence verification passes.\n\n**Verification semantics (per-step IFs — 3 conditions AND):**\n- Check 1: `$json.success === true` (boolean)\n- Check 2: `$json.data` exists and is not null\n- Check 3: `$json.data.last_completed_step === expected_step_name` (e.g. 'discovery_completed')\n- `Code - Build Verified Response` (final snapshot): also checks `data.status` is a non-empty string\n\n**continueOnFail rules:**\n- Save nodes (all writes): NO continueOnFail — fail loud\n- Verify nodes: continueOnFail: true — allows IF to branch on AG11/network failure\n- Load State, Create Project: continueOnFail: true — entry is best-effort",
-        "color": 4,
-        "width": 680,
-        "height": 240
-      }
+        "method": "POST",
+        "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/list",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "HTTP Request - AG11 List Projects",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1072,
+        464
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const validated = $('Code - Validate Entry Input').first().json;\nconst listResp = $input.first().json;\n\nif (validated.error) {\n  return [{ json: { selection_required: true, selection_response: { success: false, message: validated.message || '\\u05e9\\u05d2\\u05d9\\u05d0\\u05ea \\u05d0\\u05d9\\u05de\\u05d5\\u05ea.', data: { mode: 'error', error: validated.error_type || 'VALIDATION_FAILED' } } } }];\n}\n\nconst projects = (listResp && listResp.success && Array.isArray(listResp.data)) ? listResp.data : [];\n\nfunction buildSelectionList(ps) {\n  var list = [{ index: 0, title: '\\u05d9\\u05e6\\u05d9\\u05e8\\u05ea \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8 \\u05d7\\u05d3\\u05e9', project_id: null }];\n  ps.forEach(function(p, i) { list.push({ index: i+1, title: p.title || '\\u05dc\\u05dc\\u05d0 \\u05e9\\u05dd', project_id: p.project_id }); });\n  return list;\n}\n\nvar ACTION_MENU = [\n  {index:1,key:'show_state',title:'\\u05d4\\u05e6\\u05d2\\u05ea \\u05d4\\u05e1\\u05d8\\u05d9\\u05d9\\u05d8 \\u05d4\\u05d0\\u05d7\\u05e8\\u05d5\\u05df'},\n  {index:2,key:'show_snapshot',title:'\\u05d4\\u05e6\\u05d2\\u05ea \\u05d4\\u05e1\\u05e0\\u05d0\\u05e4\\u05e9\\u05d5\\u05d8 \\u05d4\\u05d0\\u05d7\\u05e8\\u05d5\\u05df'},\n  {index:3,key:'show_next_step',title:'\\u05de\\u05d4 \\u05d4\\u05e9\\u05dc\\u05d1 \\u05d4\\u05d1\\u05d0'},\n  {index:4,key:'continue_specification',title:'\\u05d4\\u05de\\u05e9\\u05da \\u05d0\\u05e4\\u05d9\\u05d5\\u05df'},\n  {index:5,key:'continue_development',title:'\\u05d4\\u05de\\u05e9\\u05da \\u05e4\\u05d9\\u05ea\\u05d5\\u05d7'},\n  {index:6,key:'back_to_project_list',title:'\\u05d7\\u05d6\\u05e8\\u05d4 \\u05dc\\u05e8\\u05e9\\u05d9\\u05de\\u05ea \\u05d4\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8\\u05d9\\u05dd'}\n];\n\nfunction makeActionMenu(pid, ptitle) {\n  return { selection_required: true, selection_response: { success: false, message: '\\u05d4\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8 \\u05e0\\u05d1\\u05d7\\u05e8. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05e4\\u05e2\\u05d5\\u05dc\\u05d4 \\u05dc\\u05d4\\u05de\\u05e9\\u05da. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.', data: { mode: 'project_action_menu', project_id: pid, project_title: ptitle || '\\u05dc\\u05dc\\u05d0 \\u05e9\\u05dd', actions: ACTION_MENU, expected_next_input: 'action_choice' } } };\n}\n\nfunction makeSelectionMenu(msg) {\n  return { selection_required: true, selection_response: { success: false, message: msg || '\\u05d9\\u05e9 \\u05dc\\u05d1\\u05d7\\u05d5\\u05e8 \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.', data: { mode: 'project_selection', selection_required: true, projects: buildSelectionList(projects), expected_next_input: 'project_choice' } } };\n}\n\nvar ac = validated.action_choice;\nvar pid = validated.project_id || null;\nvar pc = validated.project_choice;\n\nif (validated.back_to_list || ac === 6) {\n  return [{ json: makeSelectionMenu('\\u05d9\\u05e9 \\u05dc\\u05d1\\u05d7\\u05d5\\u05e8 \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.') }];\n}\n\nif (validated.mode === 'continue_spec_pending' || validated.mode === 'continue_dev_pending') {\n  if (validated.approved && pid) {\n    return [{ json: { selection_required: false, flow_action: 'execute_approved', project_id: pid, project_title: validated.project_title || null, mode: validated.mode } }];\n  }\n  if (pid) {\n    var pendingAc = validated.mode === 'continue_spec_pending' ? 4 : 5;\n    return [{ json: { selection_required: false, flow_action: 'execute_action', action_choice: pendingAc, project_id: pid, project_title: validated.project_title || null } }];\n  }\n}\n\nif (pid && ac !== null && ac !== undefined) {\n  if (ac === 6) { return [{ json: makeSelectionMenu('\\u05d9\\u05e9 \\u05dc\\u05d1\\u05d7\\u05d5\\u05e8 \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.') }]; }\n  return [{ json: { selection_required: false, flow_action: 'execute_action', action_choice: ac, project_id: pid, project_title: validated.project_title || null } }];\n}\n\nif (pid) {\n  var ep = projects.find(function(p) { return p.project_id === pid; });\n  var ptitle = (ep && ep.title) || validated.project_title || '\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8';\n  return [{ json: makeActionMenu(pid, ptitle) }];\n}\n\nif (pc === null || pc === undefined) {\n  return [{ json: makeSelectionMenu('\\u05d9\\u05e9 \\u05dc\\u05d1\\u05d7\\u05d5\\u05e8 \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.') }];\n}\n\nvar choiceNum = parseInt(String(pc), 10);\n\nif (choiceNum === 0) {\n  if (!validated.project_title) {\n    return [{ json: { selection_required: true, selection_response: { success: false, message: '\\u05d9\\u05e9 \\u05dc\\u05d4\\u05d6\\u05d9\\u05df \\u05e4\\u05e8\\u05d8\\u05d9 \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8 \\u05d7\\u05d3\\u05e9.', data: { mode: 'new_project_intake', required_fields: ['project_title'], message: '\\u05d9\\u05e9 \\u05dc\\u05d4\\u05d6\\u05d9\\u05df \\u05e9\\u05dd \\u05dc\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8 \\u05d4\\u05d7\\u05d3\\u05e9.', expected_next_input: 'project_title' } } } }];\n  }\n  var newPid = 'proj_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);\n  return [{ json: { selection_required: false, flow_action: 'create_and_show_menu', project_id: newPid, project_title: validated.project_title } }];\n}\n\nif (!isNaN(choiceNum) && choiceNum > 0 && choiceNum <= projects.length) {\n  var sel = projects[choiceNum - 1];\n  if (ac !== null && ac !== undefined) {\n    if (ac === 6) { return [{ json: makeSelectionMenu('\\u05d9\\u05e9 \\u05dc\\u05d1\\u05d7\\u05d5\\u05e8 \\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.') }]; }\n    return [{ json: { selection_required: false, flow_action: 'execute_action', action_choice: ac, project_id: sel.project_id, project_title: sel.title || '\\u05dc\\u05dc\\u05d0 \\u05e9\\u05dd' } }];\n  }\n  return [{ json: makeActionMenu(sel.project_id, sel.title || '\\u05dc\\u05dc\\u05d0 \\u05e9\\u05dd') }];\n}\n\nreturn [{ json: makeSelectionMenu('\\u05d1\\u05d7\\u05d9\\u05e8\\u05d4 \\u05dc\\u05d0 \\u05d7\\u05d5\\u05e7\\u05d9\\u05ea: ' + pc + '. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.') }];"
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "name": "Code - Resolve Project Selection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "sel-req-01",
+              "leftValue": "={{ $json.selection_required }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "name": "IF - Selection Required",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1456,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.selection_response }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+      "name": "Respond to Webhook - Selection",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1648,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "fic-01",
+              "leftValue": "={{ $json.flow_action }}",
+              "rightValue": "create_and_show_menu",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1c2d3e4-a5b6-7890-abcd-ef1234560001",
+      "name": "IF - Flow Is Create",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1648, 608]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "fiea-01",
+              "leftValue": "={{ $json.flow_action }}",
+              "rightValue": "execute_approved",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f2c3d4e5-a6b7-8901-bcde-ef1234560002",
+      "name": "IF - Flow Is Execute Approved",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1840, 704]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://divazuc.app.n8n.cloud/webhook/ag/project/create-or-resume",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $json.project_id, title: $json.project_title || 'Untitled Project' }) }}",
+        "options": {}
+      },
+      "id": "f3c4d5e6-a7b8-9012-cdef-ef1234560003",
+      "name": "HTTP Request - AG11 Create For Menu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1840, 528],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const createResp = $input.first().json;\nconst sel = $('Code - Resolve Project Selection').first().json;\nconst project_id = (createResp && createResp.data && createResp.data.project_id) || sel.project_id || null;\nconst project_title = (createResp && createResp.data && createResp.data.title) || sel.project_title || '\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8 \\u05d7\\u05d3\\u05e9';\nvar ACTION_MENU = [\n  {index:1,key:'show_state',title:'\\u05d4\\u05e6\\u05d2\\u05ea \\u05d4\\u05e1\\u05d8\\u05d9\\u05d9\\u05d8 \\u05d4\\u05d0\\u05d7\\u05e8\\u05d5\\u05df'},\n  {index:2,key:'show_snapshot',title:'\\u05d4\\u05e6\\u05d2\\u05ea \\u05d4\\u05e1\\u05e0\\u05d0\\u05e4\\u05e9\\u05d5\\u05d8 \\u05d4\\u05d0\\u05d7\\u05e8\\u05d5\\u05df'},\n  {index:3,key:'show_next_step',title:'\\u05de\\u05d4 \\u05d4\\u05e9\\u05dc\\u05d1 \\u05d4\\u05d1\\u05d0'},\n  {index:4,key:'continue_specification',title:'\\u05d4\\u05de\\u05e9\\u05da \\u05d0\\u05e4\\u05d9\\u05d5\\u05df'},\n  {index:5,key:'continue_development',title:'\\u05d4\\u05de\\u05e9\\u05da \\u05e4\\u05d9\\u05ea\\u05d5\\u05d7'},\n  {index:6,key:'back_to_project_list',title:'\\u05d7\\u05d6\\u05e8\\u05d4 \\u05dc\\u05e8\\u05e9\\u05d9\\u05de\\u05ea \\u05d4\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8\\u05d9\\u05dd'}\n];\nreturn [{ json: { selection_response: { success: false, message: '\\u05d4\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8 \\u05e0\\u05d5\\u05e6\\u05e8. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05e4\\u05e2\\u05d5\\u05dc\\u05d4 \\u05dc\\u05d4\\u05de\\u05e9\\u05da. \\u05d1\\u05d7\\u05e8\\u05d9 \\u05de\\u05e1\\u05e4\\u05e8 \\u05d1\\u05dc\\u05d1\\u05d3.', data: { mode: 'project_action_menu', project_id: project_id, project_title: project_title, actions: ACTION_MENU, expected_next_input: 'action_choice' } } } }];"
+      },
+      "id": "f4c5d6e7-a8b9-0123-defa-ef1234560004",
+      "name": "Code - Format New Project Menu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2048, 528]
+    },
+    {
+      "parameters": {
+        "jsCode": "const sel = $('Code - Resolve Project Selection').first().json;\nvar ac = sel.action_choice;\nvar pid = sel.project_id;\nvar endpoints = {\n  1: 'https://divazuc.app.n8n.cloud/webhook/ag/project/state',\n  2: 'https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot',\n  3: 'https://divazuc.app.n8n.cloud/webhook/ag/project/get-next-step',\n  4: 'https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot',\n  5: 'https://divazuc.app.n8n.cloud/webhook/ag/project/latest-snapshot'\n};\nvar url = endpoints[ac] || null;\nif (!url || !pid) {\n  return [{ json: { error: true, error_type: 'INVALID_ACTION', message: '\\u05dc\\u05d0 \\u05e0\\u05d9\\u05ea\\u05df \\u05dc\\u05d1\\u05e6\\u05e2 \\u05e4\\u05e2\\u05d5\\u05dc\\u05d4 ' + ac + ' \\u2014 \\u05d7\\u05e1\\u05e8 url \\u05d0\\u05d5 project_id.', action_choice: ac, project_id: pid } }];\n}\nreturn [{ json: { action_url: url, action_choice: ac, project_id: pid, project_title: sel.project_title || null } }];"
+      },
+      "id": "f5c6d7e8-a9b0-1234-efab-ef1234560005",
+      "name": "Code - Build Action Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2048, 704]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.action_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $json.project_id }) }}",
+        "options": {}
+      },
+      "id": "f6c7d8e9-a0b1-2345-fabc-ef1234560006",
+      "name": "HTTP Request - AG11 Action Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 704],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const ag11Resp = $input.first().json;\nconst actionReq = $('Code - Build Action Request').first().json;\nvar ac = actionReq.action_choice;\nvar pid = actionReq.project_id;\nvar ptitle = actionReq.project_title || '\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8';\n\nif (actionReq.error) {\n  return [{ json: { success: false, message: actionReq.message || '\\u05d4\\u05e4\\u05e2\\u05d5\\u05dc\\u05d4 \\u05e0\\u05db\\u05e9\\u05dc\\u05d4.', data: { mode: 'action_result', error: actionReq.error_type, project_id: pid, project_title: ptitle } } }];\n}\n\nif (ac === 1) {\n  return [{ json: { success: ag11Resp.success !== false, mode: 'action_result', action: 'show_state', project_id: pid, project_title: ptitle, message: ag11Resp.message || '\\u05e1\\u05d8\\u05d9\\u05d9\\u05d8 \\u05d4\\u05e4\\u05e8\\u05d5\\u05d9\\u05e7\\u05d8 \\u05d0\\u05d5\\u05d7\\u05d6\\u05e8.', data: ag11Resp.data || ag11Resp } }];\n}\nif (ac === 2) {\n  return [{ json: { success: ag11Resp.success !== false, mode: 'action_result', action: 'show_snapshot', project_id: pid, project_title: ptitle, message: ag11Resp.message || '\\u05d4\\u05e1\\u05e0\\u05d0\\u05e4\\u05e9\\u05d5\\u05d8 \\u05d4\\u05d0\\u05d7\\u05e8\\u05d5\\u05df \\u05d0\\u05d5\\u05d7\\u05d6\\u05e8.', data: ag11Resp.data || ag11Resp } }];\n}\nif (ac === 3) {\n  return [{ json: { success: ag11Resp.success !== false, mode: 'action_result', action: 'show_next_step', project_id: pid, project_title: ptitle, message: ag11Resp.message || '\\u05de\\u05d9\\u05d3\\u05e2 \\u05e2\\u05dc \\u05d4\\u05e9\\u05dc\\u05d1 \\u05d4\\u05d1\\u05d0 \\u05d0\\u05d5\\u05d7\\u05d6\\u05e8.', data: ag11Resp.data || ag11Resp } }];\n}\n\nvar d = (ag11Resp && ag11Resp.data) || {};\nvar status = d.status || 'unknown';\nvar currentStep = d.current_step || d.last_completed_step || 'none';\nvar nextAction = d.next_action || null;\nvar statusSummary = '\\u05e1\\u05d8\\u05d8\\u05d5\\u05e1 \\u05e0\\u05d5\\u05db\\u05d7\\u05d9: ' + status + ', \\u05e9\\u05dc\\u05d1 \\u05d0\\u05d7\\u05e8\\u05d5\\u05df: ' + currentStep + (nextAction ? ', \\u05e4\\u05e2\\u05d5\\u05dc\\u05d4 \\u05d4\\u05d1\\u05d0\\u05d4: ' + nextAction : '') + '.';\n\nif (ac === 4) {\n  var specQ = (nextAction === 'start' || !nextAction) ? '\\u05d4\\u05d0\\u05dd \\u05dc\\u05d4\\u05de\\u05e9\\u05d9\\u05da \\u05d1\\u05d0\\u05e4\\u05d9\\u05d5\\u05df? \\u05e9\\u05dc\\u05d7\\u05d9 { \"project_id\": \"' + pid + '\", \"mode\": \"continue_spec_pending\", \"approved\": true } \\u05db\\u05d3\\u05d9 \\u05dc\\u05d4\\u05ea\\u05d7\\u05d9\\u05dc.' : '\\u05dc\\u05e4\\u05e0\\u05d9 \\u05d4\\u05de\\u05e9\\u05da \\u05d4\\u05d0\\u05e4\\u05d9\\u05d5\\u05df, \\u05d1\\u05d0\\u05d9\\u05d6\\u05d4 \\u05d4\\u05d9\\u05d1\\u05d8 \\u05dc\\u05d8\\u05e4\\u05dc \\u05e2\\u05db\\u05e9\\u05d9\\u05d5?';\n  return [{ json: { success: false, mode: 'continue_spec_pending', message: statusSummary + ' ' + specQ, data: { mode: 'continue_spec_pending', project_id: pid, project_title: ptitle, status_summary: statusSummary, question: specQ, expected_next_input: { project_id: pid, mode: 'continue_spec_pending', approved: true } } } }];\n}\nif (ac === 5) {\n  var devQ = (nextAction === 'start' || !nextAction) ? '\\u05d4\\u05d0\\u05dd \\u05dc\\u05d4\\u05de\\u05e9\\u05d9\\u05da \\u05d1\\u05e4\\u05d9\\u05ea\\u05d5\\u05d7? \\u05e9\\u05dc\\u05d7\\u05d9 { \"project_id\": \"' + pid + '\", \"mode\": \"continue_dev_pending\", \"approved\": true } \\u05db\\u05d3\\u05d9 \\u05dc\\u05d4\\u05ea\\u05d7\\u05d9\\u05dc.' : '\\u05dc\\u05e4\\u05e0\\u05d9 \\u05d4\\u05de\\u05e9\\u05da \\u05d4\\u05e4\\u05d9\\u05ea\\u05d5\\u05d7, \\u05de\\u05d4\\u05d5 \\u05d4\\u05e4\\u05d9\\u05e6\\u05f3\\u05e8 \\u05d1\\u05e2\\u05d3\\u05d9\\u05e4\\u05d5\\u05ea \\u05d4\\u05d2\\u05d1\\u05d5\\u05d4\\u05d4 \\u05d1\\u05d9\\u05d5\\u05ea\\u05e8?';\n  return [{ json: { success: false, mode: 'continue_dev_pending', message: statusSummary + ' ' + devQ, data: { mode: 'continue_dev_pending', project_id: pid, project_title: ptitle, status_summary: statusSummary, question: devQ, expected_next_input: { project_id: pid, mode: 'continue_dev_pending', approved: true } } } }];\n}\n\nreturn [{ json: { success: false, message: '\\u05e4\\u05e2\\u05d5\\u05dc\\u05d4 \\u05dc\\u05d0 \\u05d9\\u05d3\\u05d5\\u05e2\\u05d4: ' + ac, data: { project_id: pid } } }];"
+      },
+      "id": "f7c8d9e0-a1b2-3456-gabc-ef1234560007",
+      "name": "Code - Format Action Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2432, 704]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f8d9e0a1-b2c3-4567-habc-ef1234560008",
+      "name": "Respond to Webhook - Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2624, 704]
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook - Entry": {
       "main": [
@@ -2165,7 +2335,47 @@
       "main": [
         [
           {
-            "node": "HTTP Request - AG11 Load State",
+            "node": "HTTP Request - AG11 List Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - AG11 List Projects": {
+      "main": [
+        [
+          {
+            "node": "Code - Resolve Project Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Resolve Project Selection": {
+      "main": [
+        [
+          {
+            "node": "IF - Selection Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Selection Required": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Selection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Flow Is Create",
             "type": "main",
             "index": 0
           }
@@ -2810,7 +3020,7 @@
         ],
         [
           {
-            "node": "Code - Set Project Context",
+            "node": "HTTP Request - AG11 Create Project",
             "type": "main",
             "index": 0
           }
@@ -2998,7 +3208,15 @@
       ]
     },
     "Code - Gate Discovery Failed": {
-      "main": [[{ "node": "Merge - Collect Outputs", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Merge - Collect Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "HTTP Request - AG11 Save SD": {
       "main": [
@@ -3057,7 +3275,15 @@
       ]
     },
     "Code - Gate SD Failed": {
-      "main": [[{ "node": "Merge - Collect Outputs", "type": "main", "index": 1 }]]
+      "main": [
+        [
+          {
+            "node": "Merge - Collect Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
     },
     "HTTP Request - AG11 Save Impl": {
       "main": [
@@ -3194,61 +3420,113 @@
         ]
       ]
     },
-    "Code - Gate Impl OK": {
+    "IF - Flow Is Create": {
       "main": [
         [
           {
-            "node": "Merge - Collect Outputs",
+            "node": "HTTP Request - AG11 Create For Menu",
             "type": "main",
-            "index": 2
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Flow Is Execute Approved",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
     },
-    "Code - Gate Impl Failed": {
-      "main": [[{ "node": "Merge - Collect Outputs", "type": "main", "index": 2 }]]
-    },
-    "Code - Gate FPF OK": {
+    "IF - Flow Is Execute Approved": {
       "main": [
         [
           {
-            "node": "Merge - Collect Outputs",
+            "node": "HTTP Request - AG11 Load State",
             "type": "main",
-            "index": 3
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Action Request",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
     },
-    "Code - Gate FPF Failed": {
-      "main": [[{ "node": "Merge - Collect Outputs", "type": "main", "index": 3 }]]
-    },
-    "Code - Gate Default OK": {
+    "HTTP Request - AG11 Create For Menu": {
       "main": [
         [
           {
-            "node": "Merge - Collect Outputs",
+            "node": "Code - Format New Project Menu",
             "type": "main",
-            "index": 4
+            "index": 0
           }
         ]
       ]
     },
-    "Code - Gate Default Failed": {
-      "main": [[{ "node": "Merge - Collect Outputs", "type": "main", "index": 4 }]]
+    "Code - Format New Project Menu": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Action Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - AG11 Action Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - AG11 Action Call": {
+      "main": [
+        [
+          {
+            "node": "Code - Format Action Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Format Action Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
-  "versionId": "a0000000-0099-4000-8000-000000000001",
+  "versionId": "3e2e68a8-b9ee-4698-9c0c-be6534a8d232",
   "meta": {
-    "templateCredsSetupCompleted": false,
-    "instanceId": "AG_MULTIAGENT_SYSTEM"
+    "instanceId": "a6fa1ea70c2b65d69b2a991c3cbda0430e4cb91a5e0e2ee3a5a6ce456bce1e90"
   },
-  "id": "AG_00_ENTRYPOINT_SUPERVISOR",
+  "id": "BHGuRon9imrz2zgl",
   "tags": [
     {
+      "updatedAt": "2026-03-30T14:14:49.911Z",
+      "createdAt": "2026-03-30T14:14:49.911Z",
+      "id": "A2ybI5hABV9fezJt",
       "name": "AG_MULTIAGENT"
     }
   ]
