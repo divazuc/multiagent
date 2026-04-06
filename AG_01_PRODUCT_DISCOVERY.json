@@ -1,0 +1,147 @@
+{
+  "name": "AG_01_PRODUCT_DISCOVERY",
+  "nodes": [
+    {
+      "id": "a1000000-0001-4000-8000-000000000001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1000000-0001-4000-8000-000000000002",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        250,
+        60
+      ],
+      "parameters": {
+        "content": "## AG_01 — Product Discovery\n**Model:** claude-sonnet-4-6 | **Max tokens:** 2048\n**API:** HTTP → api.anthropic.com/v1/messages\n**Credential:** ANTHROPIC_HTTP_HEADER_AUTH\n**Triggered by:** AG_00 only — do not trigger manually",
+        "height": 160,
+        "width": 560,
+        "color": 7
+      }
+    },
+    {
+      "id": "a1000000-0001-4000-8000-000000000003",
+      "name": "Build Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst t = new Date().toISOString();\nvar prompt='Role: Product Discovery analyst. JSON only, no markdown.\\nINPUT: '+JSON.stringify({request:d.user_request||d.message,context:d.context||{}})+'\\nReturn this exact JSON:\\n'+JSON.stringify({request_id:d.request_id||'unknown',persona_name:'AG_01_PRODUCT_DISCOVERY',status:'success|clarification_needed|blocked|failed',summary:'<1 sentence>',structured_output:{problem_statement:'<str>',target_users:[],goals:[],success_criteria:[],mvp_scope:[],out_of_scope:[],missing_information:[]},assumptions:[],risks:[],blocking_questions:[],handoff_recommendation:{next_personas:['AG_02_SOLUTION_ARCHITECT'],reason:'<str>'},metrics:{started_at:''+t,ended_at:'',duration_ms:0,iteration_count:1}});\nvar apiBody = {model:'claude-sonnet-4-6',max_tokens:2048,messages:[{role:'user',content:prompt}]};\nreturn [{json:{...d,apiBody,started_at:t}}];"
+      }
+    },
+    {
+      "id": "a1000000-0001-4000-8000-000000000004",
+      "name": "HTTP Request - Anthropic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.apiBody) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ANTHROPIC_HTTP_CRED_ID",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "a1000000-0001-4000-8000-000000000005",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst end = new Date().toISOString();\nconst start = item.started_at || end;\nlet rawText = '';\ntry {\n  if (item.content && Array.isArray(item.content)) { rawText = item.content[0].text || ''; }\n  else if (typeof item.content === 'string') { rawText = item.content; }\n} catch(e) {}\nlet out;\ntry { var m=rawText.match(/\\{[\\s\\S]*\\}/); out=m?JSON.parse(m[0]):{error:'parse_failed',raw:rawText.slice(0,400)}; }\ncatch(e){ out={error:e.message,raw:rawText.slice(0,400)}; }\nvar dur=Math.max(0,new Date(end)-new Date(start));\nif(out.metrics){out.metrics.ended_at=end;out.metrics.duration_ms=dur;}\nreturn [{json:{\n  request_id:item.request_id||'unknown',\n  persona_name:out.persona_name||'UNKNOWN',\n  status:out.error?'failed':(out.status||'success'),\n  summary:out.summary||'Complete.',\n  structured_output:out.structured_output||out,\n  assumptions:out.assumptions||[],\n  risks:out.risks||[],\n  blocking_questions:out.blocking_questions||[],\n  handoff_recommendation:out.handoff_recommendation||{next_personas:[],reason:'done'},\n  metrics:{started_at:start,ended_at:end,duration_ms:dur,iteration_count:1}\n}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Anthropic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Anthropic": {
+      "main": [
+        [
+          {
+            "node": "Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a1000000-0001-4000-8000-000000000099",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "AG_MULTIAGENT_SYSTEM"
+  },
+  "id": "AG_01_PRODUCT_DISCOVERY",
+  "tags": [
+    {
+      "name": "AG_MULTIAGENT"
+    }
+  ]
+}

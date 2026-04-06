@@ -1,0 +1,1254 @@
+{
+  "name": "AG_00_ENTRYPOINT_SUPERVISOR",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ag/supervisor/entry",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "5e41bbcf-feac-473f-8ffa-f250c827f550",
+      "name": "Webhook - Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        112
+      ],
+      "webhookId": "ag00-webhook-entry-001"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ag/supervisor/clarification-reply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1e4f3e98-91d4-43b0-9661-bde7584b9f51",
+      "name": "Webhook - Clarification Reply",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        336
+      ],
+      "webhookId": "ag00-webhook-clarify-001"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ag/supervisor/approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c835e84d-79be-4372-8e2e-af56b8b49da3",
+      "name": "Webhook - Approval",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        544
+      ],
+      "webhookId": "ag00-webhook-approval-001"
+    },
+    {
+      "parameters": {
+        "content": "## AG_00 — Entrypoint Supervisor\n**Classifier model:** claude-sonnet-4-6 | **Max tokens:** 512\n**API:** HTTP → api.anthropic.com/v1/messages\n\n### Credential Required\n- Create a **Header Auth** credential named **ANTHROPIC_HTTP_HEADER_AUTH**\n  - Header name: `x-api-key`\n  - Header value: your Anthropic API key\n\n### Webhooks\n- POST /ag/supervisor/entry\n- POST /ag/supervisor/clarification-reply\n- POST /ag/supervisor/approval",
+        "height": 200,
+        "width": 620,
+        "color": 7
+      },
+      "id": "8c09d848-19aa-4ea1-a581-e085c6114e9c",
+      "name": "Sticky Note - Credentials",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## REQUIRED: Update Workflow IDs After Import\n\nAfter importing ALL workflows, update the Execute Workflow node parameters:\n\n1. Open each Execute Workflow node\n2. Replace the placeholder value with the actual workflow ID\n   (found in the URL when you open each workflow: /workflow/XXXXXXX)\n\n**Workflows to link:**\n- AG_01_PRODUCT_DISCOVERY\n- AG_02_SOLUTION_ARCHITECT\n- AG_03_TECH_LEAD\n- AG_04_UX_UI_PLANNER\n- AG_05_DELIVERY_PLANNER\n- AG_06_FRONTEND_ENGINEER\n- AG_07_BACKEND_ENGINEER\n- AG_08_QA_REVIEWER\n- AG_09_DEV_INTELLIGENCE\n- AG_10_RESPONSE_FORMATTER",
+        "height": 280,
+        "width": 580,
+        "color": 5
+      },
+      "id": "a0ce974d-7192-4d25-8b90-b597a34ed0c7",
+      "name": "Sticky Note - Workflow IDs",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst msg = item.message || item.user_request || '';\nif (!msg.trim()) {\n  return [{ json: { error: true, error_type: 'VALIDATION_FAILED', message: 'Missing required field: message', request_id: item.request_id || ('req_' + Date.now()), timestamp: new Date().toISOString() } }];\n}\nreturn [{ json: {\n  request_id: item.request_id || ('req_' + Date.now()),\n  user_id: item.user_id || 'anonymous',\n  message: msg,\n  context: item.context || {},\n  preferences: item.preferences || {},\n  is_valid: true,\n  timestamp: new Date().toISOString()\n} }];"
+      },
+      "id": "98f0b5b2-781d-4b30-8483-f276e32a3dad",
+      "name": "Code - Validate Entry Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nif(item.error){return [{json:item}];}\nvar body={model:'claude-sonnet-4-6',max_tokens:256,messages:[{role:'user',content:'Classify this request into exactly one task_type. Return ONLY JSON: {\"task_type\":\"<type>\",\"rationale\":\"<1 sentence>\"}\\nTypes: discovery|system_design|implementation_planning|full_product_flow|default\\nREQUEST: '+item.message+'\\nCONTEXT: '+JSON.stringify(item.context||{})}]};\nreturn [{json:{...item,apiBody:body}}];"
+      },
+      "id": "b0fe915d-5518-474a-a0d2-5be4a1c0c2b6",
+      "name": "Code - Build Classification Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nvar rawText='';\ntry{\n  if(item.content&&Array.isArray(item.content)){rawText=item.content[0].text||'';}\n  else if(typeof item.content==='string'){rawText=item.content;}\n}catch(e){}\nvar cls={task_type:'default',rationale:''};\ntry{var m=rawText.match(/\\{[\\s\\S]*\\}/);if(m)cls=JSON.parse(m[0]);}catch(e){}\nvar now=new Date().toISOString();\nreturn [{json:{\n  request_id:item.request_id,\n  task_type:cls.task_type||'default',\n  user_request:item.message,\n  context:item.context||{},\n  constraints:item.preferences||{},\n  upstream_outputs:{},\n  metadata:{timestamp:now,workflow_name:'AG_00_ENTRYPOINT_SUPERVISOR',persona_name:'SUPERVISOR'},\n  classification_rationale:cls.rationale||'',\n  user_id:item.user_id||'anonymous'\n}}];"
+      },
+      "id": "c9077f67-bc9b-4a4d-922b-77c8ebb1f8d1",
+      "name": "Code - Parse and Build Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r001",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "discovery",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r002",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "system_design",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r003",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "implementation_planning",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "r004",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "full_product_flow",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "3a4d5ca7-9cf6-4214-8e47-e3a5121a484b",
+      "name": "Switch - Route by Task Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1008,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5w3blU5ib1dspRTj",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/5w3blU5ib1dspRTj"
+        },
+        "options": {}
+      },
+      "id": "aee24cb7-8df8-4c20-a98b-e2c927e314c5",
+      "name": "Execute AG_01 (Discovery)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "38c874dc-50c7-4584-9e7f-50f3edef1ada",
+      "name": "Pack Discovery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yGIQJaQvGNaPTvRK",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/yGIQJaQvGNaPTvRK"
+        },
+        "options": {}
+      },
+      "id": "54a3532c-d852-49e5-9237-a98a9fcfa7fe",
+      "name": "Execute AG_02 (SD)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "4e4ba30e-c772-4380-bea7-16841e11c2a1",
+      "name": "Chain Builder SD-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/VlIw08f7wg6Jza3l"
+        },
+        "options": {}
+      },
+      "id": "cf544a0b-c2c9-42bf-ab81-2dca61acc3f6",
+      "name": "Execute AG_03 (SD)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1744,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder SD-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "a4f903b4-7534-4857-a828-bc1f5592b9cc",
+      "name": "Pack SD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/VlIw08f7wg6Jza3l"
+        },
+        "options": {}
+      },
+      "id": "f14466e0-8915-4979-9cb2-732ae3e1f1d3",
+      "name": "Execute AG_03 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "b94f7cb7-17de-41d3-a093-79f86c404abe",
+      "name": "Chain Builder Impl-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "6NSzo5L6D1GW3JJM",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/6NSzo5L6D1GW3JJM"
+        },
+        "options": {}
+      },
+      "id": "13764cbd-1975-47fe-a1aa-e8d5fe6f20e4",
+      "name": "Execute AG_05 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1744,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "be255e47-7d87-4cc7-be7e-a992a7303d36",
+      "name": "Pack Impl",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5w3blU5ib1dspRTj",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/5w3blU5ib1dspRTj"
+        },
+        "options": {}
+      },
+      "id": "4dcf95d0-e91e-4678-986c-19c739848eef",
+      "name": "Execute AG_01 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "e830edcb-d17e-4143-a357-0208c2d6f625",
+      "name": "Chain Builder FPF-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yGIQJaQvGNaPTvRK",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/yGIQJaQvGNaPTvRK"
+        },
+        "options": {}
+      },
+      "id": "5144d5ce-9309-440c-8b80-c6d7ece63af6",
+      "name": "Execute AG_02 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1744,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "96ed3efe-2199-4c75-b866-6fbceb16fda0",
+      "name": "Chain Builder FPF-2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/VlIw08f7wg6Jza3l"
+        },
+        "options": {}
+      },
+      "id": "31407599-b013-4287-9a1b-523deccb1584",
+      "name": "Execute AG_03 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "24fcf965-dbc1-4cb0-811b-d20e2c1d72cf",
+      "name": "Chain Builder FPF-3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "6NSzo5L6D1GW3JJM",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/6NSzo5L6D1GW3JJM"
+        },
+        "options": {}
+      },
+      "id": "ee318f39-6237-4b38-818c-bb2e83d27346",
+      "name": "Execute AG_05 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2752,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-3').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "56b64b0c-250c-4a31-a928-28ef221cd990",
+      "name": "Pack FPF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3008,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5w3blU5ib1dspRTj",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/5w3blU5ib1dspRTj"
+        },
+        "options": {}
+      },
+      "id": "89a0333e-f8b6-4720-a68e-d0c080c89727",
+      "name": "Execute AG_01 (Default)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "d986fdcc-620f-4dfa-8197-8055ae741714",
+      "name": "Chain Builder Default-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yGIQJaQvGNaPTvRK",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/yGIQJaQvGNaPTvRK"
+        },
+        "options": {}
+      },
+      "id": "82118c7c-9e0b-4534-9a55-8a5d411f23fb",
+      "name": "Execute AG_02 (Default)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1744,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Default-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "283c58fe-bc7c-4caa-9a68-410d850d963a",
+      "name": "Pack Default",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        560
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "5e946d8f-8a0f-408f-a34a-3bdb89ec00af",
+      "name": "Merge - Collect Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3248,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nitems.forEach(function(item) {\n  if (!item.json) return;\n  if (item.json.upstream_outputs) Object.assign(up, item.json.upstream_outputs);\n  if (item.json.persona_name) up[item.json.persona_name] = { status: item.json.status, summary: item.json.summary, structured_output: item.json.structured_output, risks: item.json.risks||[], assumptions: item.json.assumptions||[], blocking_questions: item.json.blocking_questions||[], metrics: item.json.metrics||{} };\n});\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "67bf251d-fc24-4d24-9fdd-b8208a72954a",
+      "name": "Code - Build QA Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3504,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "4X6wXMyKiPrz9bAy",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/4X6wXMyKiPrz9bAy"
+        },
+        "options": {}
+      },
+      "id": "91518590-f98d-4fb1-8e0a-1a684450b663",
+      "name": "Execute AG_08 (QA)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        3744,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build QA Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata } }];"
+      },
+      "id": "48f9ddb5-6b7e-429e-8e77-18c79bc14f03",
+      "name": "Code - Build DevIntel Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "PETU8XwEiws2LpMG",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/PETU8XwEiws2LpMG"
+        },
+        "options": {}
+      },
+      "id": "acae2fbd-dd64-4447-9205-998b4c51ee50",
+      "name": "Execute AG_09 (DevIntel)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        4256,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build DevIntel Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nif (p && p.persona_name) up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata } }];"
+      },
+      "id": "f355ccbf-13be-4e73-b5b9-98045a20a76b",
+      "name": "Code - Build Formatter Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4496,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "orMQCC4iBROwr3tA",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/orMQCC4iBROwr3tA"
+        },
+        "options": {}
+      },
+      "id": "feb98814-bcf5-4d24-a47b-b21367707085",
+      "name": "Execute AG_10 (Formatter)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        4752,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a898d3bc-ca3e-4a28-a820-5838b6d2a59a",
+      "name": "Respond to Webhook - Entry",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        5008,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'clarification_acknowledged',\n  message: 'Clarification received and logged. To resume execution with updated context, re-submit to the entry webhook with the original request_id and updated context field.',\n  clarification_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full stateful clarification loop requires database integration. See README section: Clarification Flow.'\n} }];"
+      },
+      "id": "9e83f30b-e8ad-4ac1-ad42-5a51dc4d98f2",
+      "name": "Code - Handle Clarification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "6fbb032d-3fa4-41e6-a6df-0c9119af747c",
+      "name": "Respond to Webhook - Clarification",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        256,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'approval_acknowledged',\n  approved: item.approved !== false,\n  message: item.approved !== false ? 'Approval received. Execution can proceed to next phase.' : 'Rejection received. Workflow halted pending revision.',\n  approval_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full approval gate with execution resume requires database integration. See README section: Approval Flow.'\n} }];"
+      },
+      "id": "08dde0c2-6762-49a1-9b20-67a1f376afbd",
+      "name": "Code - Handle Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "8be0e1f8-f816-4d71-a6bc-8c0063ffc309",
+      "name": "Respond to Webhook - Approval",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        256,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.apiBody) }}",
+        "options": {}
+      },
+      "id": "5f3b39d1-b084-4075-bebd-21d94a45b0b0",
+      "name": "HTTP Request - Classify Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        496,
+        112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "7QsxxfdhdsOrA0OW",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Entry": {
+      "main": [
+        [
+          {
+            "node": "Code - Validate Entry Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Clarification Reply": {
+      "main": [
+        [
+          {
+            "node": "Code - Handle Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Approval": {
+      "main": [
+        [
+          {
+            "node": "Code - Handle Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validate Entry Input": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Classification Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Classification Prompt": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Classify Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse and Build Input": {
+      "main": [
+        [
+          {
+            "node": "Switch - Route by Task Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch - Route by Task Type": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_01 (Discovery)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_02 (SD)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_03 (Impl)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_01 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_01 (Default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_01 (Discovery)": {
+      "main": [
+        [
+          {
+            "node": "Pack Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Discovery": {
+      "main": [
+        [
+          {
+            "node": "Merge - Collect Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_02 (SD)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder SD-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder SD-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_03 (SD)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_03 (SD)": {
+      "main": [
+        [
+          {
+            "node": "Pack SD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack SD": {
+      "main": [
+        [
+          {
+            "node": "Merge - Collect Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Execute AG_03 (Impl)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder Impl-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder Impl-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_05 (Impl)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_05 (Impl)": {
+      "main": [
+        [
+          {
+            "node": "Pack Impl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_01 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_02 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_02 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-2": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_03 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_03 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-3": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_05 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_05 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Pack FPF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_01 (Default)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder Default-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder Default-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_02 (Default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_02 (Default)": {
+      "main": [
+        [
+          {
+            "node": "Pack Default",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge - Collect Outputs": {
+      "main": [
+        [
+          {
+            "node": "Code - Build QA Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build QA Input": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_08 (QA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_08 (QA)": {
+      "main": [
+        [
+          {
+            "node": "Code - Build DevIntel Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build DevIntel Input": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_09 (DevIntel)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_09 (DevIntel)": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Formatter Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Formatter Input": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_10 (Formatter)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_10 (Formatter)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Handle Clarification": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Handle Approval": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Classify Task": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse and Build Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "dba4da02-07d9-47f2-b7ec-cf28d68b40af",
+  "meta": {
+    "instanceId": "a6fa1ea70c2b65d69b2a991c3cbda0430e4cb91a5e0e2ee3a5a6ce456bce1e90"
+  },
+  "id": "BHGuRon9imrz2zgl",
+  "tags": [
+    {
+      "updatedAt": "2026-03-30T14:14:49.911Z",
+      "createdAt": "2026-03-30T14:14:49.911Z",
+      "id": "A2ybI5hABV9fezJt",
+      "name": "AG_MULTIAGENT"
+    }
+  ]
+}

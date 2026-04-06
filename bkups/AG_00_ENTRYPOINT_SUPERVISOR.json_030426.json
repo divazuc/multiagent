@@ -1,0 +1,1785 @@
+{
+  "name": "AG_00_ENTRYPOINT_SUPERVISOR",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ag/supervisor/entry",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ddfebb21-03d2-4d4d-8400-d81009a92fe9",
+      "name": "Webhook - Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        5904,
+        2160
+      ],
+      "webhookId": "ag00-webhook-entry-001"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ag/supervisor/clarification-reply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e4b13ec5-7752-4fd9-bbda-e811b4b5942a",
+      "name": "Webhook - Clarification Reply",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        5904,
+        2384
+      ],
+      "webhookId": "ag00-webhook-clarify-001"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ag/supervisor/approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "fa44755e-47ea-4c42-9e3b-ad09058d26f3",
+      "name": "Webhook - Approval",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        5904,
+        2592
+      ],
+      "webhookId": "ag00-webhook-approval-001"
+    },
+    {
+      "parameters": {
+        "content": "## AG_00 — Entrypoint Supervisor\n**Classifier model:** claude-sonnet-4-6 | **Max tokens:** 512\n**API:** HTTP → api.anthropic.com/v1/messages\n\n### Credential Required\n- Create a **Header Auth** credential named **ANTHROPIC_HTTP_HEADER_AUTH**\n  - Header name: `x-api-key`\n  - Header value: your Anthropic API key\n\n### Webhooks\n- POST /ag/supervisor/entry\n- POST /ag/supervisor/clarification-reply\n- POST /ag/supervisor/approval\n- **POST /ag/supervisor/status** ← async status poll endpoint",
+        "height": 200,
+        "width": 620,
+        "color": 7
+      },
+      "id": "145787b8-96ba-4a3a-a009-a1b6997d010f",
+      "name": "Sticky Note - Credentials",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5904,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## REQUIRED: Update Workflow IDs After Import\n\nFor each Execute Workflow node, open it and set the workflow ID\n(URL: /workflow/XXXXXXX after opening each workflow).\n\n### Pre-filled placeholders (replace with real IDs):\n- AG_01_PRODUCT_DISCOVERY → all nodes named \"Execute AG_01 (*)\"\n- AG_02_SOLUTION_ARCHITECT → all nodes named \"Execute AG_02 (*)\"\n- AG_03_TECH_LEAD → all nodes named \"Execute AG_03 (*)\"\n- AG_05_DELIVERY_PLANNER → all nodes named \"Execute AG_05 (*)\"\n- AG_08_QA_REVIEWER → Execute AG_08 (QA)\n- AG_09_DEV_INTELLIGENCE → Execute AG_09 (DevIntel)\n- AG_10_RESPONSE_FORMATTER → Execute AG_10 (Formatter)\n\n### NEW — must be filled manually after import:\n- **AG_04_UX_UI_PLANNER** → Execute AG_04 (SD) and Execute AG_04 (FPF)\n- **AG_06_FRONTEND_ENGINEER** → Execute AG_06 (Impl) and Execute AG_06 (FPF)\n- **AG_07_BACKEND_ENGINEER** → Execute AG_07 (Impl) and Execute AG_07 (FPF)",
+        "height": 360,
+        "width": 620,
+        "color": 5
+      },
+      "id": "4b20b634-5d7d-4150-8532-75b3de9e58ea",
+      "name": "Sticky Note - Workflow IDs",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        7168,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nconst msg = item.message || item.user_request || (item.brief && item.brief.request_summary) || '';\nif (!msg || !String(msg).trim()) {\n  return [{ json: { error: true, error_type: 'VALIDATION_FAILED', message: 'Missing required field: message', request_id: item.request_id || ('req_' + Date.now()), timestamp: new Date().toISOString() } }];\n}\nreturn [{ json: {\n  request_id: item.request_id || ('req_' + Date.now()),\n  user_id: item.user_id || 'anonymous',\n  message: msg,\n  brief: item.brief || {},\n  source: item.source || 'chatgpt',\n  context: item.context || {},\n  preferences: item.preferences || {},\n  is_valid: true,\n  timestamp: new Date().toISOString()\n} }];"
+      },
+      "id": "8ca531a1-e92f-4a98-824b-591f81a97667",
+      "name": "Code - Validate Entry Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6160,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nif(item.error){return [{json:item}];}\nvar body={model:'claude-sonnet-4-6',max_tokens:256,messages:[{role:'user',content:'Classify this request into exactly one task_type. Return ONLY JSON: {\"task_type\":\"<type>\",\"rationale\":\"<1 sentence>\"}\\nTypes: discovery|system_design|implementation_planning|full_product_flow|default\\nREQUEST: '+item.message+'\\nCONTEXT: '+JSON.stringify(item.context||{})}]};\nreturn [{json:{...item,apiBody:body}}];"
+      },
+      "id": "021dc75e-de95-4ff2-952b-c1ce119ac6f9",
+      "name": "Code - Build Classification Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6416,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nvar rawText='';\ntry{\n  if(item.content&&Array.isArray(item.content)){rawText=item.content[0].text||'';}\n  else if(typeof item.content==='string'){rawText=item.content;}\n}catch(e){}\nvar cls={task_type:'default',rationale:''};\ntry{var m=rawText.match(/\\{[\\s\\S]*\\}/);if(m)cls=JSON.parse(m[0]);}catch(e){}\nvar now=new Date().toISOString();\ntry{\n  var sd=$getWorkflowStaticData('global');\n  if(item.request_id&&sd[item.request_id]){sd[item.request_id].task_type=cls.task_type||'default';}\n}catch(e){}\nreturn [{json:{\n  request_id:item.request_id,\n  task_type:cls.task_type||'default',\n  user_request:item.message,\n  context:item.context||{},\n  constraints:item.preferences||{},\n  upstream_outputs:{},\n  metadata:{timestamp:now,workflow_name:'AG_00_ENTRYPOINT_SUPERVISOR',persona_name:'SUPERVISOR'},\n  classification_rationale:cls.rationale||'',\n  user_id:item.user_id||'anonymous'\n}}];"
+      },
+      "id": "7923626c-d570-40e2-989a-1dcb3c93e168",
+      "name": "Code - Parse and Build Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6912,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "r001",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "discovery",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "r002",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "system_design",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "r003",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "implementation_planning",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "r004",
+                    "leftValue": "={{ $json.task_type }}",
+                    "rightValue": "full_product_flow",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "7ee42e48-c466-4b04-aa94-778b4a375499",
+      "name": "Switch - Route by Task Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        7168,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5w3blU5ib1dspRTj",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "b71ca2e3-0c1b-4ce7-9b24-750d7d83919e",
+      "name": "Execute AG_01 (Discovery)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7408,
+        1968
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nif (p && p.error) {\n  up.__failed_personas__ = [{error: String(p.error), type: 'execution_error'}];\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { up.__failed_personas__ = [{persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}]; }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata } }];"
+      },
+      "id": "19b5d014-8e36-4df2-8417-2e355c98d03f",
+      "name": "Pack Discovery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7664,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yGIQJaQvGNaPTvRK",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "db4bdd8c-4ccd-42ea-9376-d00f23515d38",
+      "name": "Execute AG_02 (SD)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7408,
+        2128
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "7ac1e548-d930-48a4-b452-43fb47c1674c",
+      "name": "Chain Builder SD-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7664,
+        2128
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "a6cd4660-30b1-4bfb-9362-a7c2437fd4d2",
+      "name": "Execute AG_03 (SD)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        8416,
+        2128
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder SD-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "ca29cb4e-2faf-4d68-bcd6-71f25f9ddaf1",
+      "name": "Pack SD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8656,
+        2128
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "02236139-ea08-4ada-a88e-02c3f402d4b1",
+      "name": "Execute AG_03 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7408,
+        2288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "154bed3d-1fef-4e54-b546-d38d6068f7e4",
+      "name": "Chain Builder Impl-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7664,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "6NSzo5L6D1GW3JJM",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "abbae6ee-9f02-4872-a1ff-4cfba39a80a9",
+      "name": "Execute AG_05 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        8912,
+        2288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-3').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "2d9b3377-1c37-493f-9568-8e7670274ea6",
+      "name": "Pack Impl",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9168,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5w3blU5ib1dspRTj",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "bcc2738e-8127-4db3-91a5-d1bbf05df977",
+      "name": "Execute AG_01 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7408,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "586ef9ed-c6ac-4ace-beb4-f820a08f0f5a",
+      "name": "Chain Builder FPF-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7664,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yGIQJaQvGNaPTvRK",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "d56e298e-d627-4bb8-a73d-6fd1bfec07bc",
+      "name": "Execute AG_02 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7904,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "bb521344-e241-4f64-a9b1-f2719a23205f",
+      "name": "Chain Builder FPF-2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8160,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "VlIw08f7wg6Jza3l",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "967f47aa-5b09-4b5b-8695-533fc286e989",
+      "name": "Execute AG_03 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        8912,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "61c8f058-2267-4539-aaa6-5360daaeca68",
+      "name": "Chain Builder FPF-3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8656,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "6NSzo5L6D1GW3JJM",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "f89e07c6-d835-4260-8469-fed0f4e2b067",
+      "name": "Execute AG_05 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        10416,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-6').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "3cff51ef-d0a6-4b74-b9eb-f7a8b2de4d0c",
+      "name": "Pack FPF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10656,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "5w3blU5ib1dspRTj",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "9fcd420c-0ac3-4638-a79b-efd3a7942698",
+      "name": "Execute AG_01 (Default)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7408,
+        2608
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Code - Parse and Build Input').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "d2da46e4-b410-4fdb-a690-b98c9134a18a",
+      "name": "Chain Builder Default-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7664,
+        2608
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yGIQJaQvGNaPTvRK",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "1dc9f530-070b-4644-92bc-dfce0b08d69a",
+      "name": "Execute AG_02 (Default)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7904,
+        2608
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Default-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "32bc2709-23bb-4435-8475-28fdd7dc2cf6",
+      "name": "Pack Default",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8160,
+        2608
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "f21a9237-c338-4f10-8be0-b6654a3b44bf",
+      "name": "Merge - Collect Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        11168,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst base = $('Code - Parse and Build Input').first().json;\nconst up = {};\nconst failures = [];\nitems.forEach(function(item) {\n  if (!item.json) return;\n  if (item.json.error) { failures.push({error: String(item.json.error), type: 'merge_error'}); return; }\n  if (item.json.upstream_outputs) {\n    Object.keys(item.json.upstream_outputs).forEach(function(k) {\n      if (k === '__failed_personas__') {\n        if (Array.isArray(item.json.upstream_outputs[k])) failures.push.apply(failures, item.json.upstream_outputs[k]);\n      } else {\n        up[k] = item.json.upstream_outputs[k];\n      }\n    });\n  }\n  if (item.json.persona_name) {\n    if (item.json.status === 'failed') failures.push({persona: item.json.persona_name, error: item.json.summary||'failed', type: 'workflow_failure'});\n    up[item.json.persona_name] = { status: item.json.status, summary: item.json.summary, structured_output: item.json.structured_output||{}, risks: item.json.risks||[], assumptions: item.json.assumptions||[], blocking_questions: item.json.blocking_questions||[], metrics: item.json.metrics||{} };\n  }\n});\nif (failures.length > 0) up.__failed_personas__ = failures;\nreturn [{ json: { request_id: base.request_id, task_type: base.task_type, user_request: base.user_request, context: base.context||{}, constraints: base.constraints||{}, upstream_outputs: up, metadata: base.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
+      },
+      "id": "8a9acb67-12cf-4bb6-bda5-572d9a4e881c",
+      "name": "Code - Build QA Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11408,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "4X6wXMyKiPrz9bAy",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "eeedbf37-4487-40de-9015-6ce754a4293d",
+      "name": "Execute AG_08 (QA)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        11664,
+        2288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build QA Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nconst failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_08_QA_REVIEWER', error: String(p.error), type: 'execution_error'});\n  up.__failed_personas__ = failures;\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') failures.push({persona: p.persona_name, error: p.summary||'failed', type: 'workflow_failure'});\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n  if (failures.length > 0) up.__failed_personas__ = failures;\n}\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
+      },
+      "id": "64b85cc3-bd00-4668-b837-21784b8603ca",
+      "name": "Code - Build DevIntel Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11904,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "PETU8XwEiws2LpMG",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "4484b0de-078a-4d69-accc-8691ebb98d86",
+      "name": "Execute AG_09 (DevIntel)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        12160,
+        2288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst prev = $('Code - Build DevIntel Input').first().json;\nconst up = Object.assign({}, prev.upstream_outputs||{});\nconst failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_09_DEV_INTELLIGENCE', error: String(p.error), type: 'execution_error'});\n  up.__failed_personas__ = failures;\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') failures.push({persona: p.persona_name, error: p.summary||'failed', type: 'workflow_failure'});\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n  if (failures.length > 0) up.__failed_personas__ = failures;\n}\nreturn [{ json: { request_id: prev.request_id, task_type: prev.task_type, user_request: prev.user_request, context: prev.context||{}, constraints: prev.constraints||{}, upstream_outputs: up, metadata: prev.metadata, _has_failures: failures.length > 0, _failures: failures } }];"
+      },
+      "id": "19240744-adca-479e-83e5-4285b2042ca5",
+      "name": "Code - Build Formatter Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12416,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "orMQCC4iBROwr3tA",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "42445512-44d9-48cc-9532-7e84227869ba",
+      "name": "Execute AG_10 (Formatter)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        12656,
+        2288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "be34ff6d-e08a-4572-9ad4-1a074ddef925",
+      "name": "Respond to Webhook - Entry",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6656,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'clarification_acknowledged',\n  message: 'Clarification received and logged. To resume execution with updated context, re-submit to the entry webhook with the original request_id and updated context field.',\n  clarification_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full stateful clarification loop requires database integration. See README section: Clarification Flow.'\n} }];"
+      },
+      "id": "c1d0b6bf-f7bf-4b2d-96b9-ff6c3d6acf03",
+      "name": "Code - Handle Clarification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6160,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "78c07546-732d-4a76-8b8b-f6827732d0f0",
+      "name": "Respond to Webhook - Clarification",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6416,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: {\n  request_id: item.request_id || 'unknown',\n  status: 'approval_acknowledged',\n  approved: item.approved !== false,\n  message: item.approved !== false ? 'Approval received. Execution can proceed to next phase.' : 'Rejection received. Workflow halted pending revision.',\n  approval_payload: item,\n  timestamp: new Date().toISOString(),\n  implementation_note: 'Full approval gate with execution resume requires database integration. See README section: Approval Flow.'\n} }];"
+      },
+      "id": "586fa834-f876-46f5-8a84-abb375fbf22a",
+      "name": "Code - Handle Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6160,
+        2592
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b241cc2d-cbfa-494e-bb08-80f35323f157",
+      "name": "Respond to Webhook - Approval",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6416,
+        2592
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.apiBody) }}",
+        "options": {}
+      },
+      "id": "87d1b3a7-1342-4b8b-8101-a1421a14e9b1",
+      "name": "HTTP Request - Classify Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6656,
+        2160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "7QsxxfdhdsOrA0OW",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder SD-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "a890ba57-ada0-4f44-afab-a42dbdb77f35",
+      "name": "Chain Builder SD-2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8160,
+        2128
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "s3YBVr8eGvvGrmcv",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "1f79c0cf-ab72-466d-95c8-1a2ecd68b3ab",
+      "name": "Execute AG_06 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7904,
+        2288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-1').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "8ce99a8b-dd78-47a0-968a-d2ef8374b7aa",
+      "name": "Chain Builder Impl-2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8160,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "OQqTCHhqikfjgDgi",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "0854c063-cef8-44c6-8975-0cc709844cf0",
+      "name": "Execute AG_07 (Impl)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        8416,
+        2288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder Impl-2').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "77825e30-d620-40b7-8dcf-ff4d41f5bcfc",
+      "name": "Chain Builder Impl-3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8656,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-3').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "5bb3b981-9041-4f16-bfdf-9478aec3d72f",
+      "name": "Chain Builder FPF-4",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9168,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "s3YBVr8eGvvGrmcv",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "9535746b-8af4-4088-b01e-26621b4f8f73",
+      "name": "Execute AG_06 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        9408,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-4').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "8fa878b3-5f99-470b-9baf-dc623fee9307",
+      "name": "Chain Builder FPF-5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9664,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "OQqTCHhqikfjgDgi",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "80531e38-fa4b-420c-80f2-96b6a9ce2423",
+      "name": "Execute AG_07 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        9904,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconst ctx = $('Chain Builder FPF-5').first().json;\nconst up = Object.assign({}, ctx.upstream_outputs||{});\nif (p && p.error) {\n  (up.__failed_personas__ = up.__failed_personas__ || []).push({error: String(p.error), type: 'execution_error'});\n} else if (p && p.persona_name) {\n  if (p.status === 'failed') { (up.__failed_personas__ = up.__failed_personas__ || []).push({persona: p.persona_name, error: p.summary || 'failed', type: 'workflow_failure'}); }\n  up[p.persona_name] = { status: p.status, summary: p.summary, structured_output: p.structured_output||{}, risks: p.risks||[], assumptions: p.assumptions||[], blocking_questions: p.blocking_questions||[], metrics: p.metrics||{} };\n}\nreturn [{ json: { request_id: ctx.request_id, task_type: ctx.task_type, user_request: ctx.user_request, context: ctx.context||{}, constraints: ctx.constraints||{}, upstream_outputs: up, metadata: ctx.metadata } }];"
+      },
+      "id": "1fa371b7-da9d-4ffc-a143-f2b4161ebad5",
+      "name": "Chain Builder FPF-6",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10160,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ag/supervisor/status",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "819fe298-7cbb-4678-98f5-263878d753a5",
+      "name": "Webhook - Status",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        5904,
+        2832
+      ],
+      "webhookId": "ag00-webhook-status-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nif(item.error){return [{json:item}];}\nvar staticData=$getWorkflowStaticData('global');\nvar rid=item.request_id;\nvar now=item.timestamp||new Date().toISOString();\nstaticData[rid]={status:'processing',submitted_at:now,completed_at:null,task_type:null,result:null,chat_payload:null};\nreturn [{json:Object.assign({},item,{submitted_at:now})}];"
+      },
+      "id": "9ac1b59a-c11a-4e24-8d76-5db45ad84873",
+      "name": "Code - Store Initial Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6288,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nvar prev = {};\ntry { prev = $('Code - Build Formatter Input').first().json; } catch(e) {}\nvar staticData = $getWorkflowStaticData('global');\nvar rid = prev.request_id || p.request_id || 'unknown';\nvar fmt = {};\nvar ag09Out = {};\nvar hasFail = prev._has_failures || false;\nvar failures = Array.isArray(prev._failures) ? prev._failures.slice() : [];\nif (p && p.error) {\n  failures.push({persona: 'AG_10_RESPONSE_FORMATTER', error: String(p.error), type: 'execution_error'});\n  hasFail = true;\n} else {\n  fmt = (p && p.structured_output) || {};\n  try { ag09Out = (prev.upstream_outputs['AG_09_DEV_INTELLIGENCE'] || {}).structured_output || {}; } catch(e) {}\n  if (p && p.status === 'failed') { hasFail = true; failures.push({persona: (p.persona_name || 'AG_10'), error: p.summary || 'failed', type: 'workflow_failure'}); }\n}\nvar now = new Date().toISOString();\nvar rec = staticData[rid] || {};\nrec.task_type = prev.task_type || rec.task_type || 'unknown';\nrec.completed_at = now;\nif (hasFail) {\n  var successPersonas = Object.keys(prev.upstream_outputs || {}).filter(function(k) { return k !== '__failed_personas__' && prev.upstream_outputs[k] && prev.upstream_outputs[k].status === 'success'; });\n  var hasPartial = successPersonas.length > 0;\n  rec.status = hasPartial ? 'partial_failure' : 'failed';\n  rec.error = 'One or more agent steps failed: ' + failures.map(function(f) { return f.persona || f.node || 'unknown'; }).join(', ');\n  rec.failed_personas = failures;\n  rec.result = p;\n  rec.chat_payload = {\n    executive_summary: hasPartial ? ('Request completed with errors. Some agent steps failed: ' + rec.error) : 'Request failed. Critical agent steps could not complete.',\n    what_was_done: successPersonas,\n    highlights: [],\n    risks_or_blockers: failures.map(function(f) { return 'FAILED: ' + (f.persona || f.node || 'unknown') + ' — ' + (f.error || 'execution error'); }),\n    timing_notes: { total_duration_ms: ag09Out.total_duration_ms || null, bottlenecks: ag09Out.bottlenecks || [] },\n    next_step: 'Investigate failed agent steps. Verify sub-workflow configurations and retry.',\n    retry_count: failures.length\n  };\n} else {\n  rec.status = 'completed';\n  rec.result = p;\n  rec.error = null;\n  rec.failed_personas = [];\n  rec.chat_payload = {\n    executive_summary: fmt.executive_summary || (p && p.summary) || '',\n    what_was_done: (fmt.key_findings || []).map(function(f) { return typeof f === 'string' ? f : (f.finding || JSON.stringify(f)); }),\n    highlights: (fmt.key_findings || []).filter(function(f) { return f && (f.priority === 'critical' || f.priority === 'high'); }).map(function(f) { return typeof f === 'string' ? f : (f.finding || JSON.stringify(f)); }),\n    risks_or_blockers: fmt.risks || (p && p.risks) || [],\n    timing_notes: { total_duration_ms: ag09Out.total_duration_ms || null, bottlenecks: ag09Out.bottlenecks || [] },\n    next_step: (fmt.next_steps && fmt.next_steps[0]) ? (fmt.next_steps[0].action || JSON.stringify(fmt.next_steps[0])) : ''\n  };\n}\nstaticData[rid] = rec;\nreturn [{ json: { request_id: rid, status: rec.status, completed_at: now } }];"
+      },
+      "id": "f2721f54-eb8b-47ac-b0b2-cd4a089c22f7",
+      "name": "Code - Store Final Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13168,
+        2288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar rid = item.request_id || '';\nif (!rid) { return [{ json: { success: false, message: 'Missing request_id.', data: { error: 'request_id is required' } } }]; }\nvar staticData = $getWorkflowStaticData('global');\nvar rec = staticData[rid];\nif (!rec) { return [{ json: { success: false, message: 'Request not found.', data: { request_id: rid, error: 'No record found for this request_id. It may have expired or the workflow may have been redeployed.' } } }]; }\nswitch (rec.status) {\n  case 'processing':\n    return [{ json: { success: true, message: 'Request is still processing.', data: { request_id: rid, status: 'processing', current_phase: rec.task_type || 'classifying', submitted_at: rec.submitted_at } } }];\n  case 'clarification_needed':\n    return [{ json: { success: true, message: 'Clarification is required.', data: { request_id: rid, status: 'clarification_needed', questions: rec.questions || [] } } }];\n  case 'approval_required':\n    return [{ json: { success: true, message: 'Approval is required.', data: { request_id: rid, status: 'approval_required', checkpoint: rec.checkpoint || '', notes: rec.notes || '' } } }];\n  case 'completed':\n    var cp = rec.chat_payload || {};\n    return [{ json: { success: true, message: 'Request completed.', data: { request_id: rid, status: 'completed', task_type: rec.task_type, submitted_at: rec.submitted_at, completed_at: rec.completed_at, executive_summary: cp.executive_summary || '', what_was_done: cp.what_was_done || [], highlights: cp.highlights || [], risks_or_blockers: cp.risks_or_blockers || [], timing_notes: cp.timing_notes || {}, next_step: cp.next_step || '' } } }];\n  case 'partial_failure':\n    var cp2 = rec.chat_payload || {};\n    return [{ json: { success: true, message: 'Request completed with issues.', data: { request_id: rid, status: 'partial_failure', task_type: rec.task_type, submitted_at: rec.submitted_at, completed_at: rec.completed_at, executive_summary: cp2.executive_summary || '', what_was_done: cp2.what_was_done || [], risks_or_blockers: cp2.risks_or_blockers || [], error: rec.error || '', failed_node: (rec.failed_personas || []).map(function(f) { return f.persona || f.node || 'unknown'; }).join(', '), next_step: cp2.next_step || 'Investigate and retry failed steps.' } } }];\n  case 'failed':\n    return [{ json: { success: false, message: 'Request failed.', data: { request_id: rid, status: 'failed', submitted_at: rec.submitted_at, completed_at: rec.completed_at, error: rec.error || 'Unknown error', failed_node: (rec.failed_personas || []).map(function(f) { return f.persona || f.node || 'unknown'; }).join(', ') || null, next_step: 'Investigate failed agent steps and retry.' } } }];\n  default:\n    return [{ json: { success: false, message: 'Unknown status.', data: { request_id: rid, status: rec.status } } }];\n}"
+      },
+      "id": "ad4ab2fa-492a-4789-98d8-f84cfbecac6f",
+      "name": "Code - Handle Status Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6160,
+        2832
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "c0d58afc-8a29-4008-974f-3476038f8a2d",
+      "name": "Respond to Webhook - Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6416,
+        2832
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Async Execution + Failure Handling — ChatGPT Actions Pattern\n\n**Entry Flow:**\nBRANCH A — Fast Ack: Code - Store Initial Status → Code - Build Entry Response → Respond to Webhook - Entry (HTTP 202)\nBRANCH B — Long Exec: Code - Store Initial Status → classification → routing → personas → QA → DevIntel → Formatter → Code - Store Final Result\n\n**Failure Handling (added):**\n- Execute AG_04 (SD) and Execute AG_04 (FPF) were rebuilt fresh\n- ALL critical Execute Workflow nodes have:\n  - continueOnFail: true (failures propagate rather than halt)\n  - retryOnFail: true | maxTries: 3 (=2 retries) | waitBetweenTries: 2000ms\n  - Retries primarily address transient failures; hard failures exhaust all retries and are marked failed\n- Chain Builder and Pack nodes track failures in upstream_outputs.__failed_personas__\n- Code - Build QA Input consolidates failures from all branches at the merge point\n- Code - Store Final Result:\n  - \"completed\" — all critical steps succeeded\n  - \"partial_failure\" — some steps failed but partial output exists\n  - \"failed\" — all critical steps failed, no usable output\n\n**Status endpoint /ag/supervisor/status returns:**\nprocessing | clarification_needed | approval_required | completed | partial_failure | failed\n\n⚠ ChatGPT must NOT assume success until status = \"completed\"\n\n**Storage:** n8n Workflow Static Data. Clears on redeploy — use DB for production.",
+        "height": 430,
+        "width": 760,
+        "color": 3
+      },
+      "id": "fe0e38dc-f8d5-4734-95bd-2400031ee6c7",
+      "name": "Sticky Note - Async Architecture",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5904,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nif (item.error) {\n  return [{ json: {\n    success: false,\n    message: item.message || 'Validation failed',\n    data: { error_type: item.error_type || 'UNKNOWN', request_id: item.request_id || null }\n  } }];\n}\nreturn [{ json: {\n  success: true,\n  message: 'Request accepted and processing started.',\n  data: {\n    request_id: item.request_id,\n    status: 'processing',\n    submitted_at: item.submitted_at || item.timestamp || new Date().toISOString()\n  }\n} }];"
+      },
+      "id": "390df424-27aa-4516-8d02-73a148a660d0",
+      "name": "Code - Build Entry Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6416,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "mZt2ROYB2J7VuSdY",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "e4e5c4d3-f35d-4fd7-af6d-6abb4e635751",
+      "name": "Execute AG_04 (SD)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7904,
+        2128
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "mZt2ROYB2J7VuSdY",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "0908d692-d66c-42e6-92a6-36973a4c7ee5",
+      "name": "Execute AG_04 (FPF)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        8416,
+        2448
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Entry": {
+      "main": [
+        [
+          {
+            "node": "Code - Validate Entry Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Clarification Reply": {
+      "main": [
+        [
+          {
+            "node": "Code - Handle Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Approval": {
+      "main": [
+        [
+          {
+            "node": "Code - Handle Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validate Entry Input": {
+      "main": [
+        [
+          {
+            "node": "Code - Store Initial Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Classification Prompt": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Classify Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse and Build Input": {
+      "main": [
+        [
+          {
+            "node": "Switch - Route by Task Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch - Route by Task Type": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_01 (Discovery)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_02 (SD)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_03 (Impl)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_01 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute AG_01 (Default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_01 (Discovery)": {
+      "main": [
+        [
+          {
+            "node": "Pack Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack Discovery": {
+      "main": [
+        [
+          {
+            "node": "Merge - Collect Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_02 (SD)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder SD-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder SD-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_04 (SD)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_03 (SD)": {
+      "main": [
+        [
+          {
+            "node": "Pack SD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack SD": {
+      "main": [
+        [
+          {
+            "node": "Merge - Collect Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Execute AG_03 (Impl)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder Impl-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder Impl-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_06 (Impl)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_05 (Impl)": {
+      "main": [
+        [
+          {
+            "node": "Pack Impl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_01 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_02 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_02 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-2": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_04 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_03 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-3": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_03 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_05 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Pack FPF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_01 (Default)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder Default-1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder Default-1": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_02 (Default)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_02 (Default)": {
+      "main": [
+        [
+          {
+            "node": "Pack Default",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge - Collect Outputs": {
+      "main": [
+        [
+          {
+            "node": "Code - Build QA Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build QA Input": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_08 (QA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_08 (QA)": {
+      "main": [
+        [
+          {
+            "node": "Code - Build DevIntel Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build DevIntel Input": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_09 (DevIntel)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_09 (DevIntel)": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Formatter Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Formatter Input": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_10 (Formatter)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_10 (Formatter)": {
+      "main": [
+        [
+          {
+            "node": "Code - Store Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Handle Clarification": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Handle Approval": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Classify Task": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse and Build Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_04 (SD)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder SD-2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder SD-2": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_03 (SD)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_06 (Impl)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder Impl-2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder Impl-2": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_07 (Impl)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_07 (Impl)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder Impl-3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder Impl-3": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_05 (Impl)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_04 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-4": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_06 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_06 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-5": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_07 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute AG_07 (FPF)": {
+      "main": [
+        [
+          {
+            "node": "Chain Builder FPF-6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chain Builder FPF-6": {
+      "main": [
+        [
+          {
+            "node": "Execute AG_05 (FPF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Store Initial Status": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Entry Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Build Classification Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Status": {
+      "main": [
+        [
+          {
+            "node": "Code - Handle Status Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Handle Status Query": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Entry Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "03693beb-dd81-4b82-a3f1-d4769c791fa7",
+  "meta": {
+    "instanceId": "a6fa1ea70c2b65d69b2a991c3cbda0430e4cb91a5e0e2ee3a5a6ce456bce1e90"
+  },
+  "id": "BHGuRon9imrz2zgl",
+  "tags": [
+    {
+      "updatedAt": "2026-03-30T14:14:49.911Z",
+      "createdAt": "2026-03-30T14:14:49.911Z",
+      "id": "A2ybI5hABV9fezJt",
+      "name": "AG_MULTIAGENT"
+    }
+  ]
+}

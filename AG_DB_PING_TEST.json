@@ -1,0 +1,86 @@
+{
+  "name": "AG_DB_PING_TEST",
+  "nodes": [
+    {
+      "id": "ping-0001-0000-0000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "parameters": {}
+    },
+    {
+      "id": "ping-0002-0000-0000-000000000001",
+      "name": "Postgres - Create Table",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [450, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS ag_test_ping (\n  id         TEXT        PRIMARY KEY,\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  note       TEXT\n)",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "somxkcmmyrbsnzwufzwg",
+          "name": "multiagent_n8n"
+        }
+      }
+    },
+    {
+      "id": "ping-0003-0000-0000-000000000001",
+      "name": "Postgres - Insert Row",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [700, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ag_test_ping (id, note)\nVALUES (gen_random_uuid()::TEXT, 'ping ok')\nRETURNING *",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "somxkcmmyrbsnzwufzwg",
+          "name": "multiagent_n8n"
+        }
+      }
+    },
+    {
+      "id": "ping-0004-0000-0000-000000000001",
+      "name": "Postgres - Select Latest",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [950, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM ag_test_ping ORDER BY created_at DESC LIMIT 5",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "somxkcmmyrbsnzwufzwg",
+          "name": "multiagent_n8n"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Postgres - Create Table", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Create Table": {
+      "main": [[{ "node": "Postgres - Insert Row", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Insert Row": {
+      "main": [[{ "node": "Postgres - Select Latest", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ping-v1",
+  "meta": {
+    "instanceId": "db-ping-test"
+  }
+}
