@@ -52,6 +52,10 @@ function createN8nClient(baseUrl, apiKey) {
 
     getExecution(executionId) {
       return request(`/api/v1/executions/${executionId}`)
+    },
+
+    getLastExecution(workflowId) {
+      return request(`/api/v1/executions?workflowId=${workflowId}&limit=1&includeData=false`)
     }
   }
 }

@@ -50,6 +50,13 @@ export async function apiTestWorkflow(workflow) {
   return data
 }
 
+export async function apiGetLastExecution(workflowId) {
+  const res = await fetch(`/api/n8n/executions/${workflowId}`)
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data
+}
+
 export async function apiDeleteWorkflow(workflowId) {
   const res = await fetch('/api/n8n/delete', {
     method: 'POST',

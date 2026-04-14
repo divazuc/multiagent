@@ -69,6 +69,29 @@ router.post('/test', async (req, res) => {
   }
 })
 
+// Get last execution result for a workflow
+router.get('/executions/:workflowId', async (req, res) => {
+  try {
+    const client = getClient()
+    const data = await client.getLastExecution(req.params.workflowId)
+    const executions = data.data || []
+    if (executions.length === 0) {
+      return res.json({ found: false, message: 'No executions yet. Run the workflow in n8n first.' })
+    }
+    const exec = executions[0]
+    return res.json({
+      found: true,
+      status: exec.status,
+      finished: exec.finished,
+      startedAt: exec.startedAt,
+      stoppedAt: exec.stoppedAt,
+      error: exec.data?.resultData?.error?.message || null
+    })
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
+})
+
 // Delete a previously imported test workflow
 router.post('/delete', async (req, res) => {
   const { workflowId } = req.body
