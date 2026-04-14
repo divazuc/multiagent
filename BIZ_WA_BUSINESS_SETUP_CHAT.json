@@ -672,13 +672,7 @@
             "node": "Load Projects",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Load Projects": {
-      "main": [
-        [
+          },
           {
             "node": "Load Session",
             "type": "main",
