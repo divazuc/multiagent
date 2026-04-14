@@ -1,0 +1,139 @@
+{
+  "version": "1.0",
+  "n8nVersion": "1.x",
+  "nodes": {
+    "n8n-nodes-base.webhook": {
+      "displayName": "Webhook",
+      "isTrigger": true,
+      "typeVersions": [1, 2],
+      "requiredParameters": ["path"],
+      "optionalParameters": ["httpMethod", "responseMode", "options"]
+    },
+    "n8n-nodes-base.manualTrigger": {
+      "displayName": "Manual Trigger",
+      "isTrigger": true,
+      "typeVersions": [1],
+      "requiredParameters": [],
+      "optionalParameters": []
+    },
+    "n8n-nodes-base.scheduleTrigger": {
+      "displayName": "Schedule Trigger",
+      "isTrigger": true,
+      "typeVersions": [1],
+      "requiredParameters": [],
+      "optionalParameters": ["rule"]
+    },
+    "n8n-nodes-base.httpRequest": {
+      "displayName": "HTTP Request",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 3, 4, 4.1, 4.2],
+      "requiredParameters": ["url"],
+      "optionalParameters": ["method", "headers", "body", "authentication", "options"]
+    },
+    "n8n-nodes-base.code": {
+      "displayName": "Code",
+      "isTrigger": false,
+      "typeVersions": [1, 2],
+      "requiredParameters": [],
+      "optionalParameters": ["jsCode", "pythonCode", "language", "mode"]
+    },
+    "n8n-nodes-base.set": {
+      "displayName": "Edit Fields (Set)",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 3, 3.2, 3.3, 3.4],
+      "requiredParameters": [],
+      "optionalParameters": ["mode", "fields", "options"]
+    },
+    "n8n-nodes-base.if": {
+      "displayName": "IF",
+      "isTrigger": false,
+      "typeVersions": [1, 2],
+      "requiredParameters": ["conditions"],
+      "optionalParameters": ["combineOperation"]
+    },
+    "n8n-nodes-base.switch": {
+      "displayName": "Switch",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 3],
+      "requiredParameters": [],
+      "optionalParameters": ["mode", "rules", "options"]
+    },
+    "n8n-nodes-base.merge": {
+      "displayName": "Merge",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 2.1, 3],
+      "requiredParameters": [],
+      "optionalParameters": ["mode", "mergeByFields", "options"]
+    },
+    "n8n-nodes-base.respondToWebhook": {
+      "displayName": "Respond to Webhook",
+      "isTrigger": false,
+      "typeVersions": [1, 1.1],
+      "requiredParameters": [],
+      "optionalParameters": ["respondWith", "responseBody", "responseHeaders", "options"]
+    },
+    "n8n-nodes-base.executeWorkflow": {
+      "displayName": "Execute Sub-workflow",
+      "isTrigger": false,
+      "typeVersions": [1],
+      "requiredParameters": ["workflowId"],
+      "optionalParameters": ["mode", "workflowInputs", "options"]
+    },
+    "n8n-nodes-base.postgres": {
+      "displayName": "Postgres",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 2.1, 2.2, 2.3, 2.4, 2.5],
+      "requiredParameters": [],
+      "optionalParameters": ["operation", "query", "table", "options"]
+    },
+    "n8n-nodes-base.emailSend": {
+      "displayName": "Send Email",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 2.1],
+      "requiredParameters": ["toEmail", "subject"],
+      "optionalParameters": ["text", "html", "fromEmail", "options"]
+    },
+    "n8n-nodes-base.slack": {
+      "displayName": "Slack",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 2.1, 2.2],
+      "requiredParameters": [],
+      "optionalParameters": ["resource", "operation", "channel", "text", "options"]
+    },
+    "n8n-nodes-base.googleSheets": {
+      "displayName": "Google Sheets",
+      "isTrigger": false,
+      "typeVersions": [1, 2, 4, 4.1, 4.2, 4.3, 4.4],
+      "requiredParameters": [],
+      "optionalParameters": ["resource", "operation", "documentId", "sheetName", "options"]
+    },
+    "n8n-nodes-base.noOp": {
+      "displayName": "No Operation",
+      "isTrigger": false,
+      "typeVersions": [1],
+      "requiredParameters": [],
+      "optionalParameters": []
+    },
+    "n8n-nodes-base.stickyNote": {
+      "displayName": "Sticky Note",
+      "isTrigger": false,
+      "typeVersions": [1],
+      "requiredParameters": [],
+      "optionalParameters": ["content", "height", "width", "color"]
+    },
+    "n8n-nodes-base.wait": {
+      "displayName": "Wait",
+      "isTrigger": false,
+      "typeVersions": [1],
+      "requiredParameters": [],
+      "optionalParameters": ["unit", "amount", "resume"]
+    },
+    "@n8n/n8n-nodes-langchain.chatTrigger": {
+      "displayName": "Chat Trigger",
+      "isTrigger": true,
+      "typeVersions": [1],
+      "requiredParameters": [],
+      "optionalParameters": ["options"]
+    }
+  }
+}
