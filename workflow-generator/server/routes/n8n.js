@@ -5,16 +5,18 @@ const { createN8nClient } = require('../services/n8nClient')
 
 const router = Router()
 
-function getClient(req) {
-  const { n8nUrl, n8nApiKey } = req.body || req.query
-  if (!n8nUrl || !n8nApiKey) throw new Error('n8nUrl and n8nApiKey are required')
-  return createN8nClient(n8nUrl, n8nApiKey)
+function getClient() {
+  const { N8N_URL, N8N_API_KEY } = process.env
+  if (!N8N_URL || !N8N_API_KEY) {
+    throw new Error('N8N_URL and N8N_API_KEY must be set in .env')
+  }
+  return createN8nClient(N8N_URL, N8N_API_KEY)
 }
 
-// List workflows from a live n8n instance
-router.post('/workflows', async (req, res) => {
+// List workflows from the configured n8n instance
+router.get('/workflows', async (req, res) => {
   try {
-    const client = getClient(req)
+    const client = getClient()
     const workflows = await client.listWorkflows()
     return res.json({ workflows: workflows.map(w => ({ id: w.id, name: w.name })) })
   } catch (err) {
@@ -23,9 +25,9 @@ router.post('/workflows', async (req, res) => {
 })
 
 // Get a single workflow by ID
-router.post('/workflows/:id', async (req, res) => {
+router.get('/workflows/:id', async (req, res) => {
   try {
-    const client = getClient(req)
+    const client = getClient()
     const workflow = await client.getWorkflow(req.params.id)
     return res.json({ workflow })
   } catch (err) {
@@ -33,14 +35,20 @@ router.post('/workflows/:id', async (req, res) => {
   }
 })
 
-// Safe test run: import as inactive, trigger, read result, return outcome
+// Safe test run: import as inactive, trigger, return outcome
 router.post('/test', async (req, res) => {
-  const { n8nUrl, n8nApiKey, workflow } = req.body
-  if (!n8nUrl || !n8nApiKey || !workflow) {
-    return res.status(400).json({ error: 'n8nUrl, n8nApiKey, and workflow are required' })
+  const { workflow } = req.body
+  if (!workflow) {
+    return res.status(400).json({ error: 'workflow is required' })
   }
 
-  const client = createN8nClient(n8nUrl, n8nApiKey)
+  let client
+  try {
+    client = getClient()
+  } catch (err) {
+    return res.status(500).json({ error: err.message })
+  }
+
   let importedId = null
 
   try {
@@ -68,12 +76,12 @@ router.post('/test', async (req, res) => {
 
 // Delete a previously imported test workflow
 router.post('/delete', async (req, res) => {
-  const { n8nUrl, n8nApiKey, workflowId } = req.body
-  if (!n8nUrl || !n8nApiKey || !workflowId) {
-    return res.status(400).json({ error: 'n8nUrl, n8nApiKey, and workflowId are required' })
+  const { workflowId } = req.body
+  if (!workflowId) {
+    return res.status(400).json({ error: 'workflowId is required' })
   }
   try {
-    const client = createN8nClient(n8nUrl, n8nApiKey)
+    const client = getClient()
     await client.deleteWorkflow(workflowId)
     return res.json({ deleted: true })
   } catch (err) {

@@ -5,10 +5,8 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
   const [source, setSource] = useState('upload')
   const [loadedWorkflow, setLoadedWorkflow] = useState(null)
   const [changeDescription, setChangeDescription] = useState('')
-  const [n8nUrl, setN8nUrl] = useState('')
-  const [n8nApiKey, setN8nApiKey] = useState('')
   const [workflowList, setWorkflowList] = useState(null)
-  const [connectLoading, setConnectLoading] = useState(false)
+  const [listLoading, setListLoading] = useState(false)
 
   function handleFileUpload(e) {
     const file = e.target.files[0]
@@ -16,8 +14,7 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
     const reader = new FileReader()
     reader.onload = evt => {
       try {
-        const parsed = JSON.parse(evt.target.result)
-        setLoadedWorkflow(parsed)
+        setLoadedWorkflow(JSON.parse(evt.target.result))
       } catch {
         onError('Could not parse the uploaded file as JSON. Make sure it is a valid n8n workflow export.')
       }
@@ -25,29 +22,28 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
     reader.readAsText(file)
   }
 
-  async function handleConnect() {
-    if (!n8nUrl || !n8nApiKey) return
-    setConnectLoading(true)
+  async function handleLoadList() {
+    setListLoading(true)
     try {
-      const list = await apiListN8nWorkflows(n8nUrl, n8nApiKey)
+      const list = await apiListN8nWorkflows()
       setWorkflowList(list)
     } catch (err) {
-      onError(`Could not connect to n8n: ${err.message}`)
+      onError(`Could not reach n8n: ${err.message}`)
     } finally {
-      setConnectLoading(false)
+      setListLoading(false)
     }
   }
 
   async function handleSelectWorkflow(id) {
-    setConnectLoading(true)
+    setListLoading(true)
     try {
-      const wf = await apiGetN8nWorkflow(n8nUrl, n8nApiKey, id)
+      const wf = await apiGetN8nWorkflow(id)
       setLoadedWorkflow(wf)
       setWorkflowList(null)
     } catch (err) {
       onError(err.message)
     } finally {
-      setConnectLoading(false)
+      setListLoading(false)
     }
   }
 
@@ -66,8 +62,9 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
 
   return (
     <div>
+      {/* Source selector */}
       <div className="flex gap-3 mb-5">
-        {[{ id: 'upload', label: 'Upload .json file' }, { id: 'connect', label: 'Connect to n8n' }].map(opt => (
+        {[{ id: 'upload', label: 'Upload .json file' }, { id: 'connect', label: 'Pick from n8n' }].map(opt => (
           <button
             key={opt.id}
             onClick={() => { setSource(opt.id); setLoadedWorkflow(null); setWorkflowList(null) }}
@@ -80,6 +77,7 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
         ))}
       </div>
 
+      {/* Upload source */}
       {source === 'upload' && !loadedWorkflow && (
         <label className="block border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-400 transition-colors mb-5">
           <div className="text-slate-500 text-sm">Drag & drop or <span className="text-indigo-600 font-semibold">browse</span></div>
@@ -87,35 +85,31 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
         </label>
       )}
 
+      {/* Pick from n8n */}
       {source === 'connect' && !loadedWorkflow && (
-        <div className="mb-5 space-y-3">
-          <input
-            className="w-full border-2 border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
-            placeholder="n8n URL (e.g. http://localhost:5678)"
-            value={n8nUrl}
-            onChange={e => setN8nUrl(e.target.value)}
-          />
-          <input
-            type="password"
-            className="w-full border-2 border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
-            placeholder="n8n API key"
-            value={n8nApiKey}
-            onChange={e => setN8nApiKey(e.target.value)}
-          />
-          <button
-            onClick={handleConnect}
-            disabled={connectLoading || !n8nUrl || !n8nApiKey}
-            className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50"
-          >
-            {connectLoading ? 'Connecting...' : 'Connect & list workflows'}
-          </button>
-          {workflowList && (
+        <div className="mb-5">
+          {!workflowList ? (
+            <button
+              onClick={handleLoadList}
+              disabled={listLoading}
+              className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50"
+            >
+              {listLoading ? 'Loading...' : 'Load my n8n workflows'}
+            </button>
+          ) : (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+                Select a workflow
+              </div>
+              {workflowList.length === 0 && (
+                <div className="px-4 py-3 text-sm text-slate-400">No workflows found in your n8n instance.</div>
+              )}
               {workflowList.map(wf => (
                 <button
                   key={wf.id}
                   onClick={() => handleSelectWorkflow(wf.id)}
-                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 border-b last:border-b-0 border-slate-100"
+                  disabled={listLoading}
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 border-b last:border-b-0 border-slate-100 disabled:opacity-50"
                 >
                   {wf.name}
                 </button>
@@ -125,9 +119,10 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
         </div>
       )}
 
+      {/* Loaded workflow badge */}
       {loadedWorkflow && (
         <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 mb-5">
-          <span className="text-green-500 text-lg">+</span>
+          <span className="text-green-500 font-bold text-lg">+</span>
           <div>
             <div className="font-semibold text-sm text-slate-700">{loadedWorkflow.name || 'Unnamed workflow'}</div>
             <div className="text-xs text-slate-400">{(loadedWorkflow.nodes || []).length} nodes</div>
@@ -136,6 +131,7 @@ export default function EditMode({ onResult, onError, loading, setLoading }) {
         </div>
       )}
 
+      {/* Change description */}
       {loadedWorkflow && (
         <>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
