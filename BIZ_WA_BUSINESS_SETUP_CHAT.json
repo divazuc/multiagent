@@ -1,0 +1,1020 @@
+{
+  "name": "BIZ_WA_BUSINESS_SETUP_CHAT",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "91f6aead-ecde-4f72-949c-6a7e51fd0c52",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1,
+      "position": [
+        2576,
+        416
+      ],
+      "webhookId": "biz-setup-chat-webhook-001"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name FROM businesses ORDER BY created_at ASC NULLS LAST, name ASC",
+        "options": {}
+      },
+      "id": "a1e17a10-fd38-47a6-a15b-47e73ec814c3",
+      "name": "Load Projects",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2800,
+        208
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const userMessage = ($('Chat Trigger').first().json.chatInput || '').trim();\nconst currentMode = $json.current_mode || null;\nconst storedBizId = $json.selected_business_id || null;\nif (currentMode === 'in_setup' && storedBizId) {\n  return [{ json: { action: 'select_existing', business_id: storedBizId, output: null } }];\n}\nconst allItems = $('Load Projects').all();\nconst projects = allItems\n  .filter(function(item) { return item.json && item.json.id; })\n  .map(function(item, i) {\n    return { index: i + 1, id: item.json.id, name: item.json.name || '(unnamed)' };\n  });\nfunction buildMenu(header) {\n  var lines = projects.map(function(p) { return '(' + p.index + ') ' + p.name; });\n  var body = lines.length > 0 ? lines.join('\\n') : '(no projects yet)';\n  return header + '\\n\\n' + body + '\\n\\n(0) Create new project';\n}\nif (currentMode === 'await_project_name') {\n  if (!userMessage) {\n    return [{ json: { action: 'create_new', output: 'What is the name of the new project?', projects: projects } }];\n  }\n  return [{ json: { action: 'save_name', project_name: userMessage, output: userMessage, projects: projects } }];\n}\nif (!userMessage) {\n  return [{ json: { action: 'show_list', output: buildMenu('Choose a project (type number):'), projects: projects } }];\n}\nvar trimmed = userMessage.replace(/^\\s+|\\s+$/g, '');\nvar num = parseInt(trimmed, 10);\nif (isNaN(num) || String(num) !== trimmed) {\n  return [{ json: { action: 'show_list', output: buildMenu('Please choose a valid number from the list.'), projects: projects } }];\n}\nif (num === 0) {\n  return [{ json: { action: 'create_new', output: 'What is the name of the new project?', projects: projects } }];\n}\nvar selected = null;\nfor (var i = 0; i < projects.length; i++) {\n  if (projects[i].index === num) { selected = projects[i]; break; }\n}\nif (!selected) {\n  return [{ json: { action: 'show_list', output: buildMenu('Please choose a valid number from the list.'), projects: projects } }];\n}\nreturn [{ json: { action: 'select_existing', business_id: selected.id, output: 'Loading project: ' + selected.name + '...', projects: projects } }];\n"
+      },
+      "id": "74f8556a-6324-42e0-9bd0-65191bff2e18",
+      "name": "Project Selection Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3056,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "if-sel-001-cond",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "select_existing",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-sel-0001-0001-0001-000000000001",
+      "name": "Is Select Existing?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3296,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "if-sel-002-cond",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "create_new",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-sel-0002-0002-0002-000000000002",
+      "name": "Is Create New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3296,
+        388
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "if-sel-003-cond",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "save_name",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-sel-0003-0003-0003-000000000003",
+      "name": "Is Save Name?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3296,
+        568
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "show-menu-001",
+              "name": "output",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c748f21-c20c-437a-a8c9-69385edb4ac1",
+      "name": "Show Project Menu",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3536,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ask-name-001",
+              "name": "output",
+              "value": "What is the name of the new project?",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a617a61e-1469-4403-9c60-ba1b80c4eee2",
+      "name": "Ask Project Name",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3536,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-sel-biz-001",
+              "name": "business_id",
+              "value": "={{ $json.business_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f726505f-a1de-4c25-9183-d138a8a7ea58",
+      "name": "Set Selected Business ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3536,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO businesses (name, setup_completed, setup_stage, setup_draft) VALUES ($1, false, NULL, '{}'::jsonb) RETURNING *",
+        "additionalFields": {
+          "queryParams": "={{ [$json.project_name] }}"
+        }
+      },
+      "id": "b8cf16d1-23b4-4ef7-a870-578e80ded846",
+      "name": "Create Named Business",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3536,
+        528
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM businesses WHERE id = $1 LIMIT 1",
+        "additionalFields": {
+          "queryParams": "={{ [$json.business_id] }}"
+        }
+      },
+      "id": "4a83e7f4-9b41-413e-b463-aa74f980ad3a",
+      "name": "Load Business",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3776,
+        368
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "biz-exists-cond-001",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00add339-30a2-4fe4-88b6-dda629e38c37",
+      "name": "Business Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pass through business row from whichever path resolved (Load or Create)\nreturn [{ json: $json }];\n"
+      },
+      "id": "db095960-313a-4a68-8fc6-6de75c71aa22",
+      "name": "Resolve Business",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4224,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── INPUTS ───────────────────────────────────────────────────────────────────\nconst userMessage       = $('Chat Trigger').first().json.chatInput || '';\nconst business          = $('Resolve Business').first().json;\nconst businessId        = business.id || null;\n\nconst setupCompleted    = business.setup_completed;\nconst currentStage      = business.setup_stage || null;\n// read optional cross-workflow fields defensively\nconst trainingCompleted = business.training_completed || false;\n\nlet setupDraft = {};\ntry {\n  setupDraft = typeof business.setup_draft === 'string'\n    ? JSON.parse(business.setup_draft || '{}')\n    : (business.setup_draft || {});\n} catch(e) { setupDraft = {}; }\n\n// ─── QUESTIONS ────────────────────────────────────────────────────────────────\nconst QUESTIONS = {\n  business_model:\n    'How does a customer buy from you in practice?\\n1. Need discovery + custom offer\\n2. Fixed-price products or services\\n3. Packages or subscriptions\\n4. Booking by time / appointment\\n5. Other',\n  primary_goal:\n    'What is the main action you want a new lead to take?\\n1. Book a call\\n2. Leave details\\n3. Make a purchase\\n4. Continue chatting to clarify needs',\n  conversation_priority:\n    'What matters most to you in the first conversation?\\n1. Understand the need\\n2. Filter irrelevant leads\\n3. Close quickly\\n4. Give information only',\n  service_type_1:      'What main services do you provide?',\n  service_type_2:      'What information is important for you to understand before moving forward with a lead?',\n  service_type_3:      'What is usually the first question you ask to understand the lead?',\n  product_type_1:      'What main products or categories do you sell?',\n  product_type_2:      'How do you usually understand which product fits the customer?',\n  product_type_3:      'What questions do customers usually ask before buying?',\n  subscription_type_1: 'What plans or packages do you offer?',\n  subscription_type_2: 'How do you decide which plan fits a customer?',\n  subscription_type_3: 'What usually makes customers hesitate between plans?',\n  booking_type_1:      'What types of appointments / treatments / services can be booked?',\n  booking_type_2:      'What is important for you to understand before booking?',\n  booking_type_3:      'Are there cases where it is not right to book immediately?',\n  other_type_1:        'Briefly describe how your sales / signup flow works.',\n  other_type_2:        'What information is important for you to understand from a new lead?',\n  other_type_3:        'What is the best first question to ask them?',\n  persona_tone:        'How do you want to sound with customers? Casual / professional / direct / friendly / other',\n  answer_length:       'Do you prefer very short, medium, or slightly more detailed replies?',\n  emoji_style:         'Do you want emojis? none / light / natural / free',\n  faq:                 'Give 2-3 questions customers ask often, and how you usually answer them.',\n  objections:          'What are 2-3 common objections you hear, and how do you usually respond?',\n  forbidden_claims:    'Are there things you do not want to say or promise in an initial conversation?',\n  escalation_rules:    'In which cases should the conversation be handed off to a real person?',\n  final_note:          'If there is one thing the assistant must not miss in the way you talk to customers, what is it?',\n};\n\n// ─── STAGE → DRAFT PATH ───────────────────────────────────────────────────────\n// business_model handled separately via normalizeBusinessType\nconst STAGE_PATHS = {\n  primary_goal:         'routing.primary_goal',\n  conversation_priority:'routing.conversation_priority',\n  service_type_1:       'business_profile.services',\n  service_type_2:       'business_profile.required_info',\n  service_type_3:       'business_profile.first_question',\n  product_type_1:       'business_profile.products',\n  product_type_2:       'business_profile.selection_logic',\n  product_type_3:       'business_profile.common_prepurchase_questions',\n  subscription_type_1:  'business_profile.plans',\n  subscription_type_2:  'business_profile.plan_fit_logic',\n  subscription_type_3:  'business_profile.common_objections',\n  booking_type_1:       'business_profile.booking_types',\n  booking_type_2:       'business_profile.required_info',\n  booking_type_3:       'business_profile.pre_booking_filters',\n  other_type_1:         'business_profile.sales_flow_summary',\n  other_type_2:         'business_profile.required_info',\n  other_type_3:         'business_profile.first_question',\n  persona_tone:         'persona.tone',\n  answer_length:        'persona.answer_length',\n  emoji_style:          'persona.emoji_style',\n  faq:                  'knowledge.faq',\n  objections:           'knowledge.objection_handling',\n  forbidden_claims:     'guardrails.forbidden_claims',\n  escalation_rules:     'guardrails.escalation_rules',\n  final_note:           'persona.must_not_miss',\n};\n\n// PATCH 4: Stages whose answers must be stored as arrays (list-like fields)\nconst ARRAY_STAGES = {\n  service_type_1:      true,\n  service_type_2:      true,\n  product_type_1:      true,\n  product_type_3:      true,\n  subscription_type_1: true,\n  booking_type_1:      true,\n  booking_type_2:      true,\n  booking_type_3:      true,\n  other_type_2:        true,\n};\n// Fields remaining plain text: first_question, selection_logic, plan_fit_logic,\n// sales_flow_summary, common_objections\n\n// ─── HELPERS ──────────────────────────────────────────────────────────────────\nfunction setPath(obj, path, value) {\n  const keys = path.split('.');\n  let cur = obj;\n  for (let i = 0; i < keys.length - 1; i++) {\n    if (!cur[keys[i]] || typeof cur[keys[i]] !== 'object') cur[keys[i]] = {};\n    cur = cur[keys[i]];\n  }\n  cur[keys[keys.length - 1]] = value;\n  return obj;\n}\n\nfunction getPath(obj, path) {\n  return path.split('.').reduce(function(o, k) { return (o && o[k] !== undefined ? o[k] : null); }, obj);\n}\n\n// PATCH 2: Strict validation — only accept 1-5 or exact canonical keywords\nfunction isValidBusinessModel(raw) {\n  const s = String(raw || '').trim().toLowerCase();\n  return ['1','2','3','4','5','service','product','subscription','booking','other'].indexOf(s) !== -1;\n}\n\n// Normalize valid answer to canonical value\nfunction normalizeBusinessType(raw) {\n  const s = String(raw || '').trim().toLowerCase();\n  if (s === '1' || s === 'service')      return 'service';\n  if (s === '2' || s === 'product')      return 'product';\n  if (s === '3' || s === 'subscription') return 'subscription';\n  if (s === '4' || s === 'booking')      return 'booking';\n  return 'other';\n}\n\nfunction getBranch(draft) {\n  const choice = String(getPath(draft, 'routing.business_type_choice') || '').trim().toLowerCase();\n  if (choice === 'service')      return 'service';\n  if (choice === 'product')      return 'product';\n  if (choice === 'subscription') return 'subscription';\n  if (choice === 'booking')      return 'booking';\n  return 'other';\n}\n\nfunction getNextStage(stage, draft) {\n  const branch = getBranch(draft);\n  const FLOW = {\n    business_model:        'primary_goal',\n    primary_goal:          'conversation_priority',\n    conversation_priority: branch + '_type_1',\n    [branch + '_type_1']:  branch + '_type_2',\n    [branch + '_type_2']:  branch + '_type_3',\n    [branch + '_type_3']:  'persona_tone',\n    persona_tone:          'answer_length',\n    answer_length:         'emoji_style',\n    emoji_style:           'faq',\n    faq:                   'objections',\n    objections:            'forbidden_claims',\n    forbidden_claims:      'escalation_rules',\n    escalation_rules:      'final_note',\n    final_note:            'review',\n    review:                'completed',\n  };\n  return FLOW[stage] || 'completed';\n}\n\nfunction buildReviewSummary(draft) {\n  const r  = draft.routing          || {};\n  const bp = draft.business_profile  || {};\n  const p  = draft.persona           || {};\n  const k  = draft.knowledge         || {};\n  const g  = draft.guardrails        || {};\n\n  const bpFormatted = Object.entries(bp)\n    .map(function(e) {\n      const val = Array.isArray(e[1]) ? e[1].join(', ') : String(e[1]);\n      return '  ' + e[0] + ': ' + val;\n    })\n    .join('\\n');\n\n  return [\n    'Here is your setup summary:',\n    '',\n    'Business Type: ' + (r.business_type_choice || '-'),\n    'Primary Goal: ' + (r.primary_goal || '-'),\n    'Conversation Priority: ' + (r.conversation_priority || '-'),\n    '',\n    'Business Profile:',\n    bpFormatted || '  (none)',\n    '',\n    'Persona - Tone: ' + (p.tone || '-') + ' | Length: ' + (p.answer_length || '-') + ' | Emoji: ' + (p.emoji_style || '-'),\n    'Must not miss: ' + (p.must_not_miss || '-'),\n    '',\n    'FAQ: ' + (k.faq || '-'),\n    'Objections: ' + (k.objection_handling || '-'),\n    '',\n    'Forbidden Claims: ' + (g.forbidden_claims || '-'),\n    'Escalation Rules: ' + (g.escalation_rules || '-'),\n    '',\n    'Type yes to save and complete setup, or no to restart.',\n  ].join('\\n');\n}\n\n// PATCH 5: Structured converters\n// faq / objection_handling -> [{ text: \"...\" }]\nfunction toTextObjects(val) {\n  if (!val) return [];\n  if (Array.isArray(val)) {\n    return val.map(function(v) {\n      return (v && typeof v === 'object' && v.text) ? v : { text: String(v) };\n    });\n  }\n  return [{ text: String(val) }];\n}\n// forbidden_claims / escalation_rules -> [\"...\"]\nfunction toStringArray(val) {\n  if (!val) return [];\n  if (Array.isArray(val)) return val.map(String);\n  return [String(val)];\n}\n\nfunction buildCommitData(draft) {\n  const r  = draft.routing          || {};\n  const bp = draft.business_profile  || {};\n  const p  = draft.persona           || {};\n  const k  = draft.knowledge         || {};\n  const g  = draft.guardrails        || {};\n\n  const personaPrompt = [\n    'Tone: ' + (p.tone || 'professional') + '.',\n    'Answer length: ' + (p.answer_length || 'medium') + '.',\n    'Emoji usage: ' + (p.emoji_style || 'none') + '.',\n    p.must_not_miss ? 'Must not miss: ' + p.must_not_miss + '.' : '',\n  ].filter(Boolean).join(' ');\n\n  // PATCH 6: qualification_rules as structured JSON\n  const qualRules = {\n    conversation_priority: r.conversation_priority || '',\n    required_info:         Array.isArray(bp.required_info) ? bp.required_info : (bp.required_info ? [bp.required_info] : []),\n    first_question:        bp.first_question || '',\n  };\n\n  // PATCH 6: cta_rules as structured JSON\n  const ctaRules = {\n    primary_goal: r.primary_goal || '',\n  };\n\n  // approved_knowledge built for optional use\n  const approvedKnowledge = {\n    setup_summary: {\n      business_type:      r.business_type_choice || 'other',\n      business_profile:   bp,\n      faq:                toTextObjects(k.faq),\n      objection_handling: toTextObjects(k.objection_handling),\n    },\n  };\n\n  // runtime_ready — false unless training_completed is already true\n  const runtimeReady = (trainingCompleted === true);\n\n  return {\n    business_type:       r.business_type_choice || 'other',\n    business_profile:    bp,\n    persona_prompt:      personaPrompt,\n    qualification_rules: qualRules,\n    cta_rules:           ctaRules,\n    faq:                 toTextObjects(k.faq),\n    objection_handling:  toTextObjects(k.objection_handling),\n    forbidden_claims:    toStringArray(g.forbidden_claims),\n    escalation_rules:    toStringArray(g.escalation_rules),\n    optional: {\n      approved_knowledge: approvedKnowledge,\n      runtime_ready:      runtimeReady,\n    },\n  };\n}\n\n// PATCH 1: Lightweight debug/state object attached to every return\nfunction makeDebug(curStage, nxtStage, action) {\n  return {\n    current_stage: curStage,\n    next_stage:    nxtStage,\n    action:        action,\n    user_message:  userMessage,\n  };\n}\n\n// ─── MAIN LOGIC ───────────────────────────────────────────────────────────────\n\nif (setupCompleted) {\n  return [{ json: {\n    output:         'Setup is already completed for this business. No further changes needed.',\n    response:       'Setup is already completed for this business. No further changes needed.',\n    action:         'none',\n    nextStage:      'completed',\n    setupDraftJson: JSON.stringify(setupDraft),\n    commitData:     null,\n    businessId,\n    debug:          makeDebug(currentStage, 'completed', 'none'),\n  }}];\n}\n\n// First run — no stage set yet. Return opening question without saving any answer.\nif (!currentStage || currentStage === '') {\n  return [{ json: {\n    output:         QUESTIONS['business_model'],\n    response:       QUESTIONS['business_model'],\n    action:         'save_draft',\n    nextStage:      'business_model',\n    setupDraftJson: JSON.stringify(setupDraft),\n    commitData:     null,\n    businessId,\n    debug:          makeDebug(null, 'business_model', 'save_draft'),\n  }}];\n}\n\n// PATCH 3: Review stage — expanded confirmation set, explicit unclear handling\nif (currentStage === 'review') {\n  const answer       = userMessage.trim().toLowerCase();\n  const positiveSet  = ['yes','y','\\u05DB\\u05DF','\\u05E1\\u05D2\\u05D5\\u05E8','\\u05D9\\u05D0\\u05DC\\u05DC\\u05D4','approve','approved'];\n  const negativeSet  = ['no','n','\\u05DC\\u05D0','restart','\\u05DE\\u05D7\\u05D3\\u05E9'];\n\n  if (positiveSet.indexOf(answer) !== -1) {\n    const commitData = buildCommitData(setupDraft);\n    return [{ json: {\n      output:         'Setup completed! Your business profile has been saved and your agent is ready.',\n      response:       'Setup completed! Your business profile has been saved and your agent is ready.',\n      action:         'commit',\n      nextStage:      'completed',\n      setupDraftJson: '{}',\n      commitData,\n      businessId,\n      debug:          makeDebug('review', 'completed', 'commit'),\n    }}];\n  }\n\n  if (negativeSet.indexOf(answer) !== -1) {\n    return [{ json: {\n      output:         'No problem. Let us start over.\\n\\n' + QUESTIONS['business_model'],\n      response:       'No problem. Let us start over.\\n\\n' + QUESTIONS['business_model'],\n      action:         'save_draft',\n      nextStage:      'business_model',\n      setupDraftJson: '{}',\n      commitData:     null,\n      businessId,\n      debug:          makeDebug('review', 'business_model', 'save_draft'),\n    }}];\n  }\n\n  // Unclear — do not advance or restart\n  return [{ json: {\n    output:         'Please reply with yes or no.',\n    response:       'Please reply with yes or no.',\n    action:         'save_draft',\n    nextStage:      'review',\n    setupDraftJson: JSON.stringify(setupDraft),\n    commitData:     null,\n    businessId,\n    debug:          makeDebug('review', 'review', 'save_draft'),\n  }}];\n}\n\n// Normal stage: validate if needed, save reply, advance, return next question\nlet updatedDraft = JSON.parse(JSON.stringify(setupDraft));\n\nif (currentStage === 'business_model') {\n  // PATCH 2: Reject invalid input — do not advance, do not overwrite draft\n  if (!isValidBusinessModel(userMessage)) {\n    return [{ json: {\n      output:         'Please choose a valid option: 1-5.',\n      response:       'Please choose a valid option: 1-5.',\n      action:         'save_draft',\n      nextStage:      'business_model',\n      setupDraftJson: JSON.stringify(setupDraft),\n      commitData:     null,\n      businessId,\n      debug:          makeDebug('business_model', 'business_model', 'save_draft'),\n    }}];\n  }\n  updatedDraft = setPath(updatedDraft, 'routing.business_type_choice', normalizeBusinessType(userMessage));\n} else {\n  const draftPath = STAGE_PATHS[currentStage];\n  if (draftPath) {\n    // PATCH 4: Wrap list-like fields as single-item arrays\n    const value = ARRAY_STAGES[currentStage] ? [userMessage] : userMessage;\n    updatedDraft = setPath(updatedDraft, draftPath, value);\n  }\n}\n\nconst nextStage = getNextStage(currentStage, updatedDraft);\n\nlet nextQuestion;\nif (nextStage === 'review') {\n  nextQuestion = buildReviewSummary(updatedDraft);\n} else if (nextStage === 'completed') {\n  nextQuestion = 'All done!';\n} else {\n  nextQuestion = QUESTIONS[nextStage] || ('(unknown stage: ' + nextStage + ')');\n}\n\nreturn [{ json: {\n  output:         nextQuestion,\n  response:       nextQuestion,\n  action:         'save_draft',\n  nextStage,\n  setupDraftJson: JSON.stringify(updatedDraft),\n  commitData:     null,\n  businessId,\n  debug:          makeDebug(currentStage, nextStage, 'save_draft'),\n}}];\n"
+      },
+      "id": "344c04af-6de5-48b4-a068-32fb6f8ede1f",
+      "name": "Stage Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4448,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "if-act-001-cond",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "commit",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-act-0001-0001-0001-000000000001",
+      "name": "Is Commit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4656,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "if-act-002-cond",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "none",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-act-0002-0002-0002-000000000002",
+      "name": "Is None?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4656,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "already-done-001",
+              "name": "output",
+              "value": "={{ $('Stage Engine').first().json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8787bb4e-2cbc-4949-8bde-f72c109d79d0",
+      "name": "Already Completed Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4880,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE businesses SET setup_draft = $1::jsonb, setup_stage = $2 WHERE id = $3",
+        "additionalFields": {
+          "queryParams": "={{ [$('Stage Engine').first().json.setupDraftJson, $('Stage Engine').first().json.nextStage, $('Stage Engine').first().json.businessId] }}"
+        }
+      },
+      "id": "64dea79d-e93a-4452-bf7c-b38764714a64",
+      "name": "Save Draft",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        4880,
+        368
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE businesses SET business_type = $1, business_profile = $2::jsonb, persona_prompt = $3, qualification_rules = $4::jsonb, cta_rules = $5::jsonb, faq = $6::jsonb, objection_handling = $7::jsonb, forbidden_claims = $8::jsonb, escalation_rules = $9::jsonb, setup_completed = true, setup_stage = 'completed', setup_draft = NULL WHERE id = $10",
+        "additionalFields": {
+          "queryParams": "={{ [$('Stage Engine').first().json.commitData.business_type, JSON.stringify($('Stage Engine').first().json.commitData.business_profile), $('Stage Engine').first().json.commitData.persona_prompt, JSON.stringify($('Stage Engine').first().json.commitData.qualification_rules), JSON.stringify($('Stage Engine').first().json.commitData.cta_rules), JSON.stringify($('Stage Engine').first().json.commitData.faq), JSON.stringify($('Stage Engine').first().json.commitData.objection_handling), JSON.stringify($('Stage Engine').first().json.commitData.forbidden_claims), JSON.stringify($('Stage Engine').first().json.commitData.escalation_rules), $('Stage Engine').first().json.businessId] }}"
+        }
+      },
+      "id": "55743c07-05d5-48ca-b3c4-5474e7dddec9",
+      "name": "Commit Final",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        4880,
+        576
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fmt-question-001",
+              "name": "output",
+              "value": "={{ $('Stage Engine').first().json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3df94dab-de11-4ca1-be1a-bd4ecb742e58",
+      "name": "Format Next Question",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5104,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $('Stage Engine').first().json.output;\nreturn [{ json: { output } }];\n"
+      },
+      "id": "b32adf01-0bf0-4caf-8adb-01e0c018ccce",
+      "name": "Format Committed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5104,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "final-response-001",
+              "name": "output",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9d3899ee-b89a-4a1a-9044-07df41ca4795",
+      "name": "Final Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5328,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM chat_sessions WHERE session_key = $1 LIMIT 1",
+        "additionalFields": {
+          "queryParams": "={{ ['main_session'] }}"
+        }
+      },
+      "id": "load-session-0001-0001-0001-000000000001",
+      "name": "Load Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2800,
+        500
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "sess-exists-cond-001",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "sess-exists-0001-0001-0001-000000000001",
+      "name": "Session Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3056,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO chat_sessions (session_key, current_mode, selected_business_id, pending_project_name) VALUES ($1, NULL, NULL, NULL) RETURNING *",
+        "additionalFields": {
+          "queryParams": "={{ ['main_session'] }}"
+        }
+      },
+      "id": "create-session-0001-0001-0001-000000000001",
+      "name": "Create Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3056,
+        680
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE chat_sessions SET current_mode = 'await_project_name', updated_at = now() WHERE session_key = $1",
+        "additionalFields": {
+          "queryParams": "={{ ['main_session'] }}"
+        }
+      },
+      "id": "upd-sess-await-0001-0001-0001-000000000001",
+      "name": "Update Session Await Name",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        3416,
+        280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE chat_sessions SET current_mode = 'in_setup', selected_business_id = $2, updated_at = now() WHERE session_key = $1",
+        "additionalFields": {
+          "queryParams": "={{ ['main_session', $json.id] }}"
+        }
+      },
+      "id": "upd-sess-setup-0001-0001-0001-000000000001",
+      "name": "Update Session In Setup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        4336,
+        368
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE chat_sessions SET current_mode = NULL, selected_business_id = NULL, pending_project_name = NULL, updated_at = now() WHERE session_key = $1",
+        "additionalFields": {
+          "queryParams": "={{ ['main_session'] }}"
+        }
+      },
+      "id": "reset-session-0001-0001-0001-000000000001",
+      "name": "Reset Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        4992,
+        576
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Projects": {
+      "main": [
+        [
+          {
+            "node": "Load Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Project Selection Router": {
+      "main": [
+        [
+          {
+            "node": "Is Select Existing?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Select Existing?": {
+      "main": [
+        [
+          {
+            "node": "Set Selected Business ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Create New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Create New?": {
+      "main": [
+        [
+          {
+            "node": "Update Session Await Name",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Save Name?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Save Name?": {
+      "main": [
+        [
+          {
+            "node": "Create Named Business",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show Project Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Show Project Menu": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Project Name": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Selected Business ID": {
+      "main": [
+        [
+          {
+            "node": "Load Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Named Business": {
+      "main": [
+        [
+          {
+            "node": "Resolve Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Business": {
+      "main": [
+        [
+          {
+            "node": "Business Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Exists?": {
+      "main": [
+        [
+          {
+            "node": "Resolve Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Business": {
+      "main": [
+        [
+          {
+            "node": "Update Session In Setup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Engine": {
+      "main": [
+        [
+          {
+            "node": "Is Commit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Commit?": {
+      "main": [
+        [
+          {
+            "node": "Commit Final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is None?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is None?": {
+      "main": [
+        [
+          {
+            "node": "Already Completed Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Completed Response": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Draft": {
+      "main": [
+        [
+          {
+            "node": "Format Next Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Next Question": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit Final": {
+      "main": [
+        [
+          {
+            "node": "Reset Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Committed": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Session": {
+      "main": [
+        [
+          {
+            "node": "Session Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Session Exists?": {
+      "main": [
+        [
+          {
+            "node": "Project Selection Router",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [
+          {
+            "node": "Project Selection Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Session Await Name": {
+      "main": [
+        [
+          {
+            "node": "Ask Project Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Session In Setup": {
+      "main": [
+        [
+          {
+            "node": "Stage Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Session": {
+      "main": [
+        [
+          {
+            "node": "Format Committed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "77a9e655-4792-47b7-a915-a20b56f19280",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a6fa1ea70c2b65d69b2a991c3cbda0430e4cb91a5e0e2ee3a5a6ce456bce1e90"
+  },
+  "id": "85ybLpK1KBhqevQZ",
+  "tags": []
+}
