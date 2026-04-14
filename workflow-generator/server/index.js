@@ -9,6 +9,7 @@ const path = require('path')
 const generateRouter = require('./routes/generate')
 const editRouter = require('./routes/edit')
 const n8nRouter = require('./routes/n8n')
+const projectRouter = require('./routes/project')
 
 const app = express()
 app.use(cors())
@@ -17,6 +18,7 @@ app.use(express.json({ limit: '2mb' }))
 app.use('/api/generate', generateRouter)
 app.use('/api/edit', editRouter)
 app.use('/api/n8n', n8nRouter)
+app.use('/api/projects', projectRouter)
 
 // Serve React build in production
 const clientBuild = path.join(__dirname, '../client/dist')

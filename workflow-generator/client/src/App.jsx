@@ -2,10 +2,11 @@ import { useState } from 'react'
 import ModeTab from './components/ModeTab'
 import BuildMode from './components/BuildMode'
 import EditMode from './components/EditMode'
+import ProjectMode from './components/ProjectMode'
 import WorkflowOutput from './components/WorkflowOutput'
 
 export default function App() {
-  const [mode, setMode] = useState('build')
+  const [mode, setMode] = useState('project')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -36,7 +37,9 @@ export default function App() {
           <ModeTab mode={mode} onChange={m => { setMode(m); setResult(null); setError(null) }} />
 
           <div className="p-6">
-            {mode === 'build' ? (
+            {mode === 'project' ? (
+              <ProjectMode />
+            ) : mode === 'build' ? (
               <BuildMode
                 onResult={handleResult}
                 onError={handleError}
@@ -52,13 +55,13 @@ export default function App() {
               />
             )}
 
-            {error && (
+            {mode !== 'project' && error && (
               <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
                 {error}
               </div>
             )}
 
-            {result && (
+            {mode !== 'project' && result && (
               <WorkflowOutput result={result} onRefine={handleRefine} />
             )}
           </div>

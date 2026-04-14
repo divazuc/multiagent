@@ -1,7 +1,8 @@
 export default function ModeTab({ mode, onChange }) {
   const tabs = [
-    { id: 'build', label: 'Build new workflow' },
-    { id: 'edit', label: 'Edit existing workflow' }
+    { id: 'project', label: 'Project' },
+    { id: 'build', label: 'Build workflow' },
+    { id: 'edit', label: 'Edit workflow' }
   ]
   return (
     <div className="flex border-b border-slate-200 bg-slate-50">
