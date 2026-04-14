@@ -46,20 +46,30 @@ export default function TestRunner({ workflow }) {
       {testResult && !deleted && (
         <div className={`mt-3 rounded-lg p-4 text-sm border ${testResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
           <div className={`font-semibold mb-1 ${testResult.success ? 'text-green-700' : 'text-red-700'}`}>
-            {testResult.success ? 'Test passed' : 'Test failed'}
+            {testResult.success ? 'Imported successfully' : 'Import failed'}
           </div>
+          {testResult.message && <div className="text-slate-600 text-xs mb-2">{testResult.message}</div>}
           {testResult.error && <div className="text-red-600 text-xs">{testResult.error}</div>}
-          {testResult.message && <div className="text-slate-600 text-xs">{testResult.message}</div>}
+          {testResult.workflowUrl && (
+            <a
+              href={testResult.workflowUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-block text-xs bg-indigo-600 text-white px-3 py-1.5 rounded font-semibold hover:bg-indigo-700 mb-2"
+            >
+              Open in n8n
+            </a>
+          )}
           {testResult.importedId && (
-            <div className="mt-3 flex gap-2 items-center">
+            <div className="mt-2 flex gap-2 items-center">
               <button
                 onClick={handleDelete}
                 disabled={deleteLoading}
                 className="text-xs bg-white border border-slate-200 px-3 py-1.5 rounded font-semibold text-slate-600 hover:border-red-300 hover:text-red-600"
               >
-                {deleteLoading ? 'Deleting...' : 'Delete test import'}
+                {deleteLoading ? 'Deleting...' : 'Delete from n8n'}
               </button>
-              <span className="text-xs text-slate-400">or keep it in n8n</span>
+              <span className="text-xs text-slate-400">or keep it</span>
             </div>
           )}
         </div>

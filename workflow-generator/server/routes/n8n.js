@@ -55,20 +55,15 @@ router.post('/test', async (req, res) => {
     const imported = await client.importWorkflow(workflow)
     importedId = imported.id
 
-    let executionResult = null
-    try {
-      const exec = await client.triggerManualTest(importedId)
-      executionResult = exec
-    } catch (execErr) {
-      return res.json({
-        success: false,
-        importedId,
-        error: `Execution failed: ${execErr.message}`,
-        message: 'The workflow was imported but the test execution failed.'
-      })
-    }
+    const n8nBase = process.env.N8N_URL.replace(/\/$/, '')
+    const workflowUrl = `${n8nBase}/workflow/${importedId}`
 
-    return res.json({ success: true, importedId, execution: executionResult })
+    return res.json({
+      success: true,
+      importedId,
+      workflowUrl,
+      message: 'Workflow imported successfully. Open it in n8n to review and run it.'
+    })
   } catch (err) {
     return res.status(500).json({ error: err.message, importedId })
   }

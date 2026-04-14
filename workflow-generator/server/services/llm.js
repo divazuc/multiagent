@@ -50,8 +50,10 @@ function parseResponse(response) {
   const text = response.content[0].text
   let parsed
   try {
-    const cleaned = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
-    parsed = JSON.parse(cleaned)
+    // Extract JSON from a code block anywhere in the response, or try raw parse
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    const candidate = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
+    parsed = JSON.parse(candidate)
   } catch {
     throw new Error(`Failed to parse LLM response as JSON: ${text.slice(0, 200)}`)
   }

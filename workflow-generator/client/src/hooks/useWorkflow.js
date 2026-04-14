@@ -16,7 +16,12 @@ export async function apiEdit(workflow, changeDescription) {
     body: JSON.stringify({ workflow, changeDescription })
   })
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  if (!res.ok) {
+    if (res.status === 422 && data.errors) {
+      throw new Error('Validation failed after 2 attempts:\n• ' + data.errors.join('\n• '))
+    }
+    throw new Error(data.error || `Server error ${res.status}`)
+  }
   return data
 }
 

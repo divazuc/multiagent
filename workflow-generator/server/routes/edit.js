@@ -31,14 +31,18 @@ router.post('/', async (req, res) => {
   let validation = validateWorkflow(result.workflow, catalogue)
 
   if (!validation.valid) {
+    console.log('[edit] First attempt validation errors:', validation.errors)
     const retryDesc = `${changeDescription}\n\nYour previous attempt had these validation errors — fix them:\n${validation.errors.join('\n')}`
     try {
       result = await editWorkflow(client, existingWorkflow, retryDesc)
       validation = validateWorkflow(result.workflow, catalogue)
-    } catch { /* swallow */ }
+    } catch (retryErr) {
+      console.log('[edit] Retry LLM error:', retryErr.message)
+    }
   }
 
   if (!validation.valid) {
+    console.log('[edit] Final validation errors:', validation.errors)
     return res.status(422).json({ errors: validation.errors, partial: result })
   }
 

@@ -35,9 +35,10 @@ function createN8nClient(baseUrl, apiKey) {
     },
 
     importWorkflow(workflow) {
+      const { active, id, settings, ...rest } = workflow
       return request('/api/v1/workflows', {
         method: 'POST',
-        body: JSON.stringify({ ...workflow, active: false })
+        body: JSON.stringify({ ...rest, settings: {} })
       })
     },
 
