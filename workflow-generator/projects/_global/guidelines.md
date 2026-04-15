@@ -46,7 +46,7 @@ Every sub-workflow:
 
 ## Credentials
 
-- Always use placeholder credential objects: `{ "id": "CREDENTIAL_ID", "name": "Descriptive Name" }`
+- Always use placeholder credential objects: `{ "id": "CREDENTIAL_ID", "name": "Descriptive Name" }` — use the exact credential name from credential-map.md for the service being used
 - Never hardcode API keys or tokens in node parameters
 - See `credential-map.md` for the credential names used in this environment
 

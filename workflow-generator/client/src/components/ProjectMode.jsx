@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { apiAnalyzeSpec, apiGenerateProject, apiImportProject } from '../hooks/useWorkflow'
+import { apiAnalyzeSpec, apiGenerateProject, apiImportProject, apiEdit, apiSaveProjectWorkflow } from '../hooks/useWorkflow'
 
 const STEPS = ['spec', 'map', 'generate', 'import']
 
@@ -19,6 +19,13 @@ export default function ProjectMode() {
   const [pendingInfo, setPendingInfo] = useState([])             // deferred items [{item, note}]
   const [contextExpanded, setContextExpanded] = useState(false)
   const clarificationRef = useRef(null)
+
+  // Inline edit state (step 3)
+  const [editingIdx, setEditingIdx] = useState(null)
+  const [editDescription, setEditDescription] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState(null)
+  const [editSavedIdx, setEditSavedIdx] = useState(null)
 
   function slugify(name) {
     return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -114,6 +121,30 @@ export default function ProjectMode() {
     URL.revokeObjectURL(url)
   }
 
+  async function handleEditWorkflow(idx) {
+    if (!editDescription.trim()) return
+    const item = generated.results[idx]
+    setEditLoading(true)
+    setEditError(null)
+    try {
+      const result = await apiEdit(item.workflow, editDescription)
+      await apiSaveProjectWorkflow(slug, item.spec.name, item.spec.role, result.workflow)
+      setGenerated(prev => ({
+        ...prev,
+        results: prev.results.map((r, i) =>
+          i === idx ? { ...r, workflow: result.workflow, validation: result.validation } : r
+        )
+      }))
+      setEditSavedIdx(idx)
+      setEditingIdx(null)
+      setEditDescription('')
+    } catch (err) {
+      setEditError(err.message)
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
   function handleReset() {
     setStep('spec')
     setSpec('')
@@ -126,6 +157,10 @@ export default function ProjectMode() {
     setCurrentClarification('')
     setPendingInfo([])
     setContextExpanded(false)
+    setEditingIdx(null)
+    setEditDescription('')
+    setEditError(null)
+    setEditSavedIdx(null)
   }
 
   function handleContinueEditing() {
@@ -178,7 +213,8 @@ export default function ProjectMode() {
               className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
               placeholder="e.g. customer-onboarding"
               value={slug}
-              onChange={e => setSlug(slugify(e.target.value))}
+              onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+              onBlur={e => setSlug(slugify(e.target.value))}
             />
             <p className="text-xs text-slate-400 mt-1">Used for the project folder name. Lowercase, hyphens only.</p>
           </div>
@@ -358,30 +394,71 @@ export default function ProjectMode() {
 
           <div className="space-y-3 mb-4">
             {generated.results?.map((item, i) => (
-              <div key={i} className="border border-slate-200 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${item.spec.role === 'supervisor' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                      {item.spec.role}
-                    </span>
-                    <span className="font-semibold text-sm text-slate-800">{item.spec.name}</span>
+              <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${item.spec.role === 'supervisor' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                        {item.spec.role}
+                      </span>
+                      <span className="font-semibold text-sm text-slate-800">{item.spec.name}</span>
+                      {editSavedIdx === i && (
+                        <span className="text-xs text-green-600 font-semibold">Saved</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-semibold ${item.validation.valid ? 'text-green-600' : 'text-red-500'}`}>
+                        {item.validation.valid ? 'Valid' : `${item.validation.errors.length} error(s)`}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingIdx(editingIdx === i ? null : i)
+                          setEditDescription('')
+                          setEditError(null)
+                          setEditSavedIdx(null)
+                        }}
+                        className={`text-xs px-2 py-1 rounded ${editingIdx === i ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                      >
+                        {editingIdx === i ? 'Cancel' : 'Edit'}
+                      </button>
+                      <button
+                        onClick={() => handleDownload(item.workflow, item.spec.name)}
+                        className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200"
+                      >
+                        Download
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-semibold ${item.validation.valid ? 'text-green-600' : 'text-red-500'}`}>
-                      {item.validation.valid ? 'Valid' : `${item.validation.errors.length} error(s)`}
-                    </span>
-                    <button
-                      onClick={() => handleDownload(item.workflow, item.spec.name)}
-                      className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200"
-                    >
-                      Download
-                    </button>
-                  </div>
+                  <p className="text-xs text-slate-500">{item.summary}</p>
+                  {!item.validation.valid && (
+                    <div className="mt-2 text-xs text-red-600 space-y-0.5">
+                      {item.validation.errors.map((e, j) => <div key={j}>• {e}</div>)}
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-slate-500">{item.summary}</p>
-                {!item.validation.valid && (
-                  <div className="mt-2 text-xs text-red-600 space-y-0.5">
-                    {item.validation.errors.map((e, j) => <div key={j}>• {e}</div>)}
+
+                {editingIdx === i && (
+                  <div className="border-t border-slate-200 bg-slate-50 p-4">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      What do you want to change?
+                    </label>
+                    <textarea
+                      className="w-full border-2 border-slate-200 rounded-lg p-3 text-sm leading-relaxed resize-none focus:outline-none focus:border-indigo-400 bg-white"
+                      rows={3}
+                      placeholder='e.g. "Add error handling for the HTTP request node"'
+                      value={editDescription}
+                      onChange={e => setEditDescription(e.target.value)}
+                    />
+                    {editError && (
+                      <div className="mt-2 text-xs text-red-600">{editError}</div>
+                    )}
+                    <button
+                      onClick={() => handleEditWorkflow(i)}
+                      disabled={editLoading || !editDescription.trim()}
+                      className="mt-2 bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {editLoading ? 'Applying...' : 'Apply & save →'}
+                    </button>
                   </div>
                 )}
               </div>

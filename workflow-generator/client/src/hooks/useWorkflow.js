@@ -84,6 +84,17 @@ export async function apiGenerateProject(slug, spec, workflowMap, pendingInfo) {
   return data
 }
 
+export async function apiSaveProjectWorkflow(slug, name, role, workflow) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/workflows`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, role, workflow })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data
+}
+
 export async function apiImportProject(slug, workflows) {
   const res = await fetch(`/api/projects/${slug}/import`, {
     method: 'POST',

@@ -101,6 +101,39 @@ router.post('/generate', async (req, res) => {
   }
 })
 
+// Save or overwrite a single workflow in a project (upserts manifest entry)
+router.post('/:slug/workflows', (req, res) => {
+  const { slug } = req.params
+  if (!isValidSlug(slug)) return res.status(400).json({ error: 'Invalid slug format' })
+  const manifest = loadManifest(slug)
+  if (!manifest) return res.status(404).json({ error: 'Project not found' })
+
+  const { name, role, workflow } = req.body
+  if (!name?.trim()) return res.status(400).json({ error: 'name is required' })
+  if (!workflow || typeof workflow !== 'object') return res.status(400).json({ error: 'workflow must be a JSON object' })
+
+  saveWorkflow(slug, name, workflow)
+
+  const existing = manifest.workflows.find(w => w.name === name)
+  if (existing) {
+    existing.savedAt = new Date().toISOString()
+  } else {
+    manifest.workflows.push({
+      name,
+      role: role || 'sub',
+      purpose: '',
+      n8nId: null,
+      importedAt: null,
+      valid: true,
+      validationErrors: [],
+      savedAt: new Date().toISOString()
+    })
+  }
+  saveManifest(slug, manifest)
+
+  res.json({ ok: true, manifest })
+})
+
 // Import all generated workflows to n8n (subs first, supervisor last)
 router.post('/:slug/import', async (req, res) => {
   const { slug } = req.params

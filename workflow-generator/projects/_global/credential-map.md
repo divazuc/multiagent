@@ -10,10 +10,9 @@ Update this file whenever you add a new credential to n8n.
 | Service | Credential Name in n8n | Type |
 |---|---|---|
 | Anthropic API | `ANTHROPIC_HTTP_HEADER_AUTH` | Header Auth |
-| Postgres / Supabase | `Postgres_Supabase` | Postgres |
-| Slack | `Slack account` | Slack OAuth |
-| Google Sheets | `Google Sheets account` | Google OAuth |
-| HTTP APIs (generic) | `Header Auth` | Header Auth |
+| Supabase (general) | `Postgres_Supabase` | Postgres |
+| Supabase (multi-agent) | `multiagent_n8n_postgres` | Postgres |
+| Supabase (WhatsApp agent) | `Whatsapp_agent_DB` | Postgres |
 
 ---
 
