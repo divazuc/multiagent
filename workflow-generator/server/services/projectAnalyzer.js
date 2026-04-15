@@ -4,10 +4,18 @@ const { loadGlobalContext } = require('./projectManager')
 
 /**
  * Ask Claude to analyze a project spec and return a proposed workflow map.
- * Returns: { workflows: [{ name, role, purpose, inputs, outputs, calls }], gaps: [] }
+ * Returns: {
+ *   projectName, workflows,
+ *   gaps: [{ question: string, blocking: boolean }],
+ *   pendingInfo: string[]
+ * }
  */
-async function analyzeSpec(client, spec) {
+async function analyzeSpec(client, spec, clarifications) {
   const { guidelines, credentialMap } = loadGlobalContext()
+
+  const userMessage = clarifications?.trim()
+    ? `Analyze this project spec and return the workflow map:\n\n${spec}\n\n---\nAdditional clarifications from the user:\n${clarifications}`
+    : `Analyze this project spec and return the workflow map:\n\n${spec}`
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -28,8 +36,17 @@ Always respond with a JSON object in this exact shape:
       "calls": ["Name of sub-workflow it calls"]
     }
   ],
-  "gaps": ["Any missing information needed before generating"]
+  "gaps": [
+    { "question": "Missing information needed", "blocking": true|false }
+  ],
+  "pendingInfo": []
 }
+
+Gap classification rules:
+- blocking: true → the workflow structure CANNOT be correctly determined without this answer (e.g., unknown trigger type, unclear which workflows are needed, ambiguous supervisor/sub relationship)
+- blocking: false → generation can proceed with a reasonable placeholder (e.g., email provider choice, specific field names, optional third-party service)
+
+If the user's clarification text contains deferral signals for a gap (phrases like "will provide later", "don't have this", "not sure yet", "TBD", "decide later", or similar), move that deferred item into pendingInfo[] as a descriptive string instead of keeping it in gaps[]. pendingInfo[] items are human-readable reminders of what is still needed.
 
 Rules:
 - Exactly one workflow must have role "supervisor"
@@ -45,7 +62,7 @@ ${guidelines}
 Credential map:
 ${credentialMap}`,
     messages: [
-      { role: 'user', content: `Analyze this project spec and return the workflow map:\n\n${spec}` }
+      { role: 'user', content: userMessage }
     ]
   })
 
@@ -53,11 +70,25 @@ ${credentialMap}`,
   const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   const candidate = match ? match[1].trim() : text.trim()
 
+  let parsed
   try {
-    return JSON.parse(candidate)
+    parsed = JSON.parse(candidate)
   } catch {
     throw new Error(`Failed to parse workflow map: ${text.slice(0, 200)}`)
   }
+
+  // Normalise: gaps may be strings (legacy) or objects. Ensure object shape.
+  if (Array.isArray(parsed.gaps)) {
+    parsed.gaps = parsed.gaps.map(g =>
+      typeof g === 'string' ? { question: g, blocking: true } : g
+    )
+  } else {
+    parsed.gaps = []
+  }
+
+  if (!Array.isArray(parsed.pendingInfo)) parsed.pendingInfo = []
+
+  return parsed
 }
 
 /**
