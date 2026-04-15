@@ -97,6 +97,24 @@ function loadProjectContext(slug) {
   return { global, spec, guidelines, manifest }
 }
 
+/**
+ * Save pending info items as a markdown checklist.
+ * items: Array<{ item: string, note: string }>
+ */
+function savePendingInfo(slug, items) {
+  createProject(slug)
+  const lines = ['# Pending Info\n', 'Information still needed to finalize this project.\n']
+  for (const { item, note } of items) {
+    lines.push(`- [ ] ${item}`)
+    if (note?.trim()) lines.push(`  - Note: ${note}`)
+  }
+  fs.writeFileSync(
+    path.join(PROJECTS_DIR, slug, 'pending-info.md'),
+    lines.join('\n'),
+    'utf8'
+  )
+}
+
 module.exports = {
   listProjects,
   createProject,
@@ -106,5 +124,6 @@ module.exports = {
   saveWorkflow,
   loadProjectContext,
   loadGlobalContext,
+  savePendingInfo,
   PROJECTS_DIR
 }
