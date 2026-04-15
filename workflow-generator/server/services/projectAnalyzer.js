@@ -54,7 +54,7 @@ Rules:
 - The supervisor is the only one triggered externally
 - calls[] on supervisor lists all sub-workflow names it will invoke
 - calls[] on sub-workflows is always []
-- gaps[] lists questions that must be answered before generation can proceed
+- gaps[] lists questions about the spec; blocking gaps must be resolved, non-blocking gaps can use placeholders
 
 Global guidelines for this environment:
 ${guidelines}
@@ -90,7 +90,9 @@ ${credentialMap}`,
     parsed.gaps = []
   }
 
-  if (!Array.isArray(parsed.pendingInfo)) parsed.pendingInfo = []
+  parsed.pendingInfo = (Array.isArray(parsed.pendingInfo) ? parsed.pendingInfo : [])
+    .filter(i => i != null)
+    .map(i => typeof i === 'string' ? i : String(i))
 
   return parsed
 }

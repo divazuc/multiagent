@@ -45,7 +45,6 @@ export default function ProjectMode() {
     try {
       const map = await apiAnalyzeSpec(spec)
       applyMap(map)
-      if (!slug && map.projectName) setSlug(slugify(map.projectName))
       setStep('map')
     } catch (err) {
       setError(err.message)
