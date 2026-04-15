@@ -31,12 +31,12 @@ router.get('/:slug', (req, res) => {
 
 // Analyze a spec — returns proposed workflow map without generating anything
 router.post('/analyze', async (req, res) => {
-  const { spec } = req.body
+  const { spec, clarifications } = req.body
   if (!spec?.trim()) return res.status(400).json({ error: 'spec is required' })
 
   try {
     const client = getAnthropicClient()
-    const workflowMap = await analyzeSpec(client, spec)
+    const workflowMap = await analyzeSpec(client, spec, clarifications || '')
     res.json({ workflowMap })
   } catch (err) {
     res.status(500).json({ error: err.message })
