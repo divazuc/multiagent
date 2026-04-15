@@ -13,6 +13,9 @@ const { createN8nClient } = require('../services/n8nClient')
 
 const router = Router()
 
+const VALID_SLUG = /^[a-z0-9][a-z0-9-]*$/
+function isValidSlug(slug) { return typeof slug === 'string' && VALID_SLUG.test(slug) }
+
 function getAnthropicClient() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 }
@@ -24,6 +27,7 @@ router.get('/', (req, res) => {
 
 // Get a project's manifest and context
 router.get('/:slug', (req, res) => {
+  if (!isValidSlug(req.params.slug)) return res.status(400).json({ error: 'Invalid slug format' })
   const manifest = loadManifest(req.params.slug)
   if (!manifest) return res.status(404).json({ error: 'Project not found' })
   res.json({ manifest })
@@ -47,6 +51,7 @@ router.post('/analyze', async (req, res) => {
 router.post('/generate', async (req, res) => {
   const { slug, spec, workflowMap, pendingInfo } = req.body
   if (!slug?.trim()) return res.status(400).json({ error: 'slug is required' })
+  if (!isValidSlug(slug)) return res.status(400).json({ error: 'Invalid slug format — use lowercase letters, numbers, and hyphens only' })
   if (!spec?.trim()) return res.status(400).json({ error: 'spec is required' })
   if (!workflowMap?.workflows?.length) return res.status(400).json({ error: 'workflowMap is required' })
 
@@ -99,6 +104,7 @@ router.post('/generate', async (req, res) => {
 // Import all generated workflows to n8n (subs first, supervisor last)
 router.post('/:slug/import', async (req, res) => {
   const { slug } = req.params
+  if (!isValidSlug(slug)) return res.status(400).json({ error: 'Invalid slug format' })
   const manifest = loadManifest(slug)
   if (!manifest) return res.status(404).json({ error: 'Project not found. Generate workflows first.' })
 
