@@ -59,22 +59,25 @@ export async function apiListProjects() {
   return data.projects
 }
 
-export async function apiAnalyzeSpec(spec) {
+export async function apiAnalyzeSpec(spec, clarifications) {
   const res = await fetch('/api/projects/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ spec })
+    body: JSON.stringify({ spec, clarifications: clarifications || '' })
   })
-  const data = await res.json()
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status}) — is the server running on port 3001?`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 200)}`) }
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
   return data.workflowMap
 }
 
-export async function apiGenerateProject(slug, spec, workflowMap) {
+export async function apiGenerateProject(slug, spec, workflowMap, pendingInfo) {
   const res = await fetch('/api/projects/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slug, spec, workflowMap })
+    body: JSON.stringify({ slug, spec, workflowMap, pendingInfo: pendingInfo || [] })
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
