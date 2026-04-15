@@ -79,7 +79,10 @@ export async function apiGenerateProject(slug, spec, workflowMap, pendingInfo) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ slug, spec, workflowMap, pendingInfo: pendingInfo || [] })
   })
-  const data = await res.json()
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status}) — generation may have timed out. Check the server console for details.`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 300)}`) }
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
   return data
 }

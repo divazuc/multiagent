@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { apiAnalyzeSpec, apiGenerateProject, apiImportProject, apiEdit, apiSaveProjectWorkflow } from '../hooks/useWorkflow'
+import { saveDraft, deleteDraft, listDrafts } from '../hooks/useDraft'
 
 const STEPS = ['spec', 'map', 'generate', 'import']
 
@@ -26,6 +27,56 @@ export default function ProjectMode() {
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState(null)
   const [editSavedIdx, setEditSavedIdx] = useState(null)
+
+  // Draft state
+  const [drafts, setDrafts] = useState(() => listDrafts())
+  const autoSaveTimer = useRef(null)
+
+  // Auto-save whenever key state changes (debounced 1s), requires slug
+  useEffect(() => {
+    if (!slug) return
+    clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = setTimeout(() => {
+      saveDraft(slug, { step, spec, slug, clarifications, currentClarification, pendingInfo, workflowMap, generated })
+    }, 1000)
+    return () => clearTimeout(autoSaveTimer.current)
+  }, [spec, slug, step, clarifications, currentClarification, pendingInfo, workflowMap, generated])
+
+  function refreshDrafts() { setDrafts(listDrafts()) }
+
+  function relativeTime(isoStr) {
+    const diff = Date.now() - new Date(isoStr)
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins}m ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    return `${Math.floor(hrs / 24)}d ago`
+  }
+
+  const STEP_LABELS = { spec: 'Spec', map: 'Review map', generate: 'Generated', import: 'Imported' }
+
+  function handleResume(draft) {
+    setSpec(draft.spec || '')
+    setSlug(draft.slug || '')
+    setStep(draft.step || 'spec')
+    setClarifications(draft.clarifications || [])
+    setCurrentClarification(draft.currentClarification || '')
+    setPendingInfo(draft.pendingInfo || [])
+    setWorkflowMap(draft.workflowMap || null)
+    setGenerated(draft.generated || null)
+    setImportResults(null)
+    setError(null)
+    setEditingIdx(null)
+    setEditDescription('')
+    setEditError(null)
+    setEditSavedIdx(null)
+  }
+
+  function handleDiscardDraft(slug) {
+    deleteDraft(slug)
+    refreshDrafts()
+  }
 
   function slugify(name) {
     return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -104,6 +155,9 @@ export default function ProjectMode() {
       const data = await apiImportProject(slug, workflows)
       setImportResults(data)
       setStep('import')
+      // Project fully imported — clear draft
+      deleteDraft(slug)
+      refreshDrafts()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -146,6 +200,10 @@ export default function ProjectMode() {
   }
 
   function handleReset() {
+    if (slug) {
+      deleteDraft(slug)
+      refreshDrafts()
+    }
     setStep('spec')
     setSpec('')
     setSlug('')
@@ -205,6 +263,48 @@ export default function ProjectMode() {
       {/* Step 1: Spec input */}
       {step === 'spec' && (
         <div>
+          {/* Saved drafts */}
+          {drafts.length > 0 && (
+            <div className="mb-6">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Continue a saved project</div>
+              <div className="space-y-2">
+                {drafts.map(draft => (
+                  <div key={draft.slug} className="flex items-center gap-3 border border-slate-200 rounded-lg px-4 py-3 bg-slate-50">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-slate-800 truncate">{draft.slug}</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${
+                          draft.step === 'import' ? 'bg-emerald-100 text-emerald-700' :
+                          draft.step === 'generate' ? 'bg-green-100 text-green-700' :
+                          draft.step === 'map' ? 'bg-indigo-100 text-indigo-700' :
+                          'bg-slate-200 text-slate-600'
+                        }`}>{STEP_LABELS[draft.step] || draft.step}</span>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">Saved {relativeTime(draft.savedAt)}</div>
+                    </div>
+                    <button
+                      onClick={() => handleResume(draft)}
+                      className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded font-semibold hover:bg-indigo-700 transition-colors shrink-0"
+                    >
+                      Resume
+                    </button>
+                    <button
+                      onClick={() => handleDiscardDraft(draft.slug)}
+                      className="text-xs text-slate-400 hover:text-red-500 px-2 py-1.5 rounded font-semibold transition-colors shrink-0"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 my-4">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-xs text-slate-400">or start a new project</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+            </div>
+          )}
+
           <div className="mb-4">
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
               Project slug
