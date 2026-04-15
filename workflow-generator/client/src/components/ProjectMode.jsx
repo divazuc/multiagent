@@ -57,13 +57,14 @@ export default function ProjectMode() {
   async function handleReanalyze() {
     if (!currentClarification.trim()) return
     const newClarifications = [...clarifications, currentClarification]
-    setClarifications(newClarifications)
-    setCurrentClarification('')
     setLoading(true)
     setError(null)
     try {
       const map = await apiAnalyzeSpec(spec, newClarifications.join('\n\n---\n'))
+      setClarifications(newClarifications)
+      setCurrentClarification('')
       applyMap(map)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -341,7 +342,7 @@ export default function ProjectMode() {
               onClick={handleContinueEditing}
               className="bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-lg text-sm font-semibold hover:border-slate-300"
             >
-              Continue editing spec
+              Add another clarification
             </button>
             <button onClick={() => setStep('spec')} className="bg-white text-slate-400 border border-slate-200 px-4 py-3 rounded-lg text-sm hover:border-slate-300">
               ← Back to spec
