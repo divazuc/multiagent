@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { apiAnalyzeSpec, apiGenerateProject, apiImportProject } from '../hooks/useWorkflow'
 
 const STEPS = ['spec', 'map', 'generate', 'import']
@@ -13,8 +13,29 @@ export default function ProjectMode() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
+  // Clarification loop state
+  const [clarifications, setClarifications] = useState([])       // submitted rounds
+  const [currentClarification, setCurrentClarification] = useState('')
+  const [pendingInfo, setPendingInfo] = useState([])             // deferred items [{item, note}]
+  const [contextExpanded, setContextExpanded] = useState(false)
+  const clarificationRef = useRef(null)
+
   function slugify(name) {
     return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  }
+
+  function applyMap(map) {
+    setWorkflowMap(map)
+    // Accumulate new pendingInfo items from this analysis round
+    if (map.pendingInfo?.length) {
+      setPendingInfo(prev => {
+        const existing = new Set(prev.map(p => p.item))
+        const newItems = map.pendingInfo
+          .filter(item => !existing.has(item))
+          .map(item => ({ item, note: '' }))
+        return [...prev, ...newItems]
+      })
+    }
   }
 
   async function handleAnalyze() {
@@ -23,9 +44,26 @@ export default function ProjectMode() {
     setError(null)
     try {
       const map = await apiAnalyzeSpec(spec)
-      setWorkflowMap(map)
+      applyMap(map)
       if (!slug && map.projectName) setSlug(slugify(map.projectName))
       setStep('map')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleReanalyze() {
+    if (!currentClarification.trim()) return
+    const newClarifications = [...clarifications, currentClarification]
+    setClarifications(newClarifications)
+    setCurrentClarification('')
+    setLoading(true)
+    setError(null)
+    try {
+      const map = await apiAnalyzeSpec(spec, newClarifications.join('\n\n---\n'))
+      applyMap(map)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -37,7 +75,7 @@ export default function ProjectMode() {
     setLoading(true)
     setError(null)
     try {
-      const data = await apiGenerateProject(slug, spec, workflowMap)
+      const data = await apiGenerateProject(slug, spec, workflowMap, pendingInfo)
       setGenerated(data)
       setStep('generate')
     } catch (err) {
@@ -84,7 +122,20 @@ export default function ProjectMode() {
     setGenerated(null)
     setImportResults(null)
     setError(null)
+    setClarifications([])
+    setCurrentClarification('')
+    setPendingInfo([])
+    setContextExpanded(false)
   }
+
+  function handleContinueEditing() {
+    clarificationRef.current?.focus()
+    clarificationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  const blockingGaps = workflowMap?.gaps?.filter(g => g.blocking) ?? []
+  const nonBlockingGaps = workflowMap?.gaps?.filter(g => !g.blocking) ?? []
+  const canGenerate = blockingGaps.length === 0
 
   return (
     <div>
@@ -159,17 +210,8 @@ export default function ProjectMode() {
           <h3 className="font-semibold text-slate-700 mb-1">Proposed workflow system</h3>
           <p className="text-xs text-slate-400 mb-4">Review before generating. Claude will build each workflow with awareness of the others.</p>
 
-          {workflowMap.gaps?.length > 0 && (
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Gaps in your spec</div>
-              <ul className="text-sm text-amber-700 space-y-1">
-                {workflowMap.gaps.map((g, i) => <li key={i}>• {g}</li>)}
-              </ul>
-              <p className="text-xs text-amber-600 mt-2">You can continue anyway or go back and update your spec.</p>
-            </div>
-          )}
-
-          <div className="space-y-3 mb-6">
+          {/* Workflow cards */}
+          <div className="space-y-3 mb-4">
             {workflowMap.workflows?.map((wf, i) => (
               <div key={i} className={`border rounded-xl p-4 ${wf.role === 'supervisor' ? 'border-indigo-200 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
                 <div className="flex items-center gap-2 mb-1">
@@ -191,16 +233,118 @@ export default function ProjectMode() {
             ))}
           </div>
 
-          <div className="flex gap-3">
+          {/* Blocking gaps — must resolve */}
+          {blockingGaps.length > 0 && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Required info — needed before generating</div>
+              <ul className="text-sm text-red-700 space-y-1">
+                {blockingGaps.map((g, i) => <li key={i}>• {g.question}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {/* Non-blocking gaps — can defer */}
+          {nonBlockingGaps.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Optional info — can defer or generate with placeholders</div>
+              <ul className="text-sm text-amber-700 space-y-1">
+                {nonBlockingGaps.map((g, i) => <li key={i}>• {g.question}</li>)}
+              </ul>
+              <p className="text-xs text-amber-600 mt-2">Reply "will provide later" for any you want to defer — they'll be saved as project notes.</p>
+            </div>
+          )}
+
+          {/* Clarification textarea */}
+          <div className="mb-4">
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+              Add clarifications
+            </label>
+            <textarea
+              ref={clarificationRef}
+              className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm leading-relaxed resize-none focus:outline-none focus:border-indigo-400"
+              rows={4}
+              placeholder={
+                blockingGaps.length > 0
+                  ? 'Answer the required questions above to unlock generation...'
+                  : 'Add any clarifications, or type "will provide later" for items you want to defer...'
+              }
+              value={currentClarification}
+              onChange={e => setCurrentClarification(e.target.value)}
+            />
+            <button
+              onClick={handleReanalyze}
+              disabled={loading || !currentClarification.trim()}
+              className="mt-2 bg-slate-700 text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? 'Re-analyzing...' : 'Re-analyze →'}
+            </button>
+          </div>
+
+          {/* Context added so far (collapsible) */}
+          {clarifications.length > 0 && (
+            <div className="mb-4 border border-slate-200 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setContextExpanded(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-500 bg-slate-50 hover:bg-slate-100"
+              >
+                <span>Context added so far ({clarifications.length} round{clarifications.length !== 1 ? 's' : ''})</span>
+                <span>{contextExpanded ? '▲' : '▼'}</span>
+              </button>
+              {contextExpanded && (
+                <div className="px-3 py-2 space-y-2">
+                  {clarifications.map((c, i) => (
+                    <div key={i} className="text-xs text-slate-500 border-l-2 border-slate-200 pl-2">
+                      <div className="font-semibold text-slate-400 mb-0.5">Round {i + 1}</div>
+                      <div className="whitespace-pre-wrap">{c}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pending info panel */}
+          {pendingInfo.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Pending info (to provide later)</div>
+              <div className="space-y-2">
+                {pendingInfo.map((p, i) => (
+                  <div key={i}>
+                    <div className="text-sm text-amber-800">• {p.item}</div>
+                    <input
+                      className="mt-1 w-full border border-amber-200 rounded px-2 py-1 text-xs text-slate-600 bg-white focus:outline-none focus:border-amber-400"
+                      placeholder="Your note (optional)..."
+                      value={p.note}
+                      onChange={e => {
+                        setPendingInfo(prev => prev.map((item, idx) =>
+                          idx === i ? { ...item, note: e.target.value } : item
+                        ))
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action bar */}
+          <div className="flex gap-3 flex-wrap">
             <button
               onClick={handleGenerate}
-              disabled={loading}
-              className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              disabled={loading || !canGenerate}
+              title={!canGenerate ? 'Answer the required questions above before generating' : ''}
+              className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? `Generating ${workflowMap.workflows?.length} workflows...` : `Generate ${workflowMap.workflows?.length} workflows →`}
             </button>
-            <button onClick={() => setStep('spec')} className="bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-lg text-sm font-semibold hover:border-slate-300">
-              Back
+            <button
+              onClick={handleContinueEditing}
+              className="bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-lg text-sm font-semibold hover:border-slate-300"
+            >
+              Continue editing spec
+            </button>
+            <button onClick={() => setStep('spec')} className="bg-white text-slate-400 border border-slate-200 px-4 py-3 rounded-lg text-sm hover:border-slate-300">
+              ← Back to spec
             </button>
           </div>
         </div>
@@ -212,7 +356,7 @@ export default function ProjectMode() {
           <h3 className="font-semibold text-slate-700 mb-1">Generated workflows</h3>
           <p className="text-xs text-slate-400 mb-4">All workflows saved to <code className="bg-slate-100 px-1 rounded">projects/{slug}/workflows/</code></p>
 
-          <div className="space-y-3 mb-6">
+          <div className="space-y-3 mb-4">
             {generated.results?.map((item, i) => (
               <div key={i} className="border border-slate-200 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-1">
@@ -244,6 +388,19 @@ export default function ProjectMode() {
             ))}
           </div>
 
+          {/* Pending info reminder */}
+          {pendingInfo.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Pending info reminder</div>
+              <ul className="text-sm text-amber-700 space-y-0.5">
+                {pendingInfo.map((p, i) => (
+                  <li key={i}>• {p.item}{p.note ? ` — ${p.note}` : ''}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-amber-600 mt-1">Saved to <code className="bg-amber-100 px-1 rounded">projects/{slug}/pending-info.md</code></p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
               onClick={handleImport}
@@ -265,7 +422,7 @@ export default function ProjectMode() {
           <h3 className="font-semibold text-slate-700 mb-1">Import complete</h3>
           <p className="text-xs text-slate-400 mb-4">n8n IDs saved to <code className="bg-slate-100 px-1 rounded">projects/{slug}/manifest.json</code></p>
 
-          <div className="space-y-3 mb-6">
+          <div className="space-y-3 mb-4">
             {importResults.results?.map((r, i) => (
               <div key={i} className={`border rounded-xl p-4 ${r.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
                 <div className="flex items-center justify-between">
@@ -289,6 +446,18 @@ export default function ProjectMode() {
               </div>
             ))}
           </div>
+
+          {/* Pending info reminder */}
+          {pendingInfo.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Still pending</div>
+              <ul className="text-sm text-amber-700 space-y-0.5">
+                {pendingInfo.map((p, i) => (
+                  <li key={i}>• {p.item}{p.note ? ` — ${p.note}` : ''}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 mb-4">
             <strong>Next step:</strong> Open each sub-workflow in n8n and copy its ID from the URL. Then open the supervisor workflow and update the Execute Sub-workflow nodes with the correct IDs.
