@@ -79,9 +79,13 @@ ${credentialMap}`,
 
   // Normalise: gaps may be strings (legacy) or objects. Ensure object shape.
   if (Array.isArray(parsed.gaps)) {
-    parsed.gaps = parsed.gaps.map(g =>
-      typeof g === 'string' ? { question: g, blocking: true } : g
-    )
+    parsed.gaps = parsed.gaps
+      .map(g =>
+        typeof g === 'string' ? { question: g, blocking: true }
+        : (g && typeof g === 'object') ? g
+        : { question: String(g), blocking: true }
+      )
+      .map(g => ({ ...g, blocking: g.blocking !== false }))
   } else {
     parsed.gaps = []
   }
