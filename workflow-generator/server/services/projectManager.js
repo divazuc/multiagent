@@ -110,7 +110,7 @@ function savePendingInfo(slug, items) {
   }
   fs.writeFileSync(
     path.join(PROJECTS_DIR, slug, 'pending-info.md'),
-    lines.join('\n'),
+    lines.join('\n') + '\n',
     'utf8'
   )
 }

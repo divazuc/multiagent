@@ -22,7 +22,7 @@ test('savePendingInfo writes a markdown checklist file', () => {
   expect(content).toContain('- [ ] Which email provider?')
   expect(content).toContain('  - Note: Will decide after MVP')
   expect(content).toContain('- [ ] Supabase table name?')
-  expect(content).not.toContain('  - Note:\n')
+  expect(content).not.toMatch(/\n  - Note:\n/)
 })
 
 test('savePendingInfo handles empty items array', () => {
