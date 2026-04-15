@@ -6,7 +6,7 @@ const { validateWorkflow } = require('../services/validator')
 const catalogue = require('../schema/n8n-nodes-v1.json')
 const {
   listProjects, saveSpec, loadManifest, saveManifest,
-  saveWorkflow, loadProjectContext
+  saveWorkflow, loadProjectContext, savePendingInfo
 } = require('../services/projectManager')
 const { analyzeSpec, generateProjectWorkflows } = require('../services/projectAnalyzer')
 const { createN8nClient } = require('../services/n8nClient')
@@ -45,7 +45,7 @@ router.post('/analyze', async (req, res) => {
 
 // Generate all workflows for a project from spec + approved workflow map
 router.post('/generate', async (req, res) => {
-  const { slug, spec, workflowMap } = req.body
+  const { slug, spec, workflowMap, pendingInfo } = req.body
   if (!slug?.trim()) return res.status(400).json({ error: 'slug is required' })
   if (!spec?.trim()) return res.status(400).json({ error: 'spec is required' })
   if (!workflowMap?.workflows?.length) return res.status(400).json({ error: 'workflowMap is required' })
@@ -53,6 +53,11 @@ router.post('/generate', async (req, res) => {
   try {
     const client = getAnthropicClient()
     saveSpec(slug, spec)
+
+    // Save pending info to disk before generating
+    if (Array.isArray(pendingInfo) && pendingInfo.length > 0) {
+      savePendingInfo(slug, pendingInfo)
+    }
 
     const generated = await generateProjectWorkflows(client, spec, workflowMap, catalogue)
 
