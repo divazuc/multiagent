@@ -21,6 +21,9 @@ export default function ProjectMode() {
   const [contextExpanded, setContextExpanded] = useState(false)
   const clarificationRef = useRef(null)
 
+  // Optional gap answers (per-question, keyed by question text)
+  const [optionalAnswers, setOptionalAnswers] = useState({})
+
   // Inline edit state (step 3)
   const [editingIdx, setEditingIdx] = useState(null)
   const [editDescription, setEditDescription] = useState('')
@@ -37,10 +40,10 @@ export default function ProjectMode() {
     if (!slug) return
     clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(() => {
-      saveDraft(slug, { step, spec, slug, clarifications, currentClarification, pendingInfo, workflowMap, generated })
+      saveDraft(slug, { step, spec, slug, clarifications, currentClarification, optionalAnswers, pendingInfo, workflowMap, generated })
     }, 1000)
     return () => clearTimeout(autoSaveTimer.current)
-  }, [spec, slug, step, clarifications, currentClarification, pendingInfo, workflowMap, generated])
+  }, [spec, slug, step, clarifications, currentClarification, optionalAnswers, pendingInfo, workflowMap, generated])
 
   function refreshDrafts() { setDrafts(listDrafts()) }
 
@@ -62,6 +65,7 @@ export default function ProjectMode() {
     setStep(draft.step || 'spec')
     setClarifications(draft.clarifications || [])
     setCurrentClarification(draft.currentClarification || '')
+    setOptionalAnswers(draft.optionalAnswers || {})
     setPendingInfo(draft.pendingInfo || [])
     setWorkflowMap(draft.workflowMap || null)
     setGenerated(draft.generated || null)
@@ -112,15 +116,40 @@ export default function ProjectMode() {
   }
 
   async function handleReanalyze() {
-    if (!currentClarification.trim()) return
-    const newClarifications = [...clarifications, currentClarification]
+    const parts = []
+    if (currentClarification.trim()) parts.push(currentClarification.trim())
+
+    const answeredOptionals = nonBlockingGaps
+      .filter(g => optionalAnswers[g.question]?.trim())
+      .map(g => `${g.question}: ${optionalAnswers[g.question].trim()}`)
+    if (answeredOptionals.length) parts.push('Optional answers:\n' + answeredOptionals.join('\n'))
+
+    if (!parts.length) return
+
+    // Auto-defer optional questions left blank
+    const deferredOptionals = nonBlockingGaps
+      .filter(g => !optionalAnswers[g.question]?.trim())
+      .map(g => g.question)
+
+    const combined = parts.join('\n\n')
+    const newClarifications = [...clarifications, combined]
     setLoading(true)
     setError(null)
     try {
       const map = await apiAnalyzeSpec(spec, newClarifications.join('\n\n---\n'))
       setClarifications(newClarifications)
       setCurrentClarification('')
+      setOptionalAnswers({})
       applyMap(map)
+      if (deferredOptionals.length) {
+        setPendingInfo(prev => {
+          const existing = new Set(prev.map(p => p.item))
+          const newItems = deferredOptionals
+            .filter(item => !existing.has(item))
+            .map(item => ({ item, note: '' }))
+          return [...prev, ...newItems]
+        })
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       setError(err.message)
@@ -130,10 +159,25 @@ export default function ProjectMode() {
   }
 
   async function handleGenerate() {
+    // Auto-defer any unanswered optional questions before generating
+    const deferredOptionals = nonBlockingGaps
+      .filter(g => !optionalAnswers[g.question]?.trim())
+      .map(g => g.question)
+    const finalPendingInfo = deferredOptionals.length
+      ? (() => {
+          const existing = new Set(pendingInfo.map(p => p.item))
+          const newItems = deferredOptionals
+            .filter(item => !existing.has(item))
+            .map(item => ({ item, note: '' }))
+          return [...pendingInfo, ...newItems]
+        })()
+      : pendingInfo
+
     setLoading(true)
     setError(null)
     try {
-      const data = await apiGenerateProject(slug, spec, workflowMap, pendingInfo)
+      const data = await apiGenerateProject(slug, spec, workflowMap, finalPendingInfo)
+      if (finalPendingInfo !== pendingInfo) setPendingInfo(finalPendingInfo)
       setGenerated(data)
       setStep('generate')
     } catch (err) {
@@ -215,6 +259,7 @@ export default function ProjectMode() {
     setCurrentClarification('')
     setPendingInfo([])
     setContextExpanded(false)
+    setOptionalAnswers({})
     setEditingIdx(null)
     setEditDescription('')
     setEditError(null)
@@ -369,52 +414,80 @@ export default function ProjectMode() {
             ))}
           </div>
 
-          {/* Blocking gaps — must resolve */}
+          {/* Blocking gaps — required textarea embedded */}
           {blockingGaps.length > 0 && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Required info — needed before generating</div>
-              <ul className="text-sm text-red-700 space-y-1">
-                {blockingGaps.map((g, i) => <li key={i}>• {g.question}</li>)}
-              </ul>
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-lg overflow-hidden">
+              <div className="px-4 pt-3 pb-2">
+                <div className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-2">Required — answer before generating</div>
+                <ul className="text-sm text-red-700 space-y-1 mb-3">
+                  {blockingGaps.map((g, i) => <li key={i}>• {g.question}</li>)}
+                </ul>
+              </div>
+              <div className="px-4 pb-4">
+                <textarea
+                  ref={clarificationRef}
+                  className="w-full border-2 border-red-200 rounded-lg p-3 text-sm leading-relaxed resize-none focus:outline-none focus:border-red-400 bg-white"
+                  rows={3}
+                  placeholder="Answer the required questions above..."
+                  value={currentClarification}
+                  onChange={e => setCurrentClarification(e.target.value)}
+                />
+              </div>
             </div>
           )}
 
-          {/* Non-blocking gaps — can defer */}
+          {/* Non-blocking gaps — per-question inputs, blank = auto-defer */}
           {nonBlockingGaps.length > 0 && (
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Optional info — can defer or generate with placeholders</div>
-              <ul className="text-sm text-amber-700 space-y-1">
-                {nonBlockingGaps.map((g, i) => <li key={i}>• {g.question}</li>)}
-              </ul>
-              <p className="text-xs text-amber-600 mt-2">Reply "will provide later" for any you want to defer — they'll be saved as project notes.</p>
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
+              <div className="px-4 pt-3 pb-1">
+                <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-0.5">Optional — answer or leave blank to defer</div>
+                <p className="text-xs text-amber-600 mb-3">Blank fields are automatically saved to pending info for later.</p>
+              </div>
+              <div className="px-4 pb-4 space-y-3">
+                {nonBlockingGaps.map((g, i) => (
+                  <div key={i}>
+                    <label className="block text-xs text-amber-800 font-medium mb-1">• {g.question}</label>
+                    <input
+                      className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-amber-400"
+                      placeholder="Leave blank to defer..."
+                      value={optionalAnswers[g.question] || ''}
+                      onChange={e => setOptionalAnswers(prev => ({ ...prev, [g.question]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Clarification textarea */}
-          <div className="mb-4">
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-              Add clarifications
-            </label>
-            <textarea
-              ref={clarificationRef}
-              className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm leading-relaxed resize-none focus:outline-none focus:border-indigo-400"
-              rows={4}
-              placeholder={
-                blockingGaps.length > 0
-                  ? 'Answer the required questions above to unlock generation...'
-                  : 'Add any clarifications, or type "will provide later" for items you want to defer...'
-              }
-              value={currentClarification}
-              onChange={e => setCurrentClarification(e.target.value)}
-            />
-            <button
-              onClick={handleReanalyze}
-              disabled={loading || !currentClarification.trim()}
-              className="mt-2 bg-slate-700 text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? 'Re-analyzing...' : 'Re-analyze →'}
-            </button>
-          </div>
+          {/* No gaps — free-form clarification box */}
+          {blockingGaps.length === 0 && nonBlockingGaps.length === 0 && (
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                Add clarifications (optional)
+              </label>
+              <textarea
+                ref={clarificationRef}
+                className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm leading-relaxed resize-none focus:outline-none focus:border-indigo-400"
+                rows={3}
+                placeholder="Any additional context or changes to the workflow structure..."
+                value={currentClarification}
+                onChange={e => setCurrentClarification(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* Re-analyze button */}
+          {(blockingGaps.length > 0 || nonBlockingGaps.length > 0 || blockingGaps.length === 0) && (
+            <div className="mb-4">
+              <button
+                onClick={handleReanalyze}
+                disabled={loading || (!currentClarification.trim() && !nonBlockingGaps.some(g => optionalAnswers[g.question]?.trim()))}
+                className="bg-slate-700 text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? 'Re-analyzing...' : 'Re-analyze →'}
+              </button>
+            </div>
+          )}
 
           {/* Context added so far (collapsible) */}
           {clarifications.length > 0 && (
