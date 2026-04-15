@@ -17,10 +17,9 @@ async function analyzeSpec(client, spec, clarifications) {
     ? `Analyze this project spec and return the workflow map:\n\n${spec}\n\n---\nAdditional clarifications from the user:\n${clarifications}`
     : `Analyze this project spec and return the workflow map:\n\n${spec}`
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: `You are an n8n workflow system architect. You read project specs and produce a structured workflow map.
+  const systemPrompt = `You are an n8n workflow system architect. You read project specs and produce a structured workflow map.
+
+CRITICAL: You MUST always respond with a valid JSON object — even when the spec is vague, incomplete, or unclear. Never respond with conversational text or questions. All clarifying questions MUST go inside the gaps[] array as structured objects.
 
 Always respond with a JSON object in this exact shape:
 {
@@ -45,6 +44,7 @@ Always respond with a JSON object in this exact shape:
 Gap classification rules:
 - blocking: true → the workflow structure CANNOT be correctly determined without this answer (e.g., unknown trigger type, unclear which workflows are needed, ambiguous supervisor/sub relationship)
 - blocking: false → generation can proceed with a reasonable placeholder (e.g., email provider choice, specific field names, optional third-party service)
+- When the spec is vague, make your best guess at the workflow structure and surface all unknowns as blocking gaps — do not refuse to produce JSON
 
 If the user's clarification text contains deferral signals for a gap (phrases like "will provide later", "don't have this", "not sure yet", "TBD", "decide later", or similar), move that deferred item into pendingInfo[] as a descriptive string instead of keeping it in gaps[]. pendingInfo[] items are human-readable reminders of what is still needed.
 
@@ -60,21 +60,42 @@ Global guidelines for this environment:
 ${guidelines}
 
 Credential map:
-${credentialMap}`,
-    messages: [
-      { role: 'user', content: userMessage }
-    ]
+${credentialMap}`
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }]
   })
 
-  const text = response.content[0].text
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const candidate = match ? match[1].trim() : text.trim()
+  let text = response.content[0].text
+  let match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  let candidate = match ? match[1].trim() : text.trim()
 
   let parsed
   try {
     parsed = JSON.parse(candidate)
   } catch {
-    throw new Error(`Failed to parse workflow map: ${text.slice(0, 200)}`)
+    // Claude returned conversational text — retry with explicit correction
+    const retryResponse = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: text },
+        { role: 'user', content: 'Your response was not valid JSON. You must respond with only the JSON object — no prose, no markdown explanation. Put all your questions in the gaps[] array. Return the JSON now.' }
+      ]
+    })
+    text = retryResponse.content[0].text
+    match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+    candidate = match ? match[1].trim() : text.trim()
+    try {
+      parsed = JSON.parse(candidate)
+    } catch {
+      throw new Error(`Failed to parse workflow map after retry. Claude responded: ${text.slice(0, 300)}`)
+    }
   }
 
   // Normalise: gaps may be strings (legacy) or objects. Ensure object shape.
