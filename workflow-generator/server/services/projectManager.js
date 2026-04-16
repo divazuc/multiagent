@@ -87,6 +87,16 @@ function saveWorkflow(slug, workflowName, workflowJson) {
 }
 
 /**
+ * Load a single workflow JSON file from a project's workflows/ folder.
+ * Uses the same filename convention as saveWorkflow.
+ */
+function loadWorkflow(slug, workflowName) {
+  const fileName = workflowName.replace(/[^a-z0-9]+/gi, '_').toLowerCase() + '.json'
+  const p = path.join(PROJECTS_DIR, slug, 'workflows', fileName)
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
+}
+
+/**
  * Load full project context for injection into Claude prompts.
  */
 function loadProjectContext(slug) {
@@ -115,15 +125,50 @@ function savePendingInfo(slug, items) {
   )
 }
 
+/**
+ * Load spec.md for a project.
+ */
+function loadSpec(slug) {
+  return readFile(path.join(PROJECTS_DIR, slug, 'spec.md')) || ''
+}
+
+/**
+ * Load conversation log for a project.
+ */
+function loadConversation(slug) {
+  const p = path.join(PROJECTS_DIR, slug, 'conversation.json')
+  if (!fs.existsSync(p)) return []
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return [] }
+}
+
+/**
+ * Append an entry to the conversation log and return the full updated log.
+ * entry: { at: ISO string, request: string, updated: string[] }
+ */
+function appendConversation(slug, entry) {
+  const existing = loadConversation(slug)
+  const updated = [...existing, entry]
+  fs.writeFileSync(
+    path.join(PROJECTS_DIR, slug, 'conversation.json'),
+    JSON.stringify(updated, null, 2),
+    'utf8'
+  )
+  return updated
+}
+
 module.exports = {
   listProjects,
   createProject,
   saveSpec,
+  loadSpec,
   loadManifest,
   saveManifest,
   saveWorkflow,
+  loadWorkflow,
   loadProjectContext,
   loadGlobalContext,
   savePendingInfo,
+  loadConversation,
+  appendConversation,
   PROJECTS_DIR
 }

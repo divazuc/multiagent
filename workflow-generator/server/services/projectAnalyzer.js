@@ -1,6 +1,116 @@
 'use strict'
 
+const crypto = require('crypto')
 const { loadGlobalContext } = require('./projectManager')
+
+/**
+ * Post-process a generated workflow to fill in fields Claude was told to omit.
+ * Adds id (UUID), typeVersion (1), and position (linear layout) to every node
+ * that is missing them, keeping any values Claude did provide.
+ */
+function enrichWorkflow(workflow) {
+  if (!workflow?.nodes?.length) return workflow
+  const nodes = workflow.nodes.map((node, i) => ({
+    id: node.id || crypto.randomUUID(),
+    typeVersion: node.typeVersion ?? 1,
+    position: node.position || [100 + i * 300, 200],
+    ...node,
+  }))
+  return { ...workflow, nodes }
+}
+
+function parseJsonResponse(text) {
+  const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const candidate = match ? match[1].trim() : text.trim()
+  return JSON.parse(candidate) // throws if invalid or truncated
+}
+
+/**
+ * Two-pass generation for large workflows that exceed single-call token limits.
+ * Pass 1: skeleton (node names + types + connections)
+ * Pass 2: parameters for each node individually
+ */
+async function generateWorkflowTwoPass(client, wfSpec, projectContext, systemPrompt) {
+  // Pass 1 — skeleton only
+  const skeletonResp = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [{
+      role: 'user',
+      content: `Design the node structure for this n8n workflow. Return ONLY node names, types, and connections — no parameters.
+
+${projectContext}
+
+Workflow:
+Name: ${wfSpec.name}
+Role: ${wfSpec.role}
+Purpose: ${wfSpec.purpose}
+Trigger: ${wfSpec.trigger}
+Inputs: ${wfSpec.inputs}
+Outputs: ${wfSpec.outputs}
+${wfSpec.calls?.length ? `Calls sub-workflows: ${wfSpec.calls.join(', ')}` : ''}
+
+Respond with JSON only:
+{
+  "nodes": [{ "name": "...", "type": "n8n-nodes-base.xxx" }],
+  "connections": { ... }
+}`
+    }]
+  })
+
+  const skeleton = parseJsonResponse(skeletonResp.content[0].text)
+
+  // Pass 2 — parameters per node (sequential to stay within rate limits)
+  const paramResults = []
+  for (const node of skeleton.nodes) {
+    const resp = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{
+        role: 'user',
+        content: `Generate the parameters object for one n8n node.
+
+Workflow: ${wfSpec.name} — ${wfSpec.purpose}
+Node name: "${node.name}"
+Node type: ${node.type}
+
+Project context:
+${projectContext}
+
+Rules:
+- Credential fields: { "id": "CREDENTIAL_ID", "name": "Your Credential Name" }
+- HTTP Request nodes calling Anthropic API: use model "claude-sonnet-4-6"
+- Sub-workflow IDs: use placeholder "REPLACE_WITH_N8N_ID"
+
+Respond with JSON only: { "parameters": { ... } }`
+      }]
+    })
+    try {
+      const data = parseJsonResponse(resp.content[0].text)
+      paramResults.push({ name: node.name, parameters: data.parameters || {} })
+    } catch {
+      paramResults.push({ name: node.name, parameters: {} })
+    }
+  }
+
+  const paramMap = Object.fromEntries(paramResults.map(r => [r.name, r.parameters]))
+
+  const assembledWorkflow = {
+    name: wfSpec.name,
+    nodes: skeleton.nodes.map(node => ({ ...node, parameters: paramMap[node.name] || {} })),
+    connections: skeleton.connections,
+    active: false,
+    settings: { executionOrder: 'v1' }
+  }
+
+  return {
+    workflow: assembledWorkflow,
+    summary: wfSpec.purpose,
+    nodes_used: skeleton.nodes.map(n => n.name)
+  }
+}
 
 /**
  * Ask Claude to analyze a project spec and return a proposed workflow map.
@@ -64,7 +174,7 @@ ${credentialMap}`
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: 'user', content: userMessage }]
   })
@@ -80,7 +190,7 @@ ${credentialMap}`
     // Claude returned conversational text — retry with explicit correction
     const retryResponse = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [
         { role: 'user', content: userMessage },
@@ -119,13 +229,11 @@ ${credentialMap}`
 }
 
 /**
- * Generate all workflows for a project in the correct order (subs first, supervisor last).
+ * Build the shared project context string used by all generation calls.
  */
-async function generateProjectWorkflows(client, spec, workflowMap, catalogue) {
-  const { getSystemPrompt } = require('../prompts/system')
+function buildProjectContext(spec, workflowMap) {
   const { guidelines, credentialMap } = loadGlobalContext()
-
-  const projectContext = `
+  return `
 ## Project Context
 ${spec}
 
@@ -138,17 +246,17 @@ ${guidelines}
 ## Credential Map
 ${credentialMap}
 `
+}
 
-  const results = []
+/**
+ * Generate a single workflow. Uses single-pass first; falls back to two-pass
+ * only on JSON parse failures (truncated response). API errors propagate as-is.
+ */
+async function generateOneWorkflow(client, wfSpec, projectContext) {
+  const { getSystemPrompt } = require('../prompts/system')
+  const systemPrompt = getSystemPrompt()
 
-  // Generate subs first, then supervisor
-  const ordered = [
-    ...workflowMap.workflows.filter(w => w.role === 'sub'),
-    ...workflowMap.workflows.filter(w => w.role === 'supervisor')
-  ]
-
-  for (const wfSpec of ordered) {
-    const prompt = `You are generating ONE workflow in a multi-workflow project. Generate only this workflow — do not generate the others.
+  const prompt = `You are generating ONE workflow in a multi-workflow project. Generate only this workflow — do not generate the others.
 
 ${projectContext}
 
@@ -163,35 +271,53 @@ ${wfSpec.calls?.length ? `Calls these sub-workflows (use Execute Sub-workflow no
 
 Important: Sub-workflows called via Execute Sub-workflow nodes should use workflowId placeholder "REPLACE_WITH_N8N_ID" — the user will update these after import.
 
+To keep your response compact, omit these fields from every node — the server will add them automatically:
+- "id" (UUIDs are generated server-side)
+- "position" (layout is calculated server-side)
+- "typeVersion" (defaults to 1 unless you need a specific version)
+
 Respond with the standard JSON shape: { "workflow": {...}, "summary": "...", "nodes_used": [...] }`
 
+  let parsed
+  try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: getSystemPrompt(),
+      max_tokens: 8192,
+      system: systemPrompt,
       messages: [{ role: 'user', content: prompt }]
     })
-
-    const text = response.content[0].text
-    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-    const candidate = match ? match[1].trim() : text.trim()
-
-    let parsed
-    try {
-      parsed = JSON.parse(candidate)
-    } catch {
-      throw new Error(`Failed to parse workflow "${wfSpec.name}": ${text.slice(0, 200)}`)
+    parsed = parseJsonResponse(response.content[0].text)
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      console.log(`[generate] Single-pass truncated for "${wfSpec.name}" — switching to two-pass`)
+      parsed = await generateWorkflowTwoPass(client, wfSpec, projectContext, systemPrompt)
+    } else {
+      throw err
     }
-
-    results.push({
-      spec: wfSpec,
-      workflow: parsed.workflow,
-      summary: parsed.summary,
-      nodes_used: parsed.nodes_used || []
-    })
   }
 
+  return {
+    spec: wfSpec,
+    workflow: enrichWorkflow(parsed.workflow),
+    summary: parsed.summary,
+    nodes_used: parsed.nodes_used || []
+  }
+}
+
+/**
+ * Generate all workflows for a project in the correct order (subs first, supervisor last).
+ */
+async function generateProjectWorkflows(client, spec, workflowMap, catalogue) {
+  const projectContext = buildProjectContext(spec, workflowMap)
+  const ordered = [
+    ...workflowMap.workflows.filter(w => w.role === 'sub'),
+    ...workflowMap.workflows.filter(w => w.role === 'supervisor')
+  ]
+  const results = []
+  for (const wfSpec of ordered) {
+    results.push(await generateOneWorkflow(client, wfSpec, projectContext))
+  }
   return results
 }
 
-module.exports = { analyzeSpec, generateProjectWorkflows }
+module.exports = { analyzeSpec, generateOneWorkflow, buildProjectContext, generateProjectWorkflows, parseJsonResponse }

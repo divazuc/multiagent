@@ -28,13 +28,10 @@ A valid n8n workflow JSON has this shape:
   "settings": { "executionOrder": "v1" }
 }
 
-Each node object:
+Each node object (omit "id", "position", and "typeVersion" — the server fills these in):
 {
-  "id": "unique-uuid-string",
   "name": "Human Readable Node Name",
   "type": "n8n-nodes-base.nodeType",
-  "typeVersion": 2,
-  "position": [x, y],
   "parameters": { ...node-specific parameters... }
 }
 
@@ -58,12 +55,11 @@ ${NODE_LIST}
 
 1. Every workflow must have at least one [TRIGGER] node.
 2. Every non-trigger node must be reachable from a trigger via connections.
-3. Node "id" fields must be unique UUIDs (use format "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").
-4. Node "name" fields must be unique within the workflow.
-5. Connection references use the node "name" field, not "id".
-6. Set "active": false always — the user activates manually in n8n.
-7. Credential fields should use placeholder objects: { "id": "CREDENTIAL_ID", "name": "Your Credential Name" }. The user fills these in after importing.
-8. For HTTP Request nodes calling the Anthropic API, use model "claude-sonnet-4-6".
+3. Node "name" fields must be unique within the workflow.
+4. Connection references use the node "name" field, not "id".
+5. Set "active": false always — the user activates manually in n8n.
+6. Credential fields should use placeholder objects: { "id": "CREDENTIAL_ID", "name": "Your Credential Name" }. The user fills these in after importing.
+7. For HTTP Request nodes calling the Anthropic API, use model "claude-sonnet-4-6".
 
 ## Edit Mode
 

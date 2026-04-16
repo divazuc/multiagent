@@ -8,9 +8,12 @@ const REQUIRED_NODE_FIELDS = ['id', 'name', 'type', 'typeVersion', 'position', '
  * @param {object} catalogue - n8n-nodes-v1.json contents
  * @returns {{ valid: boolean, errors: string[] }}
  */
+const DISPLAY_ONLY_TYPES = new Set(['n8n-nodes-base.stickyNote'])
+
 function validateWorkflow(workflow, catalogue) {
   const errors = []
-  const nodes = workflow.nodes || []
+  // Exclude display-only nodes (sticky notes) — they are UI annotations, not executable nodes
+  const nodes = (workflow.nodes || []).filter(n => !DISPLAY_ONLY_TYPES.has(n.type))
   const connections = workflow.connections || {}
   const nodeNames = new Set(nodes.map(n => n.name))
 

@@ -87,6 +87,30 @@ export async function apiGenerateProject(slug, spec, workflowMap, pendingInfo) {
   return data
 }
 
+export async function apiGetProjectWorkflows(slug) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/workflows`)
+  const text = await res.text()
+  if (!text) throw new Error('Empty response from server')
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Non-JSON response: ${text.slice(0, 200)}`) }
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data
+}
+
+export async function apiGenerateOne(slug, spec, workflowMap, wfSpec, feedback) {
+  const res = await fetch('/api/projects/generate-one', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, spec, workflowMap, wfSpec, ...(feedback ? { feedback } : {}) })
+  })
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status})`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 300)}`) }
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data
+}
+
 export async function apiSaveProjectWorkflow(slug, name, role, workflow) {
   const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/workflows`, {
     method: 'POST',
@@ -94,6 +118,53 @@ export async function apiSaveProjectWorkflow(slug, name, role, workflow) {
     body: JSON.stringify({ name, role, workflow })
   })
   const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data
+}
+
+export async function apiSuggestAnswer(slug, item) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/suggest-answer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ item })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data.suggestion
+}
+
+export async function apiIdentifyRequest(slug, request) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/identify-request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data  // { workflows: [...names], questions: [...] }
+}
+
+export async function apiLogConversation(slug, request, updated) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/conversation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request, updated })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+  return data
+}
+
+export async function apiProjectRequest(slug, request) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request })
+  })
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status})`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 300)}`) }
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
   return data
 }
