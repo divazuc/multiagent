@@ -75,13 +75,32 @@ export const PRESETS = [
   }
 ]
 
+// All possible stages — bar shows current position regardless of archetype path
 export const SETUP_STAGES = [
-  { key: 'collect_business_model', label: 'Business Model' },
-  { key: 'collect_sales_goal', label: 'Sales Goal' },
-  { key: 'collect_conversation_strategy', label: 'Strategy' },
-  { key: 'collect_services', label: 'Services' },
-  { key: 'collect_persona', label: 'Persona' },
-  { key: 'collect_hebrew_patterns', label: 'Patterns' },
-  { key: 'collect_guardrails', label: 'Guardrails' },
-  { key: 'confirm_and_commit', label: 'Confirm' },
+  { key: 'collect_business_model',   label: 'Business' },
+  // service / professional path
+  { key: 'service_collect_offerings', label: 'Services' },
+  { key: 'service_collect_target',    label: 'Customers' },
+  { key: 'service_collect_urgency',   label: 'Availability' },
+  // studio path
+  { key: 'studio_collect_classes',   label: 'Classes' },
+  { key: 'studio_collect_pricing',   label: 'Pricing' },
+  { key: 'studio_collect_booking',   label: 'Booking' },
+  // generic path
+  { key: 'generic_collect_services', label: 'Services' },
+  // shared tail
+  { key: 'collect_sales_goal',       label: 'Goal' },
+  { key: 'collect_persona',          label: 'Persona' },
+  { key: 'collect_guardrails',       label: 'Guardrails' },
+  { key: 'confirm_and_commit',       label: 'Confirm' },
 ]
+
+// Stage paths per archetype — used to filter the progress bar to show only relevant stages
+export const ARCHETYPE_STAGE_PATHS = {
+  service:        ['collect_business_model', 'service_collect_offerings', 'service_collect_target', 'service_collect_urgency', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
+  professional:   ['collect_business_model', 'service_collect_offerings', 'service_collect_target', 'service_collect_urgency', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
+  studio:         ['collect_business_model', 'studio_collect_classes', 'studio_collect_pricing', 'studio_collect_booking', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
+  physical_store: ['collect_business_model', 'generic_collect_services', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
+  ecommerce:      ['collect_business_model', 'generic_collect_services', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
+  custom_quote:   ['collect_business_model', 'generic_collect_services', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
+}

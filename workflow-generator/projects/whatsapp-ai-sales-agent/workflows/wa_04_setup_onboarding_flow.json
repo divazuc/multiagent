@@ -4,10 +4,7 @@
     {
       "id": "ea5716c5-e56d-46e0-a97e-3d66d92e4dee",
       "typeVersion": 1,
-      "position": [
-        100,
-        200
-      ],
+      "position": [100, 200],
       "name": "Workflow input trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "parameters": {}
@@ -15,10 +12,7 @@
     {
       "id": "1f391fbd-9fcc-4929-81be-058aa8140980",
       "typeVersion": 3.4,
-      "position": [
-        400,
-        200
-      ],
+      "position": [400, 200],
       "name": "Extract setup inputs",
       "type": "n8n-nodes-base.set",
       "parameters": {
@@ -45,7 +39,7 @@
             {
               "id": "assign_current_setup_stage",
               "name": "current_setup_stage",
-              "value": "={{ $json.current_setup_stage || $json.body?.current_setup_stage || 'business_model' }}",
+              "value": "={{ $json.current_setup_stage || $json.body?.current_setup_stage || 'collect_business_model' }}",
               "type": "string"
             },
             {
@@ -62,10 +56,7 @@
     {
       "id": "8c64723e-1f62-489c-aa55-17f422ef2545",
       "typeVersion": 3,
-      "position": [
-        700,
-        200
-      ],
+      "position": [700, 200],
       "name": "Determine setup stage",
       "type": "n8n-nodes-base.switch",
       "parameters": {
@@ -74,21 +65,8 @@
           "values": [
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "collect_business_model",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "collect_business_model", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -96,21 +74,71 @@
             },
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "collect_sales_goal",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "service_collect_offerings", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "service_collect_offerings"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "service_collect_target", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "service_collect_target"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "service_collect_urgency", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "service_collect_urgency"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "studio_collect_classes", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "studio_collect_classes"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "studio_collect_pricing", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "studio_collect_pricing"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "studio_collect_booking", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "studio_collect_booking"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "generic_collect_services", "operator": { "type": "string", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "generic_collect_services"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "collect_sales_goal", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -118,65 +146,8 @@
             },
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "collect_conversation_strategy",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "collect_conversation_strategy"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "collect_services",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "collect_services"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "collect_persona",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "collect_persona", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -184,43 +155,8 @@
             },
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "collect_hebrew_patterns",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "collect_hebrew_patterns"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "collect_guardrails",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "collect_guardrails", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -228,21 +164,8 @@
             },
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.current_setup_stage }}",
-                    "rightValue": "confirm_and_commit",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.current_setup_stage }}", "rightValue": "confirm_and_commit", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -254,13 +177,11 @@
         "options": {}
       }
     },
+
     {
       "id": "346784ef-ea7b-4426-86ca-856cac9a6799",
       "typeVersion": 4.2,
-      "position": [
-        1000,
-        200
-      ],
+      "position": [1000, 200],
       "name": "Collect business model",
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
@@ -268,49 +189,222 @@
         "url": "https://api.anthropic.com/v1/messages",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "credentials": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        },
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided business onboarding assistant. Collect the business model type. Ask ONE question at a time. Be short and human. Map to: service | product | subscription | booking | other. Respond in the user's language.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_business_model\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"collect_sales_goal\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": \\\"<service|product|subscription|booking|other|null>\\\", \\\"confirmed\\\": false}\"\n    }\n  ]\n}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are a business setup assistant onboarding an SMB owner for a WhatsApp AI sales agent. Your job: identify what TYPE of business they run.\\n\\nBusiness archetypes:\\n- service: home services, contractors, repair, cleaning, plumbing, electrician, IT support, delivery, maintenance\\n- professional: lawyer, accountant, therapist, doctor, consultant, financial advisor, coach\\n- studio: yoga, fitness, dance, martial arts, pilates, art classes, music lessons, tutoring, gym\\n- physical_store: retail shop, restaurant, pharmacy, supermarket, clothing store, hardware store\\n- ecommerce: online store, dropshipping, marketplace seller\\n- custom_quote: construction, events, manufacturing, catering, custom work, printing\\n\\nOnce you identify the archetype, set next_setup_stage accordingly:\\n- service OR professional → service_collect_offerings\\n- studio → studio_collect_classes\\n- physical_store OR ecommerce OR custom_quote → generic_collect_services\\n\\nIf not yet clear, keep next_setup_stage as collect_business_model and ask a short clarifying question.\\nAlways respond in the user's language (Hebrew or English). Be warm and brief.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_business_model\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message to the owner>\\\", \\\"extracted_value\\\": \\\"service|professional|studio|physical_store|ecommerce|custom_quote|null\\\", \\\"next_setup_stage\\\": \\\"<stage>\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
         "continueOnFail": true
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        }
-      }
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
     },
+
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "typeVersion": 4.2,
+      "position": [1000, 500],
+      "name": "Service collect offerings",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are onboarding a service or professional business onto a WhatsApp AI agent. Collect TWO things (ask one at a time if both not yet provided):\\n\\n1. Specific services offered — list them concisely (e.g. 'AC repair, installation, maintenance')\\n2. Pricing model: fixed (set prices per service) | hourly (price by time) | custom_quote (price depends on job scope)\\n\\nIf the user already gave some info in the draft, acknowledge it and ask only for what's still missing.\\nOnce both are clear, move to next stage.\\nRespond in the user's language (Hebrew or English). Be conversational and brief.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: service_collect_offerings\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"extracted_value\\\": {\\\"services\\\": [], \\\"pricing_model\\\": \\\"fixed|hourly|custom_quote|null\\\"}, \\\"next_setup_stage\\\": \\\"service_collect_target\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
+        "continueOnFail": true
+      },
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
+    },
+
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "typeVersion": 4.2,
+      "position": [1300, 500],
+      "name": "Service collect target",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are onboarding a service business. Collect who their customers are:\\n\\n1. Customer type: B2B (they work with businesses) | B2C (they work with individual people) | both\\n2. Geography or focus: local area, specific city/region, nationwide, or online\\n\\nBe conversational. If they give partial info, ask for what's still missing.\\nRespond in the user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: service_collect_target\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"extracted_value\\\": {\\\"customer_type\\\": \\\"B2B|B2C|both|null\\\", \\\"geography\\\": \\\"<area description or null>\\\"}, \\\"next_setup_stage\\\": \\\"service_collect_urgency\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
+        "continueOnFail": true
+      },
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
+    },
+
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-234567890123",
+      "typeVersion": 4.2,
+      "position": [1600, 500],
+      "name": "Service collect urgency",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are onboarding a service business. Last service-specific question: understand their urgency and availability patterns.\\n\\nCollect (in one or two natural questions):\\n1. Do they handle urgent or emergency calls? (yes / no)\\n2. Typical response time for regular inquiries: same_day | within_24h | within_48h | within_week\\n3. After-hours availability: available | unavailable | emergencies_only\\n\\nRespond in the user's language (Hebrew or English). Keep it brief.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: service_collect_urgency\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"extracted_value\\\": {\\\"handles_urgency\\\": true, \\\"response_time\\\": \\\"same_day|within_24h|within_48h|within_week|null\\\", \\\"after_hours\\\": \\\"available|unavailable|emergencies_only|null\\\"}, \\\"next_setup_stage\\\": \\\"collect_sales_goal\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
+        "continueOnFail": true
+      },
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
+    },
+
+    {
+      "id": "d4e5f6a7-b8c9-0123-def0-123456789012",
+      "typeVersion": 4.2,
+      "position": [1000, 800],
+      "name": "Studio collect classes",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are onboarding a studio or classes business onto a WhatsApp AI agent. Collect TWO things:\\n\\n1. What classes or activities they offer (e.g. 'yoga, pilates, meditation', or 'hip-hop dance, ballet, contemporary')\\n2. Typical schedule — how many days a week, roughly what times (e.g. 'mornings and evenings 6 days', or 'Mon/Wed/Fri 7am and 6pm')\\n\\nBe friendly and energetic. Acknowledge what they share. Respond in the user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: studio_collect_classes\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"extracted_value\\\": {\\\"classes\\\": [], \\\"schedule_description\\\": \\\"<description or null>\\\"}, \\\"next_setup_stage\\\": \\\"studio_collect_pricing\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
+        "continueOnFail": true
+      },
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
+    },
+
+    {
+      "id": "e5f6a7b8-c9d0-1234-ef01-234567890123",
+      "typeVersion": 4.2,
+      "position": [1300, 800],
+      "name": "Studio collect pricing",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are onboarding a studio business. Collect the pricing structure:\\n\\n1. Pricing model: drop_in (pay per class) | monthly_membership | package (e.g. 10-class pack) | mixed (multiple options)\\n2. Is there a trial or intro offer for new students? (e.g. free first class, discounted first week) — yes/no and a brief description if yes\\n\\nBe warm. Respond in the user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: studio_collect_pricing\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"extracted_value\\\": {\\\"pricing_model\\\": \\\"drop_in|monthly_membership|package|mixed|null\\\", \\\"trial_offer\\\": \\\"<description or null>\\\", \\\"has_trial\\\": true}, \\\"next_setup_stage\\\": \\\"studio_collect_booking\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
+        "continueOnFail": true
+      },
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
+    },
+
+    {
+      "id": "f6a7b8c9-d0e1-2345-f012-345678901234",
+      "typeVersion": 4.2,
+      "position": [1600, 800],
+      "name": "Studio collect booking",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are onboarding a studio business. Last studio-specific question: how do customers book classes.\\n\\nCollect:\\n1. Booking method: whatsapp (they message to book) | online_system (external link/app) | phone | walk_in\\n2. Is there sometimes a waiting list for popular classes? (yes / no)\\n\\nBe brief and friendly. Respond in the user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: studio_collect_booking\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"extracted_value\\\": {\\\"booking_method\\\": \\\"whatsapp|online_system|phone|walk_in|null\\\", \\\"has_waiting_list\\\": true}, \\\"next_setup_stage\\\": \\\"collect_sales_goal\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
+        "continueOnFail": true
+      },
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
+    },
+
+    {
+      "id": "9c074acc-22c5-4012-ac1e-317f45588b39",
+      "typeVersion": 4.2,
+      "position": [1000, 1100],
+      "name": "Generic collect services",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided onboarding assistant. Collect information about what the business offers and how they qualify leads.\\n\\nCollect (ask one at a time):\\n1. What products or services do they offer?\\n2. How do they decide if a lead is a good fit? (decision logic)\\n3. What key questions do they always ask new leads?\\n4. What are the most common objections they face and how do they handle them?\\n\\nBe conversational. Match user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: generic_collect_services\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"next_setup_stage\\\": \\\"collect_sales_goal\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": {\\\"services\\\": [], \\\"decision_logic\\\": \\\"\\\", \\\"key_questions\\\": [], \\\"objections\\\": []}}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
+        "continueOnFail": true
+      },
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
+    },
+
     {
       "id": "f7c29c63-285c-4522-8218-e94c4800d545",
       "typeVersion": 4.2,
-      "position": [
-        1300,
-        200
-      ],
+      "position": [1900, 200],
       "name": "Collect sales goal",
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
@@ -321,138 +415,23 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are a guided business onboarding assistant. Collect the business owner's PRIMARY SALES GOAL. Valid values: call_booking | lead_capture | direct_purchase | conversation_only. Ask ONE question. Be short and natural. Map ambiguous answers to the nearest option. Respond in the user's language.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_sales_goal\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"extracted_value\\\": \\\"call_booking|lead_capture|direct_purchase|conversation_only|null\\\", \\\"next_setup_stage\\\": \\\"collect_conversation_strategy\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are a business setup assistant. Collect the owner's PRIMARY SALES GOAL for their WhatsApp agent — what should happen at the end of a good conversation?\\n\\nLook at draft.archetype to ask the right question:\\n- service / professional → options: call_booking | lead_capture | quote_request | direct_purchase\\n- studio → options: trial_booking | class_booking | membership_signup | info_only\\n- other → options: lead_capture | direct_purchase | info_only\\n\\nBe natural. One short question. Map ambiguous answers to the nearest option.\\nRespond in the user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_sales_goal\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"extracted_value\\\": \\\"<sales_goal or null>\\\", \\\"next_setup_stage\\\": \\\"collect_persona\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
         "continueOnFail": true
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        }
-      }
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
     },
-    {
-      "id": "006adc2f-0293-4901-8fd4-1ecbc909b866",
-      "typeVersion": 4.2,
-      "position": [
-        1600,
-        200
-      ],
-      "name": "Collect conversation strategy",
-      "type": "n8n-nodes-base.httpRequest",
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "credentials": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided onboarding assistant. Collect the conversation strategy: Understand | Filter | Close | Inform. Ask ONE question. Be short and natural. If the user already provided a strategy, confirm it.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: {{ $json.current_setup_stage || 'collect_conversation_strategy' }}\\n\\nDraft: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"extracted_strategy\\\": \\\"Understand|Filter|Close|Inform|null\\\", \\\"strategy_confirmed\\\": false, \\\"next_setup_stage\\\": \\\"collect_services\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
-        "continueOnFail": true
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        }
-      }
-    },
-    {
-      "id": "9c074acc-22c5-4012-ac1e-317f45588b39",
-      "typeVersion": 4.2,
-      "position": [
-        1900,
-        200
-      ],
-      "name": "Collect services and profile",
-      "type": "n8n-nodes-base.httpRequest",
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 2048,\n  \"system\": \"You are a guided onboarding assistant. Collect: services/products offered, decision logic, key qualifying questions, common objections. Ask ONE question at a time. Be conversational. Match user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_services\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"collect_persona\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": {\\\"services\\\": [], \\\"decision_logic\\\": \\\"\\\", \\\"key_questions\\\": [], \\\"objections\\\": []}}\"\n    }\n  ]\n}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
-        "continueOnFail": true
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        }
-      }
-    },
+
     {
       "id": "c552da5f-f60b-420f-9cd3-fa49715b6331",
       "typeVersion": 4.2,
-      "position": [
-        2200,
-        200
-      ],
+      "position": [2200, 200],
       "name": "Collect persona definition",
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
@@ -463,42 +442,23 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided onboarding assistant. Collect persona definition: tone, wording style, sentence structure, emoji usage, response length, behavior style, Hebrew patterns (if applicable). Ask ONE question at a time. When all fields collected, summarize and confirm.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_persona\\n\\nDraft persona so far: {{ JSON.stringify($json.draft_setup_data?.persona || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"collect_guardrails\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": {\\\"tone\\\": \\\"\\\", \\\"wording_style\\\": \\\"\\\", \\\"sentence_structure\\\": \\\"\\\", \\\"emoji_usage\\\": \\\"\\\", \\\"response_length\\\": \\\"\\\", \\\"behavior_style\\\": \\\"\\\"}}\"\n    }\n  ]\n}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided onboarding assistant. Define the AI agent's communication persona.\\n\\nCollect (ask one at a time, in a natural conversation):\\n1. Tone: formal | casual | warm\\n2. Language style: short answers | detailed explanations\\n3. Emoji usage: none | occasional | frequent\\n4. Agent name (what should customers call the assistant?)\\n5. If the business operates in Hebrew: ask for 2-3 example opening phrases in Hebrew\\n\\nWhen all fields are gathered, summarize and ask for confirmation before moving on.\\nRespond in the user's language.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_persona\\n\\nDraft persona so far: {{ JSON.stringify($json.draft_setup_data?.collect_persona || $json.draft_setup_data?.persona || {}) }}\\n\\nDraft (full): {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"next_setup_stage\\\": \\\"collect_guardrails\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": {\\\"tone\\\": \\\"\\\", \\\"answer_length\\\": \\\"short|medium|long\\\", \\\"emoji_usage\\\": \\\"none|occasional|frequent\\\", \\\"agent_name\\\": \\\"\\\", \\\"opening_examples\\\": []}}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
         "continueOnFail": true
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        }
-      }
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
     },
+
     {
       "id": "bfdadfbd-906a-4492-aa76-c7abbdd62c47",
       "typeVersion": 4.2,
-      "position": [
-        2500,
-        200
-      ],
+      "position": [2500, 200],
       "name": "Collect guardrails",
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
@@ -506,50 +466,27 @@
         "url": "https://api.anthropic.com/v1/messages",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "credentials": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        },
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" },
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided setup assistant collecting guardrails. Collect: forbidden claims, escalation triggers, off-limits topics, compliance notes. Ask ONE question at a time. Be conversational. Summarize once done and ask for confirmation.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_guardrails\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"confirm_and_commit\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_guardrails\\\": {}}\"\n    }\n  ]\n}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": false,
-              "responseFormat": "json"
-            }
-          }
-        },
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided setup assistant collecting guardrails for a WhatsApp AI agent.\\n\\nExplain briefly: guardrails are topics or behaviors the agent must NEVER engage with — things the owner doesn't want mentioned, promised, or handled by the bot.\\n\\nCollect (in one or two natural questions):\\n1. Topics the agent should NEVER discuss (e.g. competitor pricing, legal advice, discounts not approved)\\n2. Situations where the agent must always hand off to the owner (escalation triggers)\\n3. Any compliance or legal constraints (optional)\\n\\nSummarize once done and confirm before moving to the final review.\\nRespond in the user's language.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_guardrails\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"setup_response\\\": \\\"<your message>\\\", \\\"next_setup_stage\\\": \\\"confirm_and_commit\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_guardrails\\\": {\\\"topics_blocked\\\": [], \\\"escalation_triggers\\\": [], \\\"compliance_notes\\\": \\\"\\\"}}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "fullResponse": false, "responseFormat": "json" } } },
         "continueOnFail": true
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        }
-      }
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
     },
+
     {
       "id": "2d8ce1c2-cfb8-489e-a08c-593fe60f790f",
       "typeVersion": 4.2,
-      "position": [
-        2800,
-        200
-      ],
+      "position": [2800, 200],
       "name": "Confirm and review setup",
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
@@ -560,60 +497,34 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a business setup assistant reviewing a completed onboarding configuration. Present a clean, concise summary organized by section: Business Model, Sales Goal, Conversation Strategy, Services, Persona, Guardrails. End with a clear confirmation question.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Review and present the setup data for confirmation:\\n\\nBusiness ID: {{ $json.business_id || 'N/A' }}\\nSession ID: {{ $json.session_id || 'N/A' }}\\nStage: {{ $json.current_setup_stage }}\\n\\nDraft Setup Data:\\n{{ JSON.stringify($json.draft_setup_data || {}, null, 2) }}\\n\\nUser message: {{ $json.message || '' }}\"\n    }\n  ]\n}",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "json"
-            }
-          }
-        },
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a business setup assistant presenting a completed onboarding configuration for review.\\n\\nPresent a clean, concise summary organized by section. Include only sections that have data:\\n- Business Type & Archetype\\n- Services / Offerings\\n- Target Customers (if collected)\\n- Availability & Urgency (if collected)\\n- Pricing\\n- Booking Method (if collected)\\n- Sales Goal\\n- Agent Persona\\n- Guardrails\\n\\nEnd with a clear confirmation question: does this look right, or anything to change?\\n\\nIf the user's message says 'yes', 'confirm', 'looks good', 'approved' (or Hebrew equivalents like 'כן', 'אישור', 'נראה טוב'), set confirmation_intent to 'confirmed' and action to 'commit'.\\nOtherwise set confirmation_intent to 'pending' and action to 'save_draft'.\\nRespond in the user's language.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: confirm_and_commit\\n\\nBusiness ID: {{ $json.business_id || 'N/A' }}\\nSession ID: {{ $json.session_id || 'N/A' }}\\n\\nFull Setup Draft:\\n{{ JSON.stringify($json.draft_setup_data || {}, null, 2) }}\\n\\nUser message: {{ $json.message || '' }}\"\n    }\n  ]\n}",
+        "options": { "response": { "response": { "responseFormat": "json" } } },
         "continueOnFail": true
       },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
-        }
-      }
+      "credentials": { "httpHeaderAuth": { "id": "O6dnMJBEHEOipCdX", "name": "ANTHROPIC_HTTP_HEADER_AUTH" } }
     },
+
     {
       "id": "2d960c01-0bdc-40e0-b915-f74c490612d1",
       "typeVersion": 2,
-      "position": [
-        3100,
-        200
-      ],
+      "position": [3100, 200],
       "name": "Check confirmation response",
       "type": "n8n-nodes-base.if",
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": false,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
           "conditions": [
             {
               "id": "confirmation-yes",
               "leftValue": "={{ $json.confirmation_intent }}",
               "rightValue": "confirmed",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
+              "operator": { "type": "string", "operation": "equals" }
             }
           ],
           "combinator": "and"
@@ -621,40 +532,31 @@
         "options": {}
       }
     },
+
     {
       "id": "87d5a3d8-b3fa-4f86-817e-c967731112d1",
       "typeVersion": 3,
-      "position": [
-        3400,
-        200
-      ],
+      "position": [3400, 200],
       "name": "Merge stage responses",
       "type": "n8n-nodes-base.merge",
-      "parameters": {
-        "mode": "append",
-        "options": {}
-      }
+      "parameters": { "mode": "append", "options": {} }
     },
+
     {
       "id": "eb82b7ef-224c-42cd-95fe-8bfb14be6bc3",
       "typeVersion": 2,
-      "position": [
-        3700,
-        200
-      ],
+      "position": [3700, 200],
       "name": "Build draft setup data",
       "type": "n8n-nodes-base.code",
       "parameters": {
-        "jsCode": "const inputs = $('Extract setup inputs').item.json;\nconst apiResponse = $input.first().json;\n\n// Extract AI text from Anthropic API response\nlet aiText = '';\nif (Array.isArray(apiResponse.content)) {\n  aiText = apiResponse.content[0]?.text || '';\n} else if (typeof apiResponse.text === 'string') {\n  aiText = apiResponse.text;\n}\n\n// Parse JSON from AI text (handle markdown code blocks)\nlet aiJson = {};\ntry {\n  const cleaned = aiText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '').trim();\n  aiJson = JSON.parse(cleaned);\n} catch(e) {\n  const match = aiText.match(/\\{[\\s\\S]*\\}/);\n  if (match) {\n    try { aiJson = JSON.parse(match[0]); } catch(e2) {}\n  }\n}\n\nconst currentDraft = { ...(inputs.draft_setup_data || {}) };\nif (aiJson.extracted_value) {\n  currentDraft[inputs.current_setup_stage] = aiJson.extracted_value;\n}\nif (!currentDraft.persona) currentDraft.persona = {};\nif (!currentDraft.guardrails) currentDraft.guardrails = {};\n\nreturn [{json: {\n  session_id: inputs.session_id || '',\n  business_id: inputs.business_id || null,\n  current_setup_stage: inputs.current_setup_stage || 'collect_business_model',\n  next_setup_stage: aiJson.next_setup_stage || inputs.current_setup_stage || 'collect_business_model',\n  setup_response: aiJson.setup_response || '',\n  action: aiJson.action || 'save_draft',\n  setup_completed: false,\n  draft_setup_data: currentDraft\n}}];"
+        "jsCode": "const inputs = $('Extract setup inputs').item.json;\nconst apiResponse = $input.first().json;\n\n// Extract AI text from Anthropic response\nlet aiText = '';\nif (Array.isArray(apiResponse.content)) {\n  aiText = apiResponse.content[0]?.text || '';\n} else if (typeof apiResponse.text === 'string') {\n  aiText = apiResponse.text;\n}\n\n// Parse JSON from AI text\nlet aiJson = {};\ntry {\n  const cleaned = aiText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '').trim();\n  aiJson = JSON.parse(cleaned);\n} catch(e) {\n  const match = aiText.match(/\\{[\\s\\S]*\\}/);\n  if (match) {\n    try { aiJson = JSON.parse(match[0]); } catch(e2) {}\n  }\n}\n\nconst currentDraft = { ...(inputs.draft_setup_data || {}) };\nconst stage = inputs.current_setup_stage || 'collect_business_model';\n\n// Save extracted value under the stage key\nif (aiJson.extracted_value !== undefined && aiJson.extracted_value !== null) {\n  currentDraft[stage] = aiJson.extracted_value;\n  // Also save archetype at top level for easy routing in subsequent stages\n  if (stage === 'collect_business_model' && typeof aiJson.extracted_value === 'string' && aiJson.extracted_value !== 'null') {\n    currentDraft.archetype = aiJson.extracted_value;\n  }\n}\n\n// Handle guardrails extraction from collect_guardrails stage\nif (aiJson.extracted_guardrails) {\n  currentDraft.guardrails = aiJson.extracted_guardrails;\n}\n\nconst isCommit = aiJson.action === 'commit';\n\nreturn [{ json: {\n  session_id: inputs.session_id || '',\n  business_id: inputs.business_id || null,\n  current_setup_stage: stage,\n  next_setup_stage: aiJson.next_setup_stage || stage,\n  setup_response: aiJson.setup_response || '',\n  action: aiJson.action || 'save_draft',\n  setup_completed: isCommit,\n  draft_setup_data: currentDraft\n} }];"
       }
     },
+
     {
       "id": "1443fe19-caca-45ea-8657-ff3f93807bf0",
       "typeVersion": 3,
-      "position": [
-        4000,
-        200
-      ],
+      "position": [4000, 200],
       "name": "Determine save action",
       "type": "n8n-nodes-base.switch",
       "parameters": {
@@ -663,21 +565,8 @@
           "values": [
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "save_draft",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "save_draft", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -685,21 +574,8 @@
             },
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "commit",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "commit", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -707,21 +583,8 @@
             },
             {
               "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.action }}",
-                    "rightValue": "none",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
+                "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "none", "operator": { "type": "string", "operation": "equals" } }],
                 "combinator": "and"
               },
               "renameOutput": true,
@@ -729,18 +592,14 @@
             }
           ]
         },
-        "options": {
-          "fallbackOutput": "extra"
-        }
+        "options": { "fallbackOutput": "extra" }
       }
     },
+
     {
       "id": "c926f56e-e91c-442b-a610-5d78ea5949f9",
       "typeVersion": 2.5,
-      "position": [
-        4300,
-        200
-      ],
+      "position": [4300, 200],
       "name": "Save draft to DB",
       "type": "n8n-nodes-base.postgres",
       "continueOnFail": true,
@@ -748,74 +607,43 @@
         "operation": "executeQuery",
         "query": "INSERT INTO setup_drafts (\n  session_id,\n  business_id,\n  current_setup_stage,\n  draft_setup_data,\n  setup_completed,\n  updated_at\n)\nVALUES (\n  '{{ $json.session_id }}',\n  '{{ $json.business_id }}',\n  '{{ $json.next_setup_stage }}',\n  '{{ JSON.stringify($json.draft_setup_data) }}'::jsonb,\n  {{ $json.setup_completed }},\n  NOW()\n)\nON CONFLICT (session_id)\nDO UPDATE SET\n  current_setup_stage = EXCLUDED.current_setup_stage,\n  draft_setup_data = EXCLUDED.draft_setup_data,\n  setup_completed = EXCLUDED.setup_completed,\n  updated_at = NOW()\nRETURNING session_id, business_id, current_setup_stage, setup_completed, updated_at;",
         "options": {},
-        "credentials": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "Whatsapp_agent_DB"
-        }
+        "credentials": { "id": "O6dnMJBEHEOipCdX", "name": "Whatsapp_agent_DB" }
       },
-      "credentials": {
-        "postgres": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "Whatsapp_agent_DB"
-        }
-      }
+      "credentials": { "postgres": { "id": "O6dnMJBEHEOipCdX", "name": "Whatsapp_agent_DB" } }
     },
+
     {
       "id": "fa862a1e-fa73-411e-8f46-6d2f98fc68da",
       "typeVersion": 2.5,
-      "position": [
-        4600,
-        200
-      ],
+      "position": [4600, 200],
       "name": "Commit setup to DB",
       "type": "n8n-nodes-base.postgres",
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO business_profiles (\n  business_id,\n  session_id,\n  business_model,\n  sales_goal,\n  conversation_strategy,\n  services,\n  persona,\n  hebrew_patterns,\n  guardrails,\n  setup_completed,\n  setup_stage,\n  draft_setup_data,\n  created_at,\n  updated_at\n)\nVALUES (\n  $1, $2, $3, $4, $5,\n  $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb,\n  true, 'completed', '{}'::jsonb,\n  NOW(), NOW()\n)\nON CONFLICT (business_id) DO UPDATE SET\n  business_model        = EXCLUDED.business_model,\n  sales_goal            = EXCLUDED.sales_goal,\n  conversation_strategy = EXCLUDED.conversation_strategy,\n  services              = EXCLUDED.services,\n  persona               = EXCLUDED.persona,\n  hebrew_patterns       = EXCLUDED.hebrew_patterns,\n  guardrails            = EXCLUDED.guardrails,\n  setup_completed       = true,\n  setup_stage           = 'completed',\n  draft_setup_data      = '{}'::jsonb,\n  updated_at            = NOW()\nRETURNING business_id, setup_completed, updated_at;",
-        "options": {
-          "queryBatching": "independently"
-        },
+        "options": { "queryBatching": "independently" },
         "additionalFields": {},
-        "queryParams": "={{ $json.business_id }},={{ $json.session_id }},={{ $json.draft_setup_data.business_model }},={{ $json.draft_setup_data.sales_goal }},={{ $json.draft_setup_data.conversation_strategy }},={{ JSON.stringify($json.draft_setup_data.services ?? {}) }},={{ JSON.stringify($json.draft_setup_data.persona ?? {}) }},={{ JSON.stringify($json.draft_setup_data.hebrew_patterns ?? {}) }},={{ JSON.stringify($json.draft_setup_data.guardrails ?? {}) }}",
-        "credentials": {
-          "postgres": {
-            "id": "O6dnMJBEHEOipCdX",
-            "name": "Whatsapp_agent_DB"
-          }
-        }
+        "queryParams": "={{ $json.business_id }},={{ $json.session_id }},={{ $json.draft_setup_data.archetype ?? $json.draft_setup_data.collect_business_model ?? '' }},={{ $json.draft_setup_data.collect_sales_goal ?? '' }},={{ $json.draft_setup_data.conversation_strategy ?? '' }},={{ JSON.stringify($json.draft_setup_data.service_collect_offerings ?? $json.draft_setup_data.studio_collect_classes ?? $json.draft_setup_data.generic_collect_services ?? {}) }},={{ JSON.stringify($json.draft_setup_data.collect_persona ?? {}) }},={{ JSON.stringify({}) }},={{ JSON.stringify($json.draft_setup_data.guardrails ?? {}) }}",
+        "credentials": { "postgres": { "id": "O6dnMJBEHEOipCdX", "name": "Whatsapp_agent_DB" } }
       },
-      "credentials": {
-        "postgres": {
-          "id": "O6dnMJBEHEOipCdX",
-          "name": "Whatsapp_agent_DB"
-        }
-      }
+      "credentials": { "postgres": { "id": "O6dnMJBEHEOipCdX", "name": "Whatsapp_agent_DB" } }
     },
+
     {
       "id": "e647a5ed-f8f3-4b63-874f-d8c6798d083c",
       "typeVersion": 2,
-      "position": [
-        4900,
-        200
-      ],
+      "position": [4900, 200],
       "name": "Check DB save success",
       "type": "n8n-nodes-base.if",
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
           "conditions": [
             {
               "id": "check-session-id",
               "leftValue": "={{ $('Build draft setup data').item.json.session_id }}",
               "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty"
-              }
+              "operator": { "type": "string", "operation": "notEmpty" }
             }
           ],
           "combinator": "and"
@@ -823,461 +651,149 @@
         "options": {}
       }
     },
+
     {
       "id": "5e51f4c1-31e8-485a-809a-96916050e5b8",
       "typeVersion": 3.4,
-      "position": [
-        5200,
-        200
-      ],
+      "position": [5200, 200],
       "name": "Build setup response",
       "type": "n8n-nodes-base.set",
       "parameters": {
         "assignments": {
           "assignments": [
-            {
-              "id": "setup_response_output",
-              "name": "setup_response",
-              "value": "={{ $('Build draft setup data').item.json.setup_response }}",
-              "type": "string"
-            },
-            {
-              "id": "next_setup_stage_output",
-              "name": "next_setup_stage",
-              "value": "={{ $('Build draft setup data').item.json.next_setup_stage }}",
-              "type": "string"
-            },
-            {
-              "id": "action_output",
-              "name": "action",
-              "value": "={{ $('Build draft setup data').item.json.action }}",
-              "type": "string"
-            },
-            {
-              "id": "draft_setup_data_output",
-              "name": "draft_setup_data",
-              "value": "={{ $('Build draft setup data').item.json.draft_setup_data }}",
-              "type": "object"
-            },
-            {
-              "id": "setup_completed_output",
-              "name": "setup_completed",
-              "value": "={{ $('Build draft setup data').item.json.setup_completed }}",
-              "type": "boolean"
-            }
+            { "id": "setup_response_output", "name": "setup_response", "value": "={{ $('Build draft setup data').item.json.setup_response }}", "type": "string" },
+            { "id": "next_setup_stage_output", "name": "next_setup_stage", "value": "={{ $('Build draft setup data').item.json.next_setup_stage }}", "type": "string" },
+            { "id": "action_output", "name": "action", "value": "={{ $('Build draft setup data').item.json.action }}", "type": "string" },
+            { "id": "draft_setup_data_output", "name": "draft_setup_data", "value": "={{ $('Build draft setup data').item.json.draft_setup_data }}", "type": "object" },
+            { "id": "setup_completed_output", "name": "setup_completed", "value": "={{ $('Build draft setup data').item.json.setup_completed }}", "type": "boolean" }
           ]
         },
         "options": {}
       }
     },
+
     {
       "id": "8d186cc3-3a6e-4a70-b831-a597266de4d6",
       "typeVersion": 3.4,
-      "position": [
-        5500,
-        200
-      ],
+      "position": [5500, 200],
       "name": "Build error response",
       "type": "n8n-nodes-base.set",
       "parameters": {
         "assignments": {
           "assignments": [
-            {
-              "id": "error_response_status",
-              "name": "status",
-              "value": "error",
-              "type": "string"
-            },
-            {
-              "id": "error_response_result",
-              "name": "result",
-              "value": "={{ {} }}",
-              "type": "object"
-            },
-            {
-              "id": "error_response_error",
-              "name": "error",
-              "value": "={{ $json.error || $json.message || 'An unexpected error occurred in the setup onboarding flow.' }}",
-              "type": "string"
-            },
-            {
-              "id": "error_response_setup_response",
-              "name": "result.setup_response",
-              "value": "Something went wrong during setup. Please try again.",
-              "type": "string"
-            },
-            {
-              "id": "error_response_next_setup_stage",
-              "name": "result.next_setup_stage",
-              "value": "={{ $('Extract setup inputs').item.json.current_setup_stage || 'start' }}",
-              "type": "string"
-            },
-            {
-              "id": "error_response_action",
-              "name": "result.action",
-              "value": "none",
-              "type": "string"
-            },
-            {
-              "id": "error_response_draft_setup_data",
-              "name": "result.draft_setup_data",
-              "value": "={{ $('Extract setup inputs').item.json.draft_setup_data || {} }}",
-              "type": "object"
-            },
-            {
-              "id": "error_response_setup_completed",
-              "name": "result.setup_completed",
-              "value": false,
-              "type": "boolean"
-            }
+            { "id": "error_response_status", "name": "status", "value": "error", "type": "string" },
+            { "id": "error_response_result", "name": "result", "value": "={{ {} }}", "type": "object" },
+            { "id": "error_response_error", "name": "error", "value": "={{ $json.error || $json.message || 'An unexpected error occurred in the setup onboarding flow.' }}", "type": "string" },
+            { "id": "error_response_setup_response", "name": "result.setup_response", "value": "Something went wrong during setup. Please try again.", "type": "string" },
+            { "id": "error_response_next_setup_stage", "name": "result.next_setup_stage", "value": "={{ $('Extract setup inputs').item.json.current_setup_stage || 'collect_business_model' }}", "type": "string" },
+            { "id": "error_response_action", "name": "result.action", "value": "none", "type": "string" },
+            { "id": "error_response_draft_setup_data", "name": "result.draft_setup_data", "value": "={{ $('Extract setup inputs').item.json.draft_setup_data || {} }}", "type": "object" },
+            { "id": "error_response_setup_completed", "name": "result.setup_completed", "value": false, "type": "boolean" }
           ]
         },
         "options": {}
       }
     },
+
     {
       "id": "22303bb2-a0fd-47bb-9dbd-db8f322f399f",
       "typeVersion": 3.4,
-      "position": [
-        5800,
-        200
-      ],
+      "position": [5800, 200],
       "name": "Return setup result",
       "type": "n8n-nodes-base.set",
       "parameters": {
         "assignments": {
           "assignments": [
-            {
-              "id": "setup_status",
-              "name": "status",
-              "value": "success",
-              "type": "string"
-            },
-            {
-              "id": "setup_result_response",
-              "name": "result.setup_response",
-              "value": "={{ $json.setup_response }}",
-              "type": "string"
-            },
-            {
-              "id": "setup_result_next_stage",
-              "name": "result.next_setup_stage",
-              "value": "={{ $json.next_setup_stage }}",
-              "type": "string"
-            },
-            {
-              "id": "setup_result_action",
-              "name": "result.action",
-              "value": "={{ $json.action }}",
-              "type": "string"
-            },
-            {
-              "id": "setup_result_draft",
-              "name": "result.draft_setup_data",
-              "value": "={{ $json.draft_setup_data }}",
-              "type": "object"
-            },
-            {
-              "id": "setup_result_completed",
-              "name": "result.setup_completed",
-              "value": "={{ $json.setup_completed }}",
-              "type": "boolean"
-            },
-            {
-              "id": "setup_error",
-              "name": "error",
-              "value": "",
-              "type": "string"
-            }
+            { "id": "setup_status", "name": "status", "value": "success", "type": "string" },
+            { "id": "setup_result_response", "name": "result.setup_response", "value": "={{ $json.setup_response }}", "type": "string" },
+            { "id": "setup_result_next_stage", "name": "result.next_setup_stage", "value": "={{ $json.next_setup_stage }}", "type": "string" },
+            { "id": "setup_result_action", "name": "result.action", "value": "={{ $json.action }}", "type": "string" },
+            { "id": "setup_result_draft", "name": "result.draft_setup_data", "value": "={{ $json.draft_setup_data }}", "type": "object" },
+            { "id": "setup_result_completed", "name": "result.setup_completed", "value": "={{ $json.setup_completed }}", "type": "boolean" },
+            { "id": "setup_error", "name": "error", "value": "", "type": "string" }
           ]
         },
         "options": {}
       }
     }
   ],
+
   "connections": {
     "Workflow input trigger": {
-      "main": [
-        [
-          {
-            "node": "Extract setup inputs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Extract setup inputs", "type": "main", "index": 0 }]]
     },
     "Extract setup inputs": {
-      "main": [
-        [
-          {
-            "node": "Determine setup stage",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Determine setup stage", "type": "main", "index": 0 }]]
     },
     "Determine setup stage": {
       "main": [
-        [
-          {
-            "node": "Collect business model",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Collect sales goal",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Collect conversation strategy",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Collect services and profile",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Collect persona definition",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Collect guardrails",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Confirm and review setup",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Collect business model",      "type": "main", "index": 0 }],
+        [{ "node": "Service collect offerings",   "type": "main", "index": 0 }],
+        [{ "node": "Service collect target",      "type": "main", "index": 0 }],
+        [{ "node": "Service collect urgency",     "type": "main", "index": 0 }],
+        [{ "node": "Studio collect classes",      "type": "main", "index": 0 }],
+        [{ "node": "Studio collect pricing",      "type": "main", "index": 0 }],
+        [{ "node": "Studio collect booking",      "type": "main", "index": 0 }],
+        [{ "node": "Generic collect services",    "type": "main", "index": 0 }],
+        [{ "node": "Collect sales goal",          "type": "main", "index": 0 }],
+        [{ "node": "Collect persona definition",  "type": "main", "index": 0 }],
+        [{ "node": "Collect guardrails",          "type": "main", "index": 0 }],
+        [{ "node": "Confirm and review setup",    "type": "main", "index": 0 }]
       ]
     },
-    "Collect business model": {
-      "main": [
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Collect sales goal": {
-      "main": [
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Collect conversation strategy": {
-      "main": [
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 2
-          }
-        ]
-      ]
-    },
-    "Collect services and profile": {
-      "main": [
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 3
-          }
-        ]
-      ]
-    },
-    "Collect persona definition": {
-      "main": [
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 4
-          }
-        ]
-      ]
-    },
-    "Collect guardrails": {
-      "main": [
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 5
-          }
-        ]
-      ]
-    },
+    "Collect business model":    { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 0 }]] },
+    "Service collect offerings": { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 1 }]] },
+    "Service collect target":    { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 2 }]] },
+    "Service collect urgency":   { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 3 }]] },
+    "Studio collect classes":    { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 4 }]] },
+    "Studio collect pricing":    { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 5 }]] },
+    "Studio collect booking":    { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 6 }]] },
+    "Generic collect services":  { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 7 }]] },
+    "Collect sales goal":        { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 8 }]] },
+    "Collect persona definition":{ "main": [[{ "node": "Merge stage responses", "type": "main", "index": 9 }]] },
+    "Collect guardrails":        { "main": [[{ "node": "Merge stage responses", "type": "main", "index": 10 }]] },
     "Confirm and review setup": {
-      "main": [
-        [
-          {
-            "node": "Check confirmation response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Check confirmation response", "type": "main", "index": 0 }]]
     },
     "Check confirmation response": {
       "main": [
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 6
-          }
-        ],
-        [
-          {
-            "node": "Merge stage responses",
-            "type": "main",
-            "index": 7
-          }
-        ]
+        [{ "node": "Merge stage responses", "type": "main", "index": 11 }],
+        [{ "node": "Merge stage responses", "type": "main", "index": 12 }]
       ]
     },
     "Merge stage responses": {
-      "main": [
-        [
-          {
-            "node": "Build draft setup data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Build draft setup data", "type": "main", "index": 0 }]]
     },
     "Build draft setup data": {
-      "main": [
-        [
-          {
-            "node": "Determine save action",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Determine save action", "type": "main", "index": 0 }]]
     },
     "Determine save action": {
       "main": [
-        [
-          {
-            "node": "Save draft to DB",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Commit setup to DB",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build setup response",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Save draft to DB",    "type": "main", "index": 0 }],
+        [{ "node": "Commit setup to DB",  "type": "main", "index": 0 }],
+        [{ "node": "Build setup response","type": "main", "index": 0 }]
       ]
     },
     "Save draft to DB": {
-      "main": [
-        [
-          {
-            "node": "Check DB save success",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Check DB save success", "type": "main", "index": 0 }]]
     },
     "Commit setup to DB": {
-      "main": [
-        [
-          {
-            "node": "Check DB save success",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Check DB save success", "type": "main", "index": 0 }]]
     },
     "Check DB save success": {
       "main": [
-        [
-          {
-            "node": "Build setup response",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build error response",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Build setup response", "type": "main", "index": 0 }],
+        [{ "node": "Build error response", "type": "main", "index": 0 }]
       ]
     },
     "Build setup response": {
-      "main": [
-        [
-          {
-            "node": "Return setup result",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Return setup result", "type": "main", "index": 0 }]]
     },
     "Build error response": {
-      "main": [
-        [
-          {
-            "node": "Return setup result",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Return setup result", "type": "main", "index": 0 }]]
     }
   },
+
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  }
+  "settings": { "executionOrder": "v1" }
 }

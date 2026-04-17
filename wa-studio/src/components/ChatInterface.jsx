@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { SETUP_STAGES } from '../lib/presets.js'
+import { SETUP_STAGES, ARCHETYPE_STAGE_PATHS } from '../lib/presets.js'
 
 export default function ChatInterface({ session, messages, sending, onSend, onClear }) {
   const [input, setInput] = useState('')
@@ -24,8 +24,14 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
   }
 
   const currentStage = session?.current_setup_stage || session?.current_stage
-  const stageIndex = SETUP_STAGES.findIndex(s => s.key === currentStage)
   const isSetup = session?.session_mode === 'setup'
+
+  // Use archetype-specific path if known, otherwise full list
+  const archetype = session?.draft_setup_data?.archetype
+  const activePath = archetype && ARCHETYPE_STAGE_PATHS[archetype]
+    ? ARCHETYPE_STAGE_PATHS[archetype].map(key => SETUP_STAGES.find(s => s.key === key)).filter(Boolean)
+    : SETUP_STAGES
+  const stageIndex = activePath.findIndex(s => s.key === currentStage)
 
   return (
     <main className="panel panel-chat">
@@ -50,7 +56,7 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
 
       {isSetup && stageIndex >= 0 && (
         <div className="stage-progress">
-          {SETUP_STAGES.map((s, i) => (
+          {activePath.map((s, i) => (
             <div
               key={s.key}
               className={`stage-step ${i < stageIndex ? 'done' : i === stageIndex ? 'active' : ''}`}
