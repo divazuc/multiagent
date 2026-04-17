@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash:*)",
+      "Bash(npm install:*)",
+      "Bash(tasklist)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(git:*)",
+      "Bash(node -e \"require\\('./workflow-generator/server/schema/n8n-nodes-v1.json'\\); console.log\\('✓ JSON is valid'\\)\")",
+      "Bash(node -e ':*)",
+      "Skill(statusline)",
+      "Bash(\" \"C:/Users/Diva/.claude/projects/C--Users-Diva-Documents-Web-Projects-AI-Playground-Multi-agent/d777637b-0816-4044-bbe3-c6cf188b7033/tool-results/toolu_012j5rYb6wgSniXSm91W9hW8.txt\" | head -60)",
+      "Bash(grep -n \"Display multiple lines\\\\|display-multiple-lines\\\\|```\" \"C:/Users/Diva/.claude/projects/C--Users-Diva-Documents-Web-Projects-AI-Playground-Multi-agent/d777637b-0816-4044-bbe3-c6cf188b7033/tool-results/toolu_012j5rYb6wgSniXSm91W9hW8.txt\" | head -60)",
+      "Bash(choco install *)",
+      "Bash(scoop install *)",
+      "Bash(mkdir -p \"/c/Users/Diva/Documents/PowerShell\")",
+      "Bash(cp \"/c/Users/Diva/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1\" \"/c/Users/Diva/Documents/PowerShell/Microsoft.PowerShell_profile.ps1\")",
+      "Bash(powershell.exe *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)"
+    ]
+  }
+}
