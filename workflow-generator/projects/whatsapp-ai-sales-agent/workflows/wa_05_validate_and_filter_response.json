@@ -1,0 +1,663 @@
+{
+  "name": "WA_05_Validate and Filter Response",
+  "nodes": [
+    {
+      "id": "1dd95253-3308-44bd-bd53-b80c48cc7afc",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "name": "Input trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "4ed33f47-df2a-49da-94e8-b4cb86a42f3e",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        200
+      ],
+      "name": "Receive sub-workflow input",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "candidate_response",
+              "value": "={{ $json.candidate_response }}",
+              "type": "string"
+            },
+            {
+              "name": "persona",
+              "value": "={{ $json.persona }}",
+              "type": "object"
+            },
+            {
+              "name": "guardrails",
+              "value": "={{ $json.guardrails }}",
+              "type": "object"
+            },
+            {
+              "name": "hebrew_patterns",
+              "value": "={{ $json.hebrew_patterns }}",
+              "type": "object"
+            },
+            {
+              "name": "next_stage",
+              "value": "={{ $json.next_stage }}",
+              "type": "string"
+            },
+            {
+              "name": "action",
+              "value": "={{ $json.action }}",
+              "type": "string"
+            },
+            {
+              "name": "cta_triggered",
+              "value": "={{ $json.cta_triggered }}",
+              "type": "boolean"
+            },
+            {
+              "name": "escalate",
+              "value": "={{ $json.escalate }}",
+              "type": "boolean"
+            },
+            {
+              "name": "language",
+              "value": "={{ $json.language ?? 'he' }}",
+              "type": "string"
+            },
+            {
+              "name": "conversation_history",
+              "value": "={{ $json.conversation_history ?? [] }}",
+              "type": "array"
+            },
+            {
+              "name": "retry_count",
+              "value": "=0",
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "97d24856-b028-4b2c-9e44-1057b2e765e0",
+      "typeVersion": 2,
+      "position": [
+        700,
+        200
+      ],
+      "name": "Run validation checks",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst response = data.candidate_response || '';\nconst guardrails = data.guardrails || {};\nconst persona = data.persona || {};\n\nconst issues = [];\n\n// 1. Length check — must not be excessively long\nconst wordCount = response.trim().split(/\\s+/).length;\nif (wordCount > 80) issues.push('too_long');\n\n// 2. Single-question rule — must not contain more than one question mark\nconst questionMarks = (response.match(/\\?/g) || []).length;\nif (questionMarks > 1) issues.push('multiple_questions');\n\n// 3. Forward motion — must not end with a period and no question/CTA signal\nconst hasForwardMotion = /\\?|!|book|call|schedule|contact|send|share|let me know|אשמח|בוא|קבע|שלח/i.test(response);\nif (!hasForwardMotion && wordCount > 10) issues.push('no_forward_motion');\n\n// 4. Guardrail check — forbidden phrases\nconst forbidden = guardrails.forbidden_phrases || [];\nfor (const phrase of forbidden) {\n  if (response.toLowerCase().includes(phrase.toLowerCase())) {\n    issues.push('guardrail_violation');\n    break;\n  }\n}\n\n// 5. Generic AI language check\nconst genericPhrases = ['certainly', 'of course', 'absolutely', 'as an ai', 'i am an ai', 'i cannot', 'i do not have the ability'];\nfor (const phrase of genericPhrases) {\n  if (response.toLowerCase().includes(phrase)) {\n    issues.push('sounds_generic');\n    break;\n  }\n}\n\nconst validation_passed = issues.length === 0;\n\nreturn [{ json: {\n  ...data,\n  validation_passed,\n  validation_issues: issues\n} }];"
+      }
+    },
+    {
+      "id": "a689a5c5-6a56-4e7f-b489-f19a820cb379",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "name": "Passed validation?",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.validation_passed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "93b4acd6-d725-45b2-8433-1d9d92ba5dad",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        200
+      ],
+      "name": "Check retry limit",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": 2,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "5e7a2be2-9994-440c-9d61-73cedb7938cc",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        200
+      ],
+      "name": "Build rewrite prompt",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "rewrite_prompt",
+              "value": "=You are a strict response editor for a conversational sales agent.\n\nThe following candidate response FAILED these quality checks:\n{{ $json.validation_issues.join(', ') }}\n\nFailed response:\n\"{{ $json.candidate_response }}\"\n\nPersona tone: {{ JSON.stringify($json.persona.tone ?? 'natural, direct') }}\nLanguage: {{ $json.language }}\nNext stage: {{ $json.next_stage }}\nCTA triggered: {{ $json.cta_triggered }}\nHebrew patterns (if applicable): {{ JSON.stringify($json.hebrew_patterns) }}\nGuardrails - forbidden: {{ JSON.stringify($json.guardrails.forbidden_phrases ?? []) }}\n\nRewrite rules (MANDATORY):\n- Maximum 60 words\n- Only ONE question if needed\n- Must move conversation forward (CTA or qualifying question)\n- Must match the persona tone exactly\n- Must NOT sound like AI — sound like the business owner\n- No generic phrases (certainly, of course, absolutely, as an AI)\n- Do NOT invent business information\n- Respect all guardrail constraints\n- If language is 'he', respond in Hebrew\n\nReturn ONLY the rewritten response text. No explanation. No quotes. No prefix.",
+              "type": "string"
+            },
+            {
+              "name": "retry_count",
+              "value": "={{ ($json.retry_count ?? 0) + 1 }}",
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "31b8d47c-ed69-4a5c-8fe4-13ad678c56fc",
+      "typeVersion": 4.2,
+      "position": [
+        1900,
+        200
+      ],
+      "name": "Rewrite via Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "O6dnMJBEHEOipCdX",
+            "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 300,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.rewrite_prompt) }}\n    }\n  ]\n}",
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "b1661a2e-6d58-4510-9822-cf1342f3faea",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "name": "Extract rewritten response",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst prev = $('Build rewrite prompt').first().json;\n\nlet rewritten = '';\ntry {\n  rewritten = input.content?.[0]?.text?.trim() || '';\n} catch(e) {\n  rewritten = '';\n}\n\nif (!rewritten) {\n  return [{ json: {\n    ...prev,\n    candidate_response: prev.candidate_response,\n    rewrite_failed: true,\n    rewrite_applied: false\n  } }];\n}\n\nreturn [{ json: {\n  ...prev,\n  candidate_response: rewritten,\n  rewrite_applied: true,\n  rewrite_failed: false,\n  validation_passed: false\n} }];"
+      }
+    },
+    {
+      "id": "d8ed89b9-d6f7-458b-8250-3f63790367b5",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        200
+      ],
+      "name": "Re-run validation checks",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst response = data.candidate_response || '';\nconst guardrails = data.guardrails || {};\n\nconst issues = [];\n\nconst wordCount = response.trim().split(/\\s+/).length;\nif (wordCount > 80) issues.push('too_long');\n\nconst questionMarks = (response.match(/\\?/g) || []).length;\nif (questionMarks > 1) issues.push('multiple_questions');\n\nconst hasForwardMotion = /\\?|!|book|call|schedule|contact|send|share|let me know|אשמח|בוא|קבע|שלח/i.test(response);\nif (!hasForwardMotion && wordCount > 10) issues.push('no_forward_motion');\n\nconst forbidden = guardrails.forbidden_phrases || [];\nfor (const phrase of forbidden) {\n  if (response.toLowerCase().includes(phrase.toLowerCase())) {\n    issues.push('guardrail_violation');\n    break;\n  }\n}\n\nconst genericPhrases = ['certainly', 'of course', 'absolutely', 'as an ai', 'i am an ai', 'i cannot'];\nfor (const phrase of genericPhrases) {\n  if (response.toLowerCase().includes(phrase)) {\n    issues.push('sounds_generic');\n    break;\n  }\n}\n\nconst validation_passed = issues.length === 0;\n\nreturn [{ json: {\n  ...data,\n  validation_passed,\n  validation_issues: issues\n} }];"
+      }
+    },
+    {
+      "id": "a2fc0775-2374-4227-afcb-f571559cab95",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        200
+      ],
+      "name": "Rewrite passed?",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.validation_passed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "92bb4736-998a-462f-b3db-08c12304c8bf",
+      "typeVersion": 3.4,
+      "position": [
+        3100,
+        200
+      ],
+      "name": "Build escalation signal",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "escalate",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "name": "escalation_reason",
+              "value": "Response failed validation after max retry attempts",
+              "type": "string"
+            },
+            {
+              "name": "validated_response",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "name": "validation_passed",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "rewrite_applied",
+              "value": "={{ $json.rewrite_applied ?? false }}",
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b4813d39-8f34-43ce-826c-608caff4aec9",
+      "typeVersion": 3.4,
+      "position": [
+        3400,
+        200
+      ],
+      "name": "Build success output (first pass)",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "validated_response",
+              "value": "={{ $json.candidate_response }}",
+              "type": "string"
+            },
+            {
+              "name": "validation_passed",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "name": "rewrite_applied",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "escalate",
+              "value": "={{ $json.escalate ?? false }}",
+              "type": "boolean"
+            },
+            {
+              "name": "escalation_reason",
+              "value": "={{ $json.escalation_reason ?? null }}",
+              "type": "string"
+            },
+            {
+              "name": "next_stage",
+              "value": "={{ $json.next_stage }}",
+              "type": "string"
+            },
+            {
+              "name": "action",
+              "value": "={{ $json.action }}",
+              "type": "string"
+            },
+            {
+              "name": "cta_triggered",
+              "value": "={{ $json.cta_triggered }}",
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6d41a87a-a85c-441c-a5a6-15907afcd072",
+      "typeVersion": 3.4,
+      "position": [
+        3700,
+        200
+      ],
+      "name": "Build success output (after rewrite)",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "validated_response",
+              "value": "={{ $json.candidate_response }}",
+              "type": "string"
+            },
+            {
+              "name": "validation_passed",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "name": "rewrite_applied",
+              "value": "={{ $json.rewrite_applied ?? true }}",
+              "type": "boolean"
+            },
+            {
+              "name": "escalate",
+              "value": "={{ $json.escalate ?? false }}",
+              "type": "boolean"
+            },
+            {
+              "name": "escalation_reason",
+              "value": "={{ $json.escalation_reason ?? null }}",
+              "type": "string"
+            },
+            {
+              "name": "next_stage",
+              "value": "={{ $json.next_stage }}",
+              "type": "string"
+            },
+            {
+              "name": "action",
+              "value": "={{ $json.action }}",
+              "type": "string"
+            },
+            {
+              "name": "cta_triggered",
+              "value": "={{ $json.cta_triggered }}",
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "73b9183a-f4da-4e4d-857a-033d85bbb226",
+      "typeVersion": 3,
+      "position": [
+        4000,
+        200
+      ],
+      "name": "Merge all outputs",
+      "type": "n8n-nodes-base.merge",
+      "parameters": {
+        "mode": "passThrough",
+        "output": "input1"
+      }
+    },
+    {
+      "id": "7771fe5e-db00-4a1b-8788-d3776d54d734",
+      "typeVersion": 2,
+      "position": [
+        4300,
+        200
+      ],
+      "name": "Build final sub-workflow response",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst isEscalation = data.escalate === true && !data.validated_response;\n\nreturn [{ json: {\n  status: 'success',\n  result: {\n    validated_response: data.validated_response || '',\n    next_stage: data.next_stage || '',\n    action: data.action || 'none',\n    cta_triggered: data.cta_triggered ?? false,\n    escalate: data.escalate ?? false,\n    escalation_reason: data.escalation_reason || null,\n    validation_passed: data.validation_passed ?? false,\n    rewrite_applied: data.rewrite_applied ?? false\n  },\n  error: null\n} }];"
+      }
+    },
+    {
+      "id": "c96a44b6-608e-483f-a98e-e94fe2cafac5",
+      "typeVersion": 1,
+      "position": [
+        4600,
+        200
+      ],
+      "name": "Sticky note — Validation logic",
+      "type": "n8n-nodes-base.stickyNote",
+      "parameters": {
+        "content": "## WA_05 — Validate and Filter Response\n\n**Purpose:** Enforce strict quality rules on the candidate response before it reaches the user.\n\n**Validation checks:**\n1. Word count ≤ 80\n2. Single question only (max 1 `?`)\n3. Forward motion present (CTA/question signal)\n4. No guardrail violations (forbidden phrases)\n5. No generic AI language\n\n**On failure:**\n- Retry up to 2 times via Claude rewrite\n- If still failing after 2 retries → escalate signal\n\n**Output contract:** `{ status, result, error }`",
+        "height": 300,
+        "width": 340
+      }
+    }
+  ],
+  "connections": {
+    "Input trigger": {
+      "main": [
+        [
+          {
+            "node": "Receive sub-workflow input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive sub-workflow input": {
+      "main": [
+        [
+          {
+            "node": "Run validation checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run validation checks": {
+      "main": [
+        [
+          {
+            "node": "Passed validation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Passed validation?": {
+      "main": [
+        [
+          {
+            "node": "Build success output (first pass)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check retry limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check retry limit": {
+      "main": [
+        [
+          {
+            "node": "Build rewrite prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build escalation signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build rewrite prompt": {
+      "main": [
+        [
+          {
+            "node": "Rewrite via Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rewrite via Claude": {
+      "main": [
+        [
+          {
+            "node": "Extract rewritten response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract rewritten response": {
+      "main": [
+        [
+          {
+            "node": "Re-run validation checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-run validation checks": {
+      "main": [
+        [
+          {
+            "node": "Rewrite passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rewrite passed?": {
+      "main": [
+        [
+          {
+            "node": "Build success output (after rewrite)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check retry limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build success output (first pass)": {
+      "main": [
+        [
+          {
+            "node": "Merge all outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build success output (after rewrite)": {
+      "main": [
+        [
+          {
+            "node": "Merge all outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build escalation signal": {
+      "main": [
+        [
+          {
+            "node": "Merge all outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge all outputs": {
+      "main": [
+        [
+          {
+            "node": "Build final sub-workflow response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

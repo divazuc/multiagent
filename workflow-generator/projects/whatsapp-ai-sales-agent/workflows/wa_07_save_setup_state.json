@@ -1,0 +1,635 @@
+{
+  "name": "WA_07_Save Setup State",
+  "nodes": [
+    {
+      "id": "8dc2408a-8a02-4e99-bfd8-7514bae0fc68",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "name": "Workflow Input Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "0ee160fb-77a1-48fa-8e5d-65c6842799ce",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        200
+      ],
+      "name": "Extract Input Fields",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "session_id",
+              "value": "={{ $json.session_id }}",
+              "type": "string"
+            },
+            {
+              "name": "business_id",
+              "value": "={{ $json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "action",
+              "value": "={{ $json.action }}",
+              "type": "string"
+            },
+            {
+              "name": "current_setup_stage",
+              "value": "={{ $json.current_setup_stage }}",
+              "type": "string"
+            },
+            {
+              "name": "draft_setup_data",
+              "value": "={{ $json.draft_setup_data }}",
+              "type": "object"
+            },
+            {
+              "name": "setup_completed",
+              "value": "={{ $json.setup_completed }}",
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f66b6da9-3472-41dc-b78b-43719a7a827b",
+      "typeVersion": 3,
+      "position": [
+        700,
+        200
+      ],
+      "name": "Check Action Type",
+      "type": "n8n-nodes-base.switch",
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "save_draft",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "save_draft"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "commit",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "commit"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "none",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "none"
+            }
+          ]
+        },
+        "fallbackOutput": "extra",
+        "options": {}
+      }
+    },
+    {
+      "id": "d1d3b347-edd5-40f2-84c0-1f2bb03994c7",
+      "typeVersion": 2.5,
+      "position": [
+        1000,
+        200
+      ],
+      "name": "Upsert Draft Setup Progress",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO setup_drafts (session_id, business_id, current_setup_stage, draft_setup_data, updated_at)\nVALUES (\n  '{{ $json.session_id }}',\n  '{{ $json.business_id }}',\n  '{{ $json.current_setup_stage }}',\n  '{{ JSON.stringify($json.draft_setup_data) }}'::jsonb,\n  NOW()\n)\nON CONFLICT (session_id)\nDO UPDATE SET\n  current_setup_stage = EXCLUDED.current_setup_stage,\n  draft_setup_data = EXCLUDED.draft_setup_data,\n  updated_at = NOW()\nRETURNING session_id, business_id;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "b26ed457-a195-4bca-8273-067773b92479",
+      "typeVersion": 2.5,
+      "position": [
+        1300,
+        200
+      ],
+      "name": "Commit Business Profile",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO business_profiles (\n  business_id,\n  session_id,\n  business_model,\n  sales_goal,\n  conversation_strategy,\n  services,\n  persona,\n  guardrails,\n  hebrew_patterns,\n  setup_completed,\n  committed_at,\n  updated_at\n)\nVALUES (\n  '{{ $json.business_id }}',\n  '{{ $json.session_id }}',\n  '{{ $json.draft_setup_data?.business_model ?? null }}'::jsonb,\n  '{{ $json.draft_setup_data?.sales_goal ?? null }}'::text,\n  '{{ $json.draft_setup_data?.conversation_strategy ?? null }}'::text,\n  '{{ JSON.stringify($json.draft_setup_data?.services ?? []) }}'::jsonb,\n  '{{ JSON.stringify($json.draft_setup_data?.persona ?? {}) }}'::jsonb,\n  '{{ JSON.stringify($json.draft_setup_data?.guardrails ?? {}) }}'::jsonb,\n  '{{ JSON.stringify($json.draft_setup_data?.hebrew_patterns ?? {}) }}'::jsonb,\n  {{ $json.setup_completed }},\n  NOW(),\n  NOW()\n)\nON CONFLICT (business_id)\nDO UPDATE SET\n  business_model = EXCLUDED.business_model,\n  sales_goal = EXCLUDED.sales_goal,\n  conversation_strategy = EXCLUDED.conversation_strategy,\n  services = EXCLUDED.services,\n  persona = EXCLUDED.persona,\n  guardrails = EXCLUDED.guardrails,\n  hebrew_patterns = EXCLUDED.hebrew_patterns,\n  setup_completed = EXCLUDED.setup_completed,\n  committed_at = EXCLUDED.committed_at,\n  updated_at = NOW()\nRETURNING business_id, setup_completed;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "fd80714d-85a2-452e-ad98-21b9566a001f",
+      "typeVersion": 2.5,
+      "position": [
+        1600,
+        200
+      ],
+      "name": "Update Session Setup Stage",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sessions\nSET\n  current_setup_stage = '{{ $json.current_setup_stage }}',\n  setup_completed = {{ $json.setup_completed }},\n  updated_at = NOW()\nWHERE session_id = '{{ $json.session_id }}'\nRETURNING session_id;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "c26e4698-04db-4851-8b2a-bf846608a026",
+      "typeVersion": 1,
+      "position": [
+        1900,
+        200
+      ],
+      "name": "No Action Taken",
+      "type": "n8n-nodes-base.noOp",
+      "parameters": {}
+    },
+    {
+      "id": "a22affc2-506f-4681-a838-4a342725da7e",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "name": "Check Draft Save Error",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fb634002-a946-469e-b4c1-b9116e817913",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        200
+      ],
+      "name": "Check Commit Error",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b148c9aa-9d66-4af1-b791-46154677b398",
+      "typeVersion": 3.4,
+      "position": [
+        2800,
+        200
+      ],
+      "name": "Build Draft Success Response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "name": "result.saved",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "name": "result.business_id",
+              "value": "={{ $('Extract Input Fields').item.json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "result.setup_completed",
+              "value": "={{ $('Extract Input Fields').item.json.setup_completed }}",
+              "type": "boolean"
+            },
+            {
+              "name": "error",
+              "value": null,
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7a7a12a6-f1b3-486e-9e26-15b82de0a1c4",
+      "typeVersion": 3.4,
+      "position": [
+        3100,
+        200
+      ],
+      "name": "Build Commit Success Response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "name": "result.saved",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "name": "result.business_id",
+              "value": "={{ $('Extract Input Fields').item.json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "result.setup_completed",
+              "value": "={{ $('Extract Input Fields').item.json.setup_completed }}",
+              "type": "boolean"
+            },
+            {
+              "name": "error",
+              "value": null,
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1c03223-2ccd-4812-b358-2db9d6d0bbdf",
+      "typeVersion": 3.4,
+      "position": [
+        3400,
+        200
+      ],
+      "name": "Build No Action Response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "name": "result.saved",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "result.business_id",
+              "value": "={{ $('Extract Input Fields').item.json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "result.setup_completed",
+              "value": "={{ $('Extract Input Fields').item.json.setup_completed }}",
+              "type": "boolean"
+            },
+            {
+              "name": "error",
+              "value": null,
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d9ab38a0-f4c6-4187-9107-f831e0be52f2",
+      "typeVersion": 3.4,
+      "position": [
+        3700,
+        200
+      ],
+      "name": "Build Draft Error Response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "name": "result.saved",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "result.business_id",
+              "value": "={{ $('Extract Input Fields').item.json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "result.setup_completed",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "error",
+              "value": "Failed to save draft setup progress to database",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c6f1a21c-3534-4a17-afcb-8538cb6d79c1",
+      "typeVersion": 3.4,
+      "position": [
+        4000,
+        200
+      ],
+      "name": "Build Commit Error Response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "name": "result.saved",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "result.business_id",
+              "value": "={{ $('Extract Input Fields').item.json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "result.setup_completed",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "error",
+              "value": "Failed to commit business profile to database",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "9374bdda-4ce0-405c-afbb-ec4a15cf2e57",
+      "typeVersion": 1,
+      "position": [
+        4300,
+        200
+      ],
+      "name": "Sticky Note — Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "parameters": {
+        "content": "## WA_07_Save Setup State\n\n**Role:** Sub-workflow — dedicated write path for setup/onboarding data.\n\n**Action routing:**\n- `save_draft` → upsert to `setup_drafts` + update session stage\n- `commit` → upsert to `business_profiles` (full profile, persona, guardrails, hebrew_patterns) + update session\n- `none` → no DB write, returns success with saved=false\n\n**Tables used:**\n- `setup_drafts` — progressive draft storage keyed by session_id\n- `business_profiles` — final committed profile keyed by business_id\n- `sessions` — stage and setup_completed flag\n\n**Always returns:** `{ status, result: { saved, business_id, setup_completed }, error }`"
+      }
+    }
+  ],
+  "connections": {
+    "Workflow Input Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Input Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input Fields": {
+      "main": [
+        [
+          {
+            "node": "Check Action Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Action Type": {
+      "main": [
+        [
+          {
+            "node": "Upsert Draft Setup Progress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Commit Business Profile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Action Taken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Draft Setup Progress": {
+      "main": [
+        [
+          {
+            "node": "Check Draft Save Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Draft Save Error": {
+      "main": [
+        [
+          {
+            "node": "Build Draft Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Session Setup Stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Session Setup Stage": {
+      "main": [
+        [
+          {
+            "node": "Build Draft Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit Business Profile": {
+      "main": [
+        [
+          {
+            "node": "Check Commit Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Commit Error": {
+      "main": [
+        [
+          {
+            "node": "Build Commit Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Commit Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Action Taken": {
+      "main": [
+        [
+          {
+            "node": "Build No Action Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

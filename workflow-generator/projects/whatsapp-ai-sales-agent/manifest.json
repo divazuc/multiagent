@@ -1,0 +1,262 @@
+{
+  "slug": "whatsapp-ai-sales-agent",
+  "name": "wa-sales-agent",
+  "generatedAt": "2026-04-16T09:24:20.584Z",
+  "workflows": [
+    {
+      "name": "WA_01_Message Normalizer",
+      "role": "sub",
+      "purpose": "Converts raw inbound payload from any platform (currently chat/webhook, future WhatsApp) into the platform-agnostic normalized format { message, session_id } that the supervisor uses exclusively.",
+      "trigger": "sub-workflow",
+      "inputs": "Raw webhook payload — currently { message: string, session_id: string }; future: WhatsApp Cloud API payload",
+      "outputs": "{ status, result: { message: string, session_id: string }, error }",
+      "calls": [],
+      "summary": "Converts raw inbound payload from any platform (currently chat/webhook, future WhatsApp) into the platform-agnostic normalized format { message, session_id } that the supervisor uses exclusively.",
+      "nodes_used": [
+        "Input Trigger",
+        "Detect platform type",
+        "Normalize chat payload",
+        "Normalize WhatsApp payload",
+        "Validate normalized message",
+        "Build success response",
+        "Build error response",
+        "Return result"
+      ],
+      "n8nId": "ZYqrrxq2318Ly7mv",
+      "importedAt": "2026-04-17T10:31:18.415Z",
+      "valid": false,
+      "validationErrors": [
+        "Node \"Input Trigger\": unknown node type \"n8n-nodes-base.executeWorkflowTrigger\"",
+        "Workflow has no trigger node. Add a Webhook, Schedule Trigger, or similar."
+      ]
+    },
+    {
+      "name": "WA_02_Load Session and Context",
+      "role": "sub",
+      "purpose": "Performs a READ-ONLY lookup against the database: resolves business_id from session_id, loads business profile (persona, guardrails, Hebrew sentence patterns, services), retrieves conversation history, and returns current session mode and setup_completed flag.",
+      "trigger": "sub-workflow",
+      "inputs": "{ message: string, session_id: string }",
+      "outputs": "{ status, result: { business_id: string, session_mode: string, setup_completed: boolean, current_stage: string, business_profile: object, persona: object, guardrails: object, hebrew_patterns: object, conversation_history: array, missing_qualification_data: array }, error }",
+      "calls": [],
+      "summary": "Read-only sub-workflow that resolves a session_id to a business_id, loads the full business profile (persona, guardrails, Hebrew patterns, services), retrieves recent conversation history, computes missing qualification fields, and returns a structured context payload — or bootstraps a fresh setup-mode context if no session is found.",
+      "nodes_used": [
+        "Execute Workflow Trigger",
+        "Edit Fields (Set)",
+        "Postgres",
+        "IF",
+        "Merge",
+        "Code"
+      ],
+      "n8nId": "qI088U5wqYhBxiw6",
+      "importedAt": "2026-04-17T10:31:19.252Z",
+      "valid": false,
+      "validationErrors": [
+        "Node \"Execute Workflow Trigger\": unknown node type \"n8n-nodes-base.executeWorkflowTrigger\"",
+        "Workflow has no trigger node. Add a Webhook, Schedule Trigger, or similar."
+      ]
+    },
+    {
+      "name": "WA_03_Conversation Engine",
+      "role": "sub",
+      "purpose": "Core sales intelligence layer — detects intent, evaluates qualification completeness, applies decision matrix (CTA / qualify / clarify / escalate), and generates a candidate response using Anthropic Claude under strict persona instructions, Hebrew sentence pattern library, and guardrail constraints. No DB writes occur here.",
+      "trigger": "sub-workflow",
+      "inputs": "{ message: string, session_id: string, business_id: string, current_stage: string, business_profile: object, persona: object, guardrails: object, hebrew_patterns: object, conversation_history: array, missing_qualification_data: array }",
+      "outputs": "{ status, result: { candidate_response: string, next_stage: string, action: string, qualification_progress: object, cta_triggered: boolean, escalate: boolean, escalation_reason: string, detected_intent: string, language: string }, error }",
+      "calls": [],
+      "summary": "Sub-workflow that acts as the core sales intelligence layer — detects user intent, evaluates qualification completeness, applies a decision matrix (CTA / qualify / clarify / escalate), and generates a persona-consistent candidate response using Claude, returning a structured output object to the supervisor with no database writes.",
+      "nodes_used": [
+        "Manual Trigger",
+        "Edit Fields (Set)",
+        "HTTP Request",
+        "Code",
+        "IF",
+        "Merge",
+        "Sticky Note"
+      ],
+      "n8nId": "6YjROHmmOInYEMdb",
+      "importedAt": "2026-04-17T10:31:21.244Z",
+      "valid": true,
+      "validationErrors": []
+    },
+    {
+      "name": "WA_04_Setup Onboarding Flow",
+      "role": "sub",
+      "purpose": "Runs the guided conversational business setup flow — collects business model, sales goal, conversation strategy, services, persona definition (including language-specific Hebrew patterns), and guardrails. Saves progressively as draft and commits on confirmation. Blocks conversation engine until setup_completed = true.",
+      "trigger": "sub-workflow",
+      "inputs": "{ message: string, session_id: string, business_id: string, current_setup_stage: string, draft_setup_data: object }",
+      "outputs": "{ status, result: { setup_response: string, next_setup_stage: string, action: string, draft_setup_data: object, setup_completed: boolean }, error }",
+      "calls": [],
+      "summary": "Runs the guided conversational business setup flow — collects business model, sales goal, conversation strategy, services, persona definition (including language-specific Hebrew patterns), and guardrails. Saves progressively as draft and commits on confirmation. Blocks conversation engine until setup_completed = true.",
+      "nodes_used": [
+        "Workflow input trigger",
+        "Extract setup inputs",
+        "Determine setup stage",
+        "Collect business model",
+        "Collect sales goal",
+        "Collect conversation strategy",
+        "Collect services and profile",
+        "Collect persona definition",
+        "Collect guardrails",
+        "Confirm and review setup",
+        "Check confirmation response",
+        "Merge stage responses",
+        "Build draft setup data",
+        "Determine save action",
+        "Save draft to DB",
+        "Commit setup to DB",
+        "Check DB save success",
+        "Build setup response",
+        "Build error response",
+        "Return setup result"
+      ],
+      "n8nId": "cLn5Z4D5siEgPvR7",
+      "importedAt": "2026-04-17T10:31:22.106Z",
+      "valid": false,
+      "validationErrors": [
+        "Node \"Workflow input trigger\": unknown node type \"n8n-nodes-base.executeWorkflowTrigger\"",
+        "Workflow has no trigger node. Add a Webhook, Schedule Trigger, or similar."
+      ]
+    },
+    {
+      "name": "WA_05_Validate and Filter Response",
+      "role": "sub",
+      "purpose": "Enforces strict output quality rules on the candidate response from WA_03: checks response length, single-question rule, persona consistency, forward motion, and guardrail compliance. If validation fails, performs a controlled internal rewrite via a second Anthropic Claude call (limited retry attempts). Returns final approved response or escalation signal.",
+      "trigger": "sub-workflow",
+      "inputs": "{ candidate_response: string, persona: object, guardrails: object, hebrew_patterns: object, next_stage: string, action: string, cta_triggered: boolean, escalate: boolean, language: string, conversation_history: array }",
+      "outputs": "{ status, result: { validated_response: string, next_stage: string, action: string, cta_triggered: boolean, escalate: boolean, escalation_reason: string, validation_passed: boolean, rewrite_applied: boolean }, error }",
+      "calls": [],
+      "summary": "WA_05 sub-workflow that validates a candidate AI response against five quality rules (length, single-question, forward motion, guardrails, generic language), rewrites via Claude up to two times on failure, and returns a structured result with a validated response or an escalation signal.",
+      "nodes_used": [
+        "Manual Trigger",
+        "Edit Fields (Set)",
+        "Code",
+        "IF",
+        "HTTP Request",
+        "Merge",
+        "Sticky Note"
+      ],
+      "n8nId": "7cOuZf1MilvCPTgE",
+      "importedAt": "2026-04-17T10:31:24.432Z",
+      "valid": true,
+      "validationErrors": []
+    },
+    {
+      "name": "WA_06_Save Conversation State",
+      "role": "sub",
+      "purpose": "Single atomic write path for all live conversation data — persists inbound user message, validated outbound agent reply, runtime stage, qualification progress, CTA flag, and escalation flag as one complete unit. Handles session state updates for live_mode sessions only.",
+      "trigger": "sub-workflow",
+      "inputs": "{ session_id: string, business_id: string, user_message: string, agent_response: string, stage: string, action: string, qualification_progress: object, cta_triggered: boolean, escalate: boolean, escalation_reason: string, language: string }",
+      "outputs": "{ status, result: { saved: boolean, session_id: string }, error }",
+      "calls": [],
+      "summary": "WA_06 sub-workflow that validates incoming conversation data, atomically writes the user message and agent response to the conversation_messages table, updates the live_mode session stage and qualification state, and returns a structured success or error result.",
+      "nodes_used": [
+        "Manual Trigger",
+        "Edit Fields (Set)",
+        "Code",
+        "IF",
+        "Postgres",
+        "Sticky Note"
+      ],
+      "n8nId": "4E2tMweG8tsjHtTW",
+      "importedAt": "2026-04-17T10:31:25.658Z",
+      "valid": true,
+      "validationErrors": []
+    },
+    {
+      "name": "WA_07_Save Setup State",
+      "role": "sub",
+      "purpose": "Dedicated write path for all business setup and onboarding data — saves draft setup progress, current setup stage, committed business profile, persona configuration (including Hebrew sentence pattern library), guardrails, and sets setup_completed flag. Fully separate from conversation state persistence.",
+      "trigger": "sub-workflow",
+      "inputs": "{ session_id: string, business_id: string, action: string, current_setup_stage: string, draft_setup_data: object, setup_completed: boolean }",
+      "outputs": "{ status, result: { saved: boolean, business_id: string, setup_completed: boolean }, error }",
+      "calls": [],
+      "summary": "Sub-workflow that handles all business setup and onboarding data writes — routes between saving draft progress, committing a full business profile (with persona, guardrails, and Hebrew patterns), or a no-op, and returns a standardised { status, result, error } response to the supervisor.",
+      "nodes_used": [
+        "Manual Trigger",
+        "Edit Fields (Set)",
+        "Switch",
+        "Postgres",
+        "IF",
+        "No Operation",
+        "Sticky Note"
+      ],
+      "n8nId": "NqXGv2GY7djQqZ42",
+      "importedAt": "2026-04-17T10:31:27.452Z",
+      "valid": true,
+      "validationErrors": []
+    },
+    {
+      "name": "WA_08_Demo Learning Phase",
+      "role": "sub",
+      "purpose": "Controlled simulation environment (learning_mode only) — presents simulated lead conversations to the business owner, captures their responses, extracts real phrasing patterns (tone, wording, Hebrew sentence structures, objection handling), and writes enriched persona data directly to the business profile. Never runs during live customer conversations.",
+      "trigger": "sub-workflow",
+      "inputs": "{ message: string, session_id: string, business_id: string, current_learning_stage: string, persona: object, existing_hebrew_patterns: object, simulation_history: array }",
+      "outputs": "{ status, result: { simulation_response: string, extracted_patterns: object, persona_updated: boolean, learning_stage: string }, error }",
+      "calls": [],
+      "summary": "WA_08_Demo Learning Phase is a sub-workflow that simulates lead conversations with the business owner across four stages (intro, simulation, extraction, complete), uses Claude to generate simulated leads and extract real tone/phrasing/Hebrew patterns from the owner's replies, then persists the enriched persona data to the database — never running during live customer conversations.",
+      "nodes_used": [
+        "Execute Workflow Trigger",
+        "Code",
+        "IF",
+        "Switch",
+        "Edit Fields (Set)",
+        "HTTP Request",
+        "Postgres",
+        "Sticky Note"
+      ],
+      "n8nId": "MeF3RSE0WJ78S6dP",
+      "importedAt": "2026-04-17T10:31:28.940Z",
+      "valid": false,
+      "validationErrors": [
+        "Node \"Execute Workflow Trigger\": unknown node type \"n8n-nodes-base.executeWorkflowTrigger\"",
+        "Workflow has no trigger node. Add a Webhook, Schedule Trigger, or similar."
+      ]
+    },
+    {
+      "name": "WA_00_Supervisor",
+      "role": "supervisor",
+      "purpose": "Receives normalized inbound messages, resolves business_id from session, determines session mode, and orchestrates routing to the correct sub-workflow (setup, conversation, or learning), then collects results and returns the final response.",
+      "trigger": "webhook",
+      "inputs": "{ message: string, session_id: string } — raw webhook payload",
+      "outputs": "{ message: string, state: { stage: string } } — final platform-agnostic response to caller",
+      "calls": [
+        "WA_01_Message Normalizer",
+        "WA_02_Load Session and Context",
+        "WA_03_Conversation Engine",
+        "WA_04_Setup Onboarding Flow",
+        "WA_05_Validate and Filter Response",
+        "WA_06_Save Conversation State",
+        "WA_07_Save Setup State",
+        "WA_08_Demo Learning Phase"
+      ],
+      "summary": "Receives normalized inbound messages, resolves business_id from session, determines session mode, and orchestrates routing to the correct sub-workflow (setup, conversation, or learning), then collects results and returns the final response.",
+      "nodes_used": [
+        "Webhook inbound",
+        "Normalize message",
+        "Check normalize status",
+        "Load session and context",
+        "Check session status",
+        "Route session mode",
+        "Run conversation engine",
+        "Run setup onboarding flow",
+        "Run demo learning phase",
+        "Check conversation status",
+        "Check setup status",
+        "Check learning status",
+        "Validate and filter response",
+        "Check validation status",
+        "Merge validated response",
+        "Save conversation state",
+        "Save setup state",
+        "Build final response",
+        "Build error response",
+        "Respond to caller",
+        "Respond with error"
+      ],
+      "n8nId": "EJf3oB9nrBRldb86",
+      "importedAt": "2026-04-17T10:35:14.349Z",
+      "valid": true,
+      "validationErrors": []
+    }
+  ]
+}

@@ -1,0 +1,1283 @@
+{
+  "name": "WA_04_Setup Onboarding Flow",
+  "nodes": [
+    {
+      "id": "ea5716c5-e56d-46e0-a97e-3d66d92e4dee",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "name": "Workflow input trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "1f391fbd-9fcc-4929-81be-058aa8140980",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        200
+      ],
+      "name": "Extract setup inputs",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign_message",
+              "name": "message",
+              "value": "={{ $json.message || $json.body?.message || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign_session_id",
+              "name": "session_id",
+              "value": "={{ $json.session_id || $json.body?.session_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign_business_id",
+              "name": "business_id",
+              "value": "={{ $json.business_id || $json.body?.business_id || null }}",
+              "type": "string"
+            },
+            {
+              "id": "assign_current_setup_stage",
+              "name": "current_setup_stage",
+              "value": "={{ $json.current_setup_stage || $json.body?.current_setup_stage || 'business_model' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign_draft_setup_data",
+              "name": "draft_setup_data",
+              "value": "={{ $json.draft_setup_data || $json.body?.draft_setup_data || {} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "8c64723e-1f62-489c-aa55-17f422ef2545",
+      "typeVersion": 3,
+      "position": [
+        700,
+        200
+      ],
+      "name": "Determine setup stage",
+      "type": "n8n-nodes-base.switch",
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "collect_business_model",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "collect_business_model"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "collect_sales_goal",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "collect_sales_goal"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "collect_conversation_strategy",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "collect_conversation_strategy"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "collect_services",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "collect_services"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "collect_persona",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "collect_persona"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "collect_hebrew_patterns",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "collect_hebrew_patterns"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "collect_guardrails",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "collect_guardrails"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_setup_stage }}",
+                    "rightValue": "confirm_and_commit",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "confirm_and_commit"
+            }
+          ]
+        },
+        "fallbackOutput": "extra",
+        "options": {}
+      }
+    },
+    {
+      "id": "346784ef-ea7b-4426-86ca-856cac9a6799",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        200
+      ],
+      "name": "Collect business model",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided business onboarding assistant. Collect the business model type. Ask ONE question at a time. Be short and human. Map to: service | product | subscription | booking | other. Respond in the user's language.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_business_model\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"collect_sales_goal\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": \\\"<service|product|subscription|booking|other|null>\\\", \\\"confirmed\\\": false}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "f7c29c63-285c-4522-8218-e94c4800d545",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        200
+      ],
+      "name": "Collect sales goal",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are a guided business onboarding assistant. Collect the business owner's PRIMARY SALES GOAL. Valid values: call_booking | lead_capture | direct_purchase | conversation_only. Ask ONE question. Be short and natural. Map ambiguous answers to the nearest option. Respond in the user's language.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_sales_goal\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"extracted_value\\\": \\\"call_booking|lead_capture|direct_purchase|conversation_only|null\\\", \\\"next_setup_stage\\\": \\\"collect_conversation_strategy\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "006adc2f-0293-4901-8fd4-1ecbc909b866",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        200
+      ],
+      "name": "Collect conversation strategy",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided onboarding assistant. Collect the conversation strategy: Understand | Filter | Close | Inform. Ask ONE question. Be short and natural. If the user already provided a strategy, confirm it.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: {{ $json.current_setup_stage || 'collect_conversation_strategy' }}\\n\\nDraft: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"extracted_strategy\\\": \\\"Understand|Filter|Close|Inform|null\\\", \\\"strategy_confirmed\\\": false, \\\"next_setup_stage\\\": \\\"collect_services\\\", \\\"action\\\": \\\"save_draft\\\"}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "9c074acc-22c5-4012-ac1e-317f45588b39",
+      "typeVersion": 4.2,
+      "position": [
+        1900,
+        200
+      ],
+      "name": "Collect services and profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 2048,\n  \"system\": \"You are a guided onboarding assistant. Collect: services/products offered, decision logic, key qualifying questions, common objections. Ask ONE question at a time. Be conversational. Match user's language (Hebrew or English).\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_services\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"collect_persona\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": {\\\"services\\\": [], \\\"decision_logic\\\": \\\"\\\", \\\"key_questions\\\": [], \\\"objections\\\": []}}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "c552da5f-f60b-420f-9cd3-fa49715b6331",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        200
+      ],
+      "name": "Collect persona definition",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided onboarding assistant. Collect persona definition: tone, wording style, sentence structure, emoji usage, response length, behavior style, Hebrew patterns (if applicable). Ask ONE question at a time. When all fields collected, summarize and confirm.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_persona\\n\\nDraft persona so far: {{ JSON.stringify($json.draft_setup_data?.persona || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"collect_guardrails\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_value\\\": {\\\"tone\\\": \\\"\\\", \\\"wording_style\\\": \\\"\\\", \\\"sentence_structure\\\": \\\"\\\", \\\"emoji_usage\\\": \\\"\\\", \\\"response_length\\\": \\\"\\\", \\\"behavior_style\\\": \\\"\\\"}}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "bfdadfbd-906a-4492-aa76-c7abbdd62c47",
+      "typeVersion": 4.2,
+      "position": [
+        2500,
+        200
+      ],
+      "name": "Collect guardrails",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "credentials": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a guided setup assistant collecting guardrails. Collect: forbidden claims, escalation triggers, off-limits topics, compliance notes. Ask ONE question at a time. Be conversational. Summarize once done and ask for confirmation.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Stage: collect_guardrails\\n\\nDraft so far: {{ JSON.stringify($json.draft_setup_data || {}) }}\\n\\nMessage: {{ $json.message || '' }}\\n\\nReturn ONLY JSON: {\\\"setup_response\\\": \\\"<msg>\\\", \\\"next_setup_stage\\\": \\\"confirm_and_commit\\\", \\\"action\\\": \\\"save_draft\\\", \\\"extracted_guardrails\\\": {}}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "2d8ce1c2-cfb8-489e-a08c-593fe60f790f",
+      "typeVersion": 4.2,
+      "position": [
+        2800,
+        200
+      ],
+      "name": "Confirm and review setup",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are a business setup assistant reviewing a completed onboarding configuration. Present a clean, concise summary organized by section: Business Model, Sales Goal, Conversation Strategy, Services, Persona, Guardrails. End with a clear confirmation question.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Review and present the setup data for confirmation:\\n\\nBusiness ID: {{ $json.business_id || 'N/A' }}\\nSession ID: {{ $json.session_id || 'N/A' }}\\nStage: {{ $json.current_setup_stage }}\\n\\nDraft Setup Data:\\n{{ JSON.stringify($json.draft_setup_data || {}, null, 2) }}\\n\\nUser message: {{ $json.message || '' }}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "2d960c01-0bdc-40e0-b915-f74c490612d1",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        200
+      ],
+      "name": "Check confirmation response",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "confirmation-yes",
+              "leftValue": "={{ $json.confirmation_intent }}",
+              "rightValue": "confirmed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "87d5a3d8-b3fa-4f86-817e-c967731112d1",
+      "typeVersion": 3,
+      "position": [
+        3400,
+        200
+      ],
+      "name": "Merge stage responses",
+      "type": "n8n-nodes-base.merge",
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      }
+    },
+    {
+      "id": "eb82b7ef-224c-42cd-95fe-8bfb14be6bc3",
+      "typeVersion": 2,
+      "position": [
+        3700,
+        200
+      ],
+      "name": "Build draft setup data",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const inputs = $('Extract setup inputs').item.json;\nconst apiResponse = $input.first().json;\n\n// Extract AI text from Anthropic API response\nlet aiText = '';\nif (Array.isArray(apiResponse.content)) {\n  aiText = apiResponse.content[0]?.text || '';\n} else if (typeof apiResponse.text === 'string') {\n  aiText = apiResponse.text;\n}\n\n// Parse JSON from AI text (handle markdown code blocks)\nlet aiJson = {};\ntry {\n  const cleaned = aiText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '').trim();\n  aiJson = JSON.parse(cleaned);\n} catch(e) {\n  const match = aiText.match(/\\{[\\s\\S]*\\}/);\n  if (match) {\n    try { aiJson = JSON.parse(match[0]); } catch(e2) {}\n  }\n}\n\nconst currentDraft = { ...(inputs.draft_setup_data || {}) };\nif (aiJson.extracted_value) {\n  currentDraft[inputs.current_setup_stage] = aiJson.extracted_value;\n}\nif (!currentDraft.persona) currentDraft.persona = {};\nif (!currentDraft.guardrails) currentDraft.guardrails = {};\n\nreturn [{json: {\n  session_id: inputs.session_id || '',\n  business_id: inputs.business_id || null,\n  current_setup_stage: inputs.current_setup_stage || 'collect_business_model',\n  next_setup_stage: aiJson.next_setup_stage || inputs.current_setup_stage || 'collect_business_model',\n  setup_response: aiJson.setup_response || '',\n  action: aiJson.action || 'save_draft',\n  setup_completed: false,\n  draft_setup_data: currentDraft\n}}];"
+      }
+    },
+    {
+      "id": "1443fe19-caca-45ea-8657-ff3f93807bf0",
+      "typeVersion": 3,
+      "position": [
+        4000,
+        200
+      ],
+      "name": "Determine save action",
+      "type": "n8n-nodes-base.switch",
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "save_draft",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "save_draft"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "commit",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "commit"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "none",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "none"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "id": "c926f56e-e91c-442b-a610-5d78ea5949f9",
+      "typeVersion": 2.5,
+      "position": [
+        4300,
+        200
+      ],
+      "name": "Save draft to DB",
+      "type": "n8n-nodes-base.postgres",
+      "continueOnFail": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO setup_drafts (\n  session_id,\n  business_id,\n  current_setup_stage,\n  draft_setup_data,\n  setup_completed,\n  updated_at\n)\nVALUES (\n  '{{ $json.session_id }}',\n  '{{ $json.business_id }}',\n  '{{ $json.next_setup_stage }}',\n  '{{ JSON.stringify($json.draft_setup_data) }}'::jsonb,\n  {{ $json.setup_completed }},\n  NOW()\n)\nON CONFLICT (session_id)\nDO UPDATE SET\n  current_setup_stage = EXCLUDED.current_setup_stage,\n  draft_setup_data = EXCLUDED.draft_setup_data,\n  setup_completed = EXCLUDED.setup_completed,\n  updated_at = NOW()\nRETURNING session_id, business_id, current_setup_stage, setup_completed, updated_at;",
+        "options": {},
+        "credentials": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "id": "fa862a1e-fa73-411e-8f46-6d2f98fc68da",
+      "typeVersion": 2.5,
+      "position": [
+        4600,
+        200
+      ],
+      "name": "Commit setup to DB",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO business_profiles (\n  business_id,\n  session_id,\n  business_model,\n  sales_goal,\n  conversation_strategy,\n  services,\n  persona,\n  hebrew_patterns,\n  guardrails,\n  setup_completed,\n  setup_stage,\n  draft_setup_data,\n  created_at,\n  updated_at\n)\nVALUES (\n  $1, $2, $3, $4, $5,\n  $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb,\n  true, 'completed', '{}'::jsonb,\n  NOW(), NOW()\n)\nON CONFLICT (business_id) DO UPDATE SET\n  business_model        = EXCLUDED.business_model,\n  sales_goal            = EXCLUDED.sales_goal,\n  conversation_strategy = EXCLUDED.conversation_strategy,\n  services              = EXCLUDED.services,\n  persona               = EXCLUDED.persona,\n  hebrew_patterns       = EXCLUDED.hebrew_patterns,\n  guardrails            = EXCLUDED.guardrails,\n  setup_completed       = true,\n  setup_stage           = 'completed',\n  draft_setup_data      = '{}'::jsonb,\n  updated_at            = NOW()\nRETURNING business_id, setup_completed, updated_at;",
+        "options": {
+          "queryBatching": "independently"
+        },
+        "additionalFields": {},
+        "queryParams": "={{ $json.business_id }},={{ $json.session_id }},={{ $json.draft_setup_data.business_model }},={{ $json.draft_setup_data.sales_goal }},={{ $json.draft_setup_data.conversation_strategy }},={{ JSON.stringify($json.draft_setup_data.services ?? {}) }},={{ JSON.stringify($json.draft_setup_data.persona ?? {}) }},={{ JSON.stringify($json.draft_setup_data.hebrew_patterns ?? {}) }},={{ JSON.stringify($json.draft_setup_data.guardrails ?? {}) }}",
+        "credentials": {
+          "postgres": {
+            "id": "O6dnMJBEHEOipCdX",
+            "name": "Whatsapp_agent_DB"
+          }
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "id": "e647a5ed-f8f3-4b63-874f-d8c6798d083c",
+      "typeVersion": 2,
+      "position": [
+        4900,
+        200
+      ],
+      "name": "Check DB save success",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-session-id",
+              "leftValue": "={{ $('Build draft setup data').item.json.session_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5e51f4c1-31e8-485a-809a-96916050e5b8",
+      "typeVersion": 3.4,
+      "position": [
+        5200,
+        200
+      ],
+      "name": "Build setup response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "setup_response_output",
+              "name": "setup_response",
+              "value": "={{ $('Build draft setup data').item.json.setup_response }}",
+              "type": "string"
+            },
+            {
+              "id": "next_setup_stage_output",
+              "name": "next_setup_stage",
+              "value": "={{ $('Build draft setup data').item.json.next_setup_stage }}",
+              "type": "string"
+            },
+            {
+              "id": "action_output",
+              "name": "action",
+              "value": "={{ $('Build draft setup data').item.json.action }}",
+              "type": "string"
+            },
+            {
+              "id": "draft_setup_data_output",
+              "name": "draft_setup_data",
+              "value": "={{ $('Build draft setup data').item.json.draft_setup_data }}",
+              "type": "object"
+            },
+            {
+              "id": "setup_completed_output",
+              "name": "setup_completed",
+              "value": "={{ $('Build draft setup data').item.json.setup_completed }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "8d186cc3-3a6e-4a70-b831-a597266de4d6",
+      "typeVersion": 3.4,
+      "position": [
+        5500,
+        200
+      ],
+      "name": "Build error response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error_response_status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "error_response_result",
+              "name": "result",
+              "value": "={{ {} }}",
+              "type": "object"
+            },
+            {
+              "id": "error_response_error",
+              "name": "error",
+              "value": "={{ $json.error || $json.message || 'An unexpected error occurred in the setup onboarding flow.' }}",
+              "type": "string"
+            },
+            {
+              "id": "error_response_setup_response",
+              "name": "result.setup_response",
+              "value": "Something went wrong during setup. Please try again.",
+              "type": "string"
+            },
+            {
+              "id": "error_response_next_setup_stage",
+              "name": "result.next_setup_stage",
+              "value": "={{ $('Extract setup inputs').item.json.current_setup_stage || 'start' }}",
+              "type": "string"
+            },
+            {
+              "id": "error_response_action",
+              "name": "result.action",
+              "value": "none",
+              "type": "string"
+            },
+            {
+              "id": "error_response_draft_setup_data",
+              "name": "result.draft_setup_data",
+              "value": "={{ $('Extract setup inputs').item.json.draft_setup_data || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "error_response_setup_completed",
+              "name": "result.setup_completed",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "22303bb2-a0fd-47bb-9dbd-db8f322f399f",
+      "typeVersion": 3.4,
+      "position": [
+        5800,
+        200
+      ],
+      "name": "Return setup result",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "setup_status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "setup_result_response",
+              "name": "result.setup_response",
+              "value": "={{ $json.setup_response }}",
+              "type": "string"
+            },
+            {
+              "id": "setup_result_next_stage",
+              "name": "result.next_setup_stage",
+              "value": "={{ $json.next_setup_stage }}",
+              "type": "string"
+            },
+            {
+              "id": "setup_result_action",
+              "name": "result.action",
+              "value": "={{ $json.action }}",
+              "type": "string"
+            },
+            {
+              "id": "setup_result_draft",
+              "name": "result.draft_setup_data",
+              "value": "={{ $json.draft_setup_data }}",
+              "type": "object"
+            },
+            {
+              "id": "setup_result_completed",
+              "name": "result.setup_completed",
+              "value": "={{ $json.setup_completed }}",
+              "type": "boolean"
+            },
+            {
+              "id": "setup_error",
+              "name": "error",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Workflow input trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract setup inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract setup inputs": {
+      "main": [
+        [
+          {
+            "node": "Determine setup stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine setup stage": {
+      "main": [
+        [
+          {
+            "node": "Collect business model",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect sales goal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect conversation strategy",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect services and profile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect persona definition",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Collect guardrails",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirm and review setup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect business model": {
+      "main": [
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect sales goal": {
+      "main": [
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Collect conversation strategy": {
+      "main": [
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Collect services and profile": {
+      "main": [
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Collect persona definition": {
+      "main": [
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Collect guardrails": {
+      "main": [
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Confirm and review setup": {
+      "main": [
+        [
+          {
+            "node": "Check confirmation response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check confirmation response": {
+      "main": [
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 6
+          }
+        ],
+        [
+          {
+            "node": "Merge stage responses",
+            "type": "main",
+            "index": 7
+          }
+        ]
+      ]
+    },
+    "Merge stage responses": {
+      "main": [
+        [
+          {
+            "node": "Build draft setup data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build draft setup data": {
+      "main": [
+        [
+          {
+            "node": "Determine save action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine save action": {
+      "main": [
+        [
+          {
+            "node": "Save draft to DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Commit setup to DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build setup response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save draft to DB": {
+      "main": [
+        [
+          {
+            "node": "Check DB save success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit setup to DB": {
+      "main": [
+        [
+          {
+            "node": "Check DB save success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check DB save success": {
+      "main": [
+        [
+          {
+            "node": "Build setup response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build error response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build setup response": {
+      "main": [
+        [
+          {
+            "node": "Return setup result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build error response": {
+      "main": [
+        [
+          {
+            "node": "Return setup result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

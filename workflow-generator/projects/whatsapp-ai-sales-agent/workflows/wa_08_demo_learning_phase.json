@@ -1,0 +1,832 @@
+{
+  "name": "WA_08_Demo Learning Phase",
+  "nodes": [
+    {
+      "id": "8204c983-7e7b-4c6d-9ba6-f62166df856e",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "52698df5-2ba8-4668-8489-2ad3f1509c79",
+      "typeVersion": 2,
+      "position": [
+        400,
+        200
+      ],
+      "name": "Extract input fields",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nreturn [{\n  json: {\n    message: input.message || '',\n    session_id: input.session_id || '',\n    business_id: input.business_id || '',\n    current_learning_stage: input.current_learning_stage || 'intro',\n    persona: input.persona || {},\n    existing_hebrew_patterns: input.existing_hebrew_patterns || {},\n    simulation_history: input.simulation_history || []\n  }\n}];"
+      }
+    },
+    {
+      "id": "f3096ae5-85e9-43de-b14a-3bed4d6fc8f9",
+      "typeVersion": 2,
+      "position": [
+        700,
+        200
+      ],
+      "name": "Validate learning mode inputs",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-session",
+              "leftValue": "={{ $json.session_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "check-business",
+              "leftValue": "={{ $json.business_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "1678a343-2adc-4bf2-82c0-d78078b1511b",
+      "typeVersion": 3.4,
+      "position": [
+        1000,
+        200
+      ],
+      "name": "Return validation error",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "name": "result",
+              "value": "={}",
+              "type": "object"
+            },
+            {
+              "name": "error",
+              "value": "Missing required fields: session_id or business_id",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ffd15841-ca52-42a1-affd-5430dcd083aa",
+      "typeVersion": 3,
+      "position": [
+        1300,
+        200
+      ],
+      "name": "Determine learning stage action",
+      "type": "n8n-nodes-base.switch",
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_learning_stage }}",
+                    "rightValue": "intro",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "intro"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_learning_stage }}",
+                    "rightValue": "simulation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "simulation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_learning_stage }}",
+                    "rightValue": "extraction",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "extraction"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.current_learning_stage }}",
+                    "rightValue": "complete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "complete"
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      }
+    },
+    {
+      "id": "3c964e34-30c9-4627-8d13-dda6ab69a6de",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        200
+      ],
+      "name": "Build intro simulation prompt",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "name": "prompt_type",
+              "value": "intro",
+              "type": "string"
+            },
+            {
+              "name": "system_prompt",
+              "value": "You are a simulation coordinator for a sales persona learning system. Your role is to help a business owner train their AI sales agent by simulating realistic lead conversations. You must ONLY respond in the same language the business owner uses. Do not explain that you are AI. Act as the coordinator presenting the exercise.",
+              "type": "string"
+            },
+            {
+              "name": "user_prompt",
+              "value": "=Start the demo learning session for business_id: {{ $json.business_id }}. Greet the business owner warmly and explain that you will simulate 3-5 realistic lead conversations. Ask them to respond naturally \u2014 exactly as they would respond to a real potential customer. Tell them this will help train their sales agent to sound just like them. Begin with the first simulated lead message after they confirm they are ready. Keep your message short and natural.",
+              "type": "string"
+            },
+            {
+              "name": "next_stage",
+              "value": "simulation",
+              "type": "string"
+            },
+            {
+              "name": "message",
+              "value": "={{ $('Extract input fields').first().json.message }}",
+              "type": "string"
+            },
+            {
+              "name": "session_id",
+              "value": "={{ $('Extract input fields').first().json.session_id }}",
+              "type": "string"
+            },
+            {
+              "name": "business_id",
+              "value": "={{ $('Extract input fields').first().json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "persona",
+              "value": "={{ $('Extract input fields').first().json.persona }}",
+              "type": "object"
+            },
+            {
+              "name": "existing_hebrew_patterns",
+              "value": "={{ $('Extract input fields').first().json.existing_hebrew_patterns }}",
+              "type": "object"
+            },
+            {
+              "name": "simulation_history",
+              "value": "={{ $('Extract input fields').first().json.simulation_history }}",
+              "type": "object"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "74481ce7-8d3e-4283-99e8-87a78a69c6a6",
+      "typeVersion": 2,
+      "position": [
+        1900,
+        200
+      ],
+      "name": "Build simulation prompt",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const input = $('Extract input fields').first().json;\nconst history = input.simulation_history || [];\nconst persona = input.persona || {};\nconst historyCount = history.length;\n\n// Determine which simulation scenario to present based on history length\nconst scenarios = [\n  \"Hi, I saw your ad. What exactly do you offer?\",\n  \"How much does it cost? I want a quick price.\",\n  \"I'm comparing a few options right now, why should I pick you?\",\n  \"I'm not sure I need this right now, maybe in a few months.\",\n  \"Can I speak to someone? I have a few detailed questions.\"\n];\n\nconst scenarioIndex = Math.floor(historyCount / 2) % scenarios.length;\nconst simulatedLeadMessage = scenarios[scenarioIndex];\n\nconst historyText = history.map(h => `${h.role}: ${h.content}`).join('\\n');\n\nreturn [{\n  json: {\n    prompt_type: 'simulation',\n    system_prompt: `You are a simulation coordinator presenting realistic lead messages to a business owner. Present the next simulated lead message clearly, labeling it as \"Simulated Lead:\". Then wait for the business owner's reply. Do not add commentary. Keep it natural. Persona context: ${JSON.stringify(persona)}`,\n    user_prompt: `Conversation so far:\\n${historyText}\\n\\nBusiness owner's latest message: \"${input.message}\"\\n\\nNow present this next simulated lead message to the business owner:\\n\"${simulatedLeadMessage}\"\\n\\nFormat: Present only the simulated lead message naturally, labeled as Simulated Lead.`,\n    next_stage: scenarioIndex >= scenarios.length - 1 ? 'extraction' : 'simulation',\n    simulation_history: history,\n    message: input.message,\n    session_id: input.session_id,\n    business_id: input.business_id,\n    persona: persona,\n    existing_hebrew_patterns: input.existing_hebrew_patterns\n  }\n}];"
+      }
+    },
+    {
+      "id": "60551f91-ad01-4c17-a88b-672b3207ad22",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "name": "Build extraction prompt",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const input = $('Extract input fields').first().json;\nconst history = input.simulation_history || [];\nconst persona = input.persona || {};\nconst patterns = input.existing_hebrew_patterns || {};\n\nconst historyText = history.map(h => `${h.role}: ${h.content}`).join('\\n');\n\nreturn [{\n  json: {\n    prompt_type: 'extraction',\n    system_prompt: `You are an expert sales communication analyst specializing in persona extraction. Analyze conversation samples from a business owner and extract their unique communication style, tone, phrasing patterns, sentence structures (including Hebrew patterns if present), objection handling style, and CTA approach. Return ONLY a valid JSON object \u2014 no markdown, no explanation.`,\n    user_prompt: `Here are the business owner's real responses during simulated lead conversations:\\n\\n${historyText}\\n\\nExisting persona: ${JSON.stringify(persona)}\\nExisting patterns: ${JSON.stringify(patterns)}\\n\\nExtract and return a JSON object with these fields:\\n{\\n  \"tone\": \"string describing tone\",\\n  \"wording_style\": \"string\",\\n  \"sentence_patterns\": [\"array of example sentence structures\"],\\n  \"hebrew_patterns\": { \"greetings\": [], \"closings\": [], \"objection_phrases\": [], \"cta_phrases\": [] },\\n  \"emoji_usage\": \"none|rare|moderate|frequent\",\\n  \"response_length\": \"short|medium|long\",\\n  \"objection_handling\": [\"array of actual phrases used\"],\\n  \"cta_style\": \"string describing how they push CTAs\",\\n  \"key_phrases\": [\"array of characteristic phrases\"]\n}`,\n    next_stage: 'complete',\n    message: input.message,\n    session_id: input.session_id,\n    business_id: input.business_id,\n    persona: persona,\n    existing_hebrew_patterns: patterns,\n    simulation_history: history\n  }\n}];"
+      }
+    },
+    {
+      "id": "2a30988c-9235-4acb-b885-e73ea29ad51e",
+      "typeVersion": 3.4,
+      "position": [
+        2500,
+        200
+      ],
+      "name": "Build complete response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "name": "prompt_type",
+              "value": "complete",
+              "type": "string"
+            },
+            {
+              "name": "system_prompt",
+              "value": "You are a learning session coordinator. The demo learning phase is complete. Inform the business owner warmly that their sales agent has been trained on their communication style. Keep it short and positive.",
+              "type": "string"
+            },
+            {
+              "name": "user_prompt",
+              "value": "=The learning phase is complete for business_id: {{ $('Extract input fields').first().json.business_id }}. Generate a short, warm completion message telling the business owner their agent is now trained on their style and is ready to handle real conversations. One sentence max.",
+              "type": "string"
+            },
+            {
+              "name": "next_stage",
+              "value": "complete",
+              "type": "string"
+            },
+            {
+              "name": "message",
+              "value": "={{ $('Extract input fields').first().json.message }}",
+              "type": "string"
+            },
+            {
+              "name": "session_id",
+              "value": "={{ $('Extract input fields').first().json.session_id }}",
+              "type": "string"
+            },
+            {
+              "name": "business_id",
+              "value": "={{ $('Extract input fields').first().json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "persona",
+              "value": "={{ $('Extract input fields').first().json.persona }}",
+              "type": "object"
+            },
+            {
+              "name": "existing_hebrew_patterns",
+              "value": "={{ $('Extract input fields').first().json.existing_hebrew_patterns }}",
+              "type": "object"
+            },
+            {
+              "name": "simulation_history",
+              "value": "={{ $('Extract input fields').first().json.simulation_history }}",
+              "type": "object"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "da5f8434-dfff-4a3a-a4a6-46cd001ac43d",
+      "typeVersion": 3.4,
+      "position": [
+        2800,
+        200
+      ],
+      "name": "Build fallback response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "name": "prompt_type",
+              "value": "intro",
+              "type": "string"
+            },
+            {
+              "name": "system_prompt",
+              "value": "You are a simulation coordinator. An unknown stage was received. Gracefully re-orient the business owner to the start of the learning phase.",
+              "type": "string"
+            },
+            {
+              "name": "user_prompt",
+              "value": "=An unknown learning stage was encountered. Greet the business owner and restart the demo learning session from the beginning. Keep it short.",
+              "type": "string"
+            },
+            {
+              "name": "next_stage",
+              "value": "intro",
+              "type": "string"
+            },
+            {
+              "name": "message",
+              "value": "={{ $('Extract input fields').first().json.message }}",
+              "type": "string"
+            },
+            {
+              "name": "session_id",
+              "value": "={{ $('Extract input fields').first().json.session_id }}",
+              "type": "string"
+            },
+            {
+              "name": "business_id",
+              "value": "={{ $('Extract input fields').first().json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "persona",
+              "value": "={{ $('Extract input fields').first().json.persona }}",
+              "type": "object"
+            },
+            {
+              "name": "existing_hebrew_patterns",
+              "value": "={{ $('Extract input fields').first().json.existing_hebrew_patterns }}",
+              "type": "object"
+            },
+            {
+              "name": "simulation_history",
+              "value": "={{ $('Extract input fields').first().json.simulation_history }}",
+              "type": "object"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d78e8555-c9e9-460d-ad88-313720f473f9",
+      "typeVersion": 4.2,
+      "position": [
+        3100,
+        200
+      ],
+      "name": "Call Anthropic for simulation",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 600,\n  \"system\": {{ JSON.stringify($json.system_prompt) }},\n  \"messages\": [\n    { \"role\": \"user\", \"content\": {{ JSON.stringify($json.user_prompt) }} }\n  ]\n}",
+        "continueOnFail": true
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      }
+    },
+    {
+      "id": "b4e3c786-c317-4929-8709-25d3650596e8",
+      "typeVersion": 2,
+      "position": [
+        3400,
+        200
+      ],
+      "name": "Check Anthropic response",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "check-content",
+              "leftValue": "={{ $json.content && $json.content[0] && $json.content[0].text ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a2f7ac89-eee3-4573-82c5-e4d487877293",
+      "typeVersion": 3.4,
+      "position": [
+        3700,
+        200
+      ],
+      "name": "Handle Anthropic error",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "name": "result",
+              "value": "={}",
+              "type": "object"
+            },
+            {
+              "name": "error",
+              "value": "Anthropic API call failed during demo learning phase",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "705a6606-7dc3-4b80-ae5d-174ed5f8d9af",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        200
+      ],
+      "name": "Process Anthropic response",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const anthropicOutput = $input.first().json;\nconst rawText = anthropicOutput.content[0].text.trim();\nconst promptType = $('Determine learning stage action').first()?.json?.prompt_type || 'intro';\n\n// Determine which branch provided context \u2014 check all possible upstream nodes\nlet context = null;\nconst branchNodes = [\n  'Build intro simulation prompt',\n  'Build simulation prompt', \n  'Build extraction prompt',\n  'Build complete response',\n  'Build fallback response'\n];\n\nfor (const nodeName of branchNodes) {\n  try {\n    const item = $node[nodeName]?.json;\n    if (item) { context = item; break; }\n  } catch(e) {}\n}\n\nif (!context) {\n  return [{\n    json: {\n      status: 'error',\n      result: {},\n      error: 'Could not resolve branch context'\n    }\n  }];\n}\n\nconst promptTypeResolved = context.prompt_type || 'intro';\nconst nextStage = context.next_stage || 'intro';\n\nlet extractedPatterns = {};\nlet personaUpdated = false;\n\n// If extraction stage, try to parse the JSON from Claude\nif (promptTypeResolved === 'extraction') {\n  try {\n    const jsonMatch = rawText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      extractedPatterns = JSON.parse(jsonMatch[0]);\n      personaUpdated = true;\n    }\n  } catch (e) {\n    extractedPatterns = { raw_extraction: rawText };\n    personaUpdated = false;\n  }\n}\n\n// Append the latest exchange to simulation history\nconst existingHistory = context.simulation_history || [];\nconst updatedHistory = [\n  ...existingHistory,\n  { role: 'owner', content: context.message || '' },\n  { role: 'coordinator', content: rawText }\n];\n\nreturn [{\n  json: {\n    status: 'success',\n    result: {\n      simulation_response: rawText,\n      extracted_patterns: extractedPatterns,\n      persona_updated: personaUpdated,\n      learning_stage: nextStage,\n      updated_simulation_history: updatedHistory\n    },\n    error: null\n  }\n}];"
+      }
+    },
+    {
+      "id": "1d685e77-894a-4285-821e-4dd46ec9f11a",
+      "typeVersion": 2.5,
+      "position": [
+        4300,
+        200
+      ],
+      "name": "Persist patterns to DB",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE business_profiles\nSET\n  persona = persona || $1::jsonb,\n  hebrew_patterns = $2::jsonb,\n  updated_at = NOW()\nWHERE business_id = $3;",
+        "additionalFields": {
+          "queryParams": "={{ JSON.stringify($json.result.extracted_patterns) }}\n={{ JSON.stringify($json.result.extracted_patterns.hebrew_patterns || {}) }}\n={{ $('Extract input fields').first().json.business_id }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "f8d54bb1-a1d8-4ae8-b617-a75ba1ef4154",
+      "typeVersion": 2.5,
+      "position": [
+        4600,
+        200
+      ],
+      "name": "Update learning session stage",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE sessions\nSET\n  current_learning_stage = $1,\n  simulation_history = $2::jsonb,\n  updated_at = NOW()\nWHERE session_id = $3;",
+        "additionalFields": {
+          "queryParams": "={{ $json.result.learning_stage }}\n={{ JSON.stringify($json.result.updated_simulation_history || []) }}\n={{ $('Extract input fields').first().json.session_id }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "b1ee4848-bc49-4655-a6b2-95c343707d34",
+      "typeVersion": 3.4,
+      "position": [
+        4900,
+        200
+      ],
+      "name": "Build final success output",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "name": "result",
+              "value": "={{ $('Process Anthropic response').first().json.result }}",
+              "type": "object"
+            },
+            {
+              "name": "error",
+              "value": null,
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8c7a878b-9d92-4c0c-bf55-0abfa782af5a",
+      "typeVersion": 1,
+      "position": [
+        5200,
+        200
+      ],
+      "name": "Sticky Note \u2014 Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "parameters": {
+        "content": "## WA_08_Demo Learning Phase\n\n**Role:** Sub-workflow (learning_mode only)\n\n**Purpose:** Simulate lead conversations with the business owner, capture their natural responses, extract real phrasing/tone/Hebrew patterns, and persist enriched persona data to the DB.\n\n**Stages:**\n- `intro` \u2192 Welcome + explain exercise\n- `simulation` \u2192 Present simulated lead messages one at a time, capture owner replies\n- `extraction` \u2192 Analyze all replies, extract persona patterns via Claude\n- `complete` \u2192 Completion message, persona locked\n\n**\u26a0\ufe0f Never runs during live customer conversations.**\n\n**DB writes:**\n- `business_profiles` \u2014 updated persona + hebrew_patterns\n- `sessions` \u2014 updated learning_stage + simulation_history",
+        "height": 320,
+        "width": 420
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract input fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract input fields": {
+      "main": [
+        [
+          {
+            "node": "Validate learning mode inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate learning mode inputs": {
+      "main": [
+        [
+          {
+            "node": "Determine learning stage action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return validation error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine learning stage action": {
+      "main": [
+        [
+          {
+            "node": "Build intro simulation prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build simulation prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build extraction prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build complete response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build fallback response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build intro simulation prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Anthropic for simulation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build simulation prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Anthropic for simulation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build extraction prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Anthropic for simulation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build complete response": {
+      "main": [
+        [
+          {
+            "node": "Call Anthropic for simulation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build fallback response": {
+      "main": [
+        [
+          {
+            "node": "Call Anthropic for simulation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Anthropic for simulation": {
+      "main": [
+        [
+          {
+            "node": "Check Anthropic response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Anthropic response": {
+      "main": [
+        [
+          {
+            "node": "Process Anthropic response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Anthropic error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Anthropic response": {
+      "main": [
+        [
+          {
+            "node": "Persist patterns to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist patterns to DB": {
+      "main": [
+        [
+          {
+            "node": "Update learning session stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update learning session stage": {
+      "main": [
+        [
+          {
+            "node": "Build final success output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

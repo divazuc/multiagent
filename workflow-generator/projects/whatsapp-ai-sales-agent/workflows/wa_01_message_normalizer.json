@@ -1,0 +1,73 @@
+{
+  "name": "WA_01_Message Normalizer",
+  "nodes": [
+    {
+      "id": "a4a840a1-d555-47cd-8841-44cc0379a65c",
+      "typeVersion": 1,
+      "position": [100, 200],
+      "name": "Input Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "4bd141ec-1ea1-4d8b-abe2-eefdcbac318c",
+      "typeVersion": 2,
+      "position": [400, 200],
+      "name": "Normalize payload",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\n\n// When called as sub-workflow, n8n passes the parent webhook item\n// which wraps the original POST body under raw.body\nconst data = raw.body || raw;\n\ntry {\n  let message = null;\n  let session_id = null;\n\n  // WhatsApp Cloud API format\n  if (data.object === 'whatsapp_business_account') {\n    const msg = data.entry?.[0]?.changes?.[0]?.value?.messages?.[0];\n    const contact = data.entry?.[0]?.changes?.[0]?.value?.contacts?.[0];\n    if (!msg) throw new Error('WhatsApp payload missing message');\n    message = msg.text?.body?.trim() || msg.interactive?.button_reply?.title || null;\n    session_id = contact?.wa_id || msg.from || null;\n  }\n  // Chat / webhook format\n  else if (data.message && data.session_id) {\n    message = String(data.message).trim();\n    session_id = String(data.session_id).trim();\n  }\n  else {\n    throw new Error('Unrecognized payload: missing message or session_id');\n  }\n\n  if (!message) throw new Error('Empty message after normalization');\n  if (!session_id) throw new Error('Missing session_id after normalization');\n\n  return [{ json: { status: 'success', result: { message, session_id }, error: null } }];\n\n} catch (err) {\n  return [{ json: { status: 'error', result: {}, error: err.message } }];\n}\n"
+      }
+    },
+    {
+      "id": "84eda91f-871f-49ee-97dd-656416ff4cdc",
+      "typeVersion": 3.4,
+      "position": [700, 200],
+      "name": "Return result",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment_status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment_result_message",
+              "name": "result.message",
+              "value": "={{ $json.result.message }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment_result_session_id",
+              "name": "result.session_id",
+              "value": "={{ $json.result.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment_error",
+              "name": "error",
+              "value": "={{ $json.error }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Input Trigger": {
+      "main": [[{ "node": "Normalize payload", "type": "main", "index": 0 }]]
+    },
+    "Normalize payload": {
+      "main": [[{ "node": "Return result", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
