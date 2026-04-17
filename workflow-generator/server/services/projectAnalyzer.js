@@ -3,19 +3,38 @@
 const crypto = require('crypto')
 const { loadGlobalContext } = require('./projectManager')
 
+// Build a lookup of node type → latest typeVersion from our schema
+const NODE_TYPE_VERSIONS = (() => {
+  try {
+    const schema = require('../schema/n8n-nodes-v1.json')
+    const map = {}
+    for (const [type, info] of Object.entries(schema.nodes || {})) {
+      const versions = info.typeVersions
+      if (Array.isArray(versions) && versions.length) {
+        map[type] = versions[versions.length - 1]  // take the highest
+      }
+    }
+    return map
+  } catch { return {} }
+})()
+
 /**
  * Post-process a generated workflow to fill in fields Claude was told to omit.
- * Adds id (UUID), typeVersion (1), and position (linear layout) to every node
- * that is missing them, keeping any values Claude did provide.
+ * Uses the latest typeVersion from the schema for each node type so n8n cloud
+ * renders them correctly (old typeVersions are stored but not rendered).
  */
 function enrichWorkflow(workflow) {
   if (!workflow?.nodes?.length) return workflow
-  const nodes = workflow.nodes.map((node, i) => ({
-    id: node.id || crypto.randomUUID(),
-    typeVersion: node.typeVersion ?? 1,
-    position: node.position || [100 + i * 300, 200],
-    ...node,
-  }))
+  const nodes = workflow.nodes.map((node, i) => {
+    // Spread node first so explicit fields below take precedence
+    return {
+      ...node,
+      id: node.id || crypto.randomUUID(),
+      // Always use schema's latest typeVersion — overrides whatever Claude returned
+      typeVersion: NODE_TYPE_VERSIONS[node.type] ?? node.typeVersion ?? 1,
+      position: node.position || [100 + i * 300, 200],
+    }
+  })
   return { ...workflow, nodes }
 }
 

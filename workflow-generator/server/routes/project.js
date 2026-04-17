@@ -226,54 +226,96 @@ router.post('/:slug/workflows', (req, res) => {
 
 // Import all generated workflows to n8n (subs first, supervisor last)
 router.post('/:slug/import', async (req, res) => {
-  const { slug } = req.params
-  if (!isValidSlug(slug)) return res.status(400).json({ error: 'Invalid slug format' })
-  const manifest = loadManifest(slug)
-  if (!manifest) return res.status(404).json({ error: 'Project not found. Generate workflows first.' })
+  try {
+    const { slug } = req.params
+    if (!isValidSlug(slug)) return res.status(400).json({ error: 'Invalid slug format' })
+    const manifest = loadManifest(slug)
+    if (!manifest) return res.status(404).json({ error: 'Project not found. Generate workflows first.' })
 
-  const { workflows } = req.body
-  if (!workflows?.length) return res.status(400).json({ error: 'workflows array is required' })
+    const { workflows } = req.body
+    if (!workflows?.length) return res.status(400).json({ error: 'workflows array is required' })
 
-  const { N8N_URL, N8N_API_KEY } = process.env
-  if (!N8N_URL || !N8N_API_KEY) return res.status(500).json({ error: 'N8N_URL and N8N_API_KEY must be set in .env' })
+    const { N8N_URL, N8N_API_KEY } = process.env
+    if (!N8N_URL || !N8N_API_KEY) return res.status(500).json({ error: 'N8N_URL and N8N_API_KEY must be set in .env' })
 
-  const client = createN8nClient(N8N_URL, N8N_API_KEY)
-  const importResults = []
+    const client = createN8nClient(N8N_URL, N8N_API_KEY)
+    const importResults = []
 
-  // Import subs first, then supervisor
-  const ordered = [
-    ...workflows.filter(w => w.role === 'sub'),
-    ...workflows.filter(w => w.role === 'supervisor')
-  ]
+    // Import subs first, then supervisor
+    const ordered = [
+      ...workflows.filter(w => w.role === 'sub'),
+      ...workflows.filter(w => w.role === 'supervisor')
+    ]
 
-  for (const item of ordered) {
-    try {
-      const imported = await client.importWorkflow(item.workflow)
-      importResults.push({ name: item.name, role: item.role, n8nId: imported.id, success: true })
-    } catch (err) {
-      importResults.push({ name: item.name, role: item.role, n8nId: null, success: false, error: err.message })
+    // Datetime suffix — only used when creating a new workflow (not updating)
+    const now = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const nameSuffix = ` (${now.toLocaleString('en-US', { month: 'short', day: 'numeric' })} ${pad(now.getHours())}:${pad(now.getMinutes())})`
+
+    // Build a lookup of existing n8n IDs from the manifest
+    const existingIds = Object.fromEntries(
+      (manifest.workflows || [])
+        .filter(w => w.n8nId)
+        .map(w => [w.name, w.n8nId])
+    )
+
+    for (const item of ordered) {
+      try {
+        const existingN8nId = existingIds[item.name]
+        let result
+
+        if (existingN8nId) {
+          // Workflow was previously imported — update it in place (keep same n8n ID)
+          result = await client.updateWorkflow(existingN8nId, { ...item.workflow, name: item.name })
+          // n8n Cloud clears activeVersionId on PUT — re-activate all workflows to republish
+          await client.activateWorkflow(existingN8nId).catch(e => console.warn('[import] activate failed:', e.message))
+          // Sub-workflows don't need to stay active — deactivate after publishing
+          if (item.trigger !== 'webhook') {
+            await client.deactivateWorkflow(existingN8nId).catch(e => console.warn('[import] deactivate failed:', e.message))
+          }
+          console.log('[import] updated existing', item.name, '— n8nId:', existingN8nId)
+        } else {
+          // First-time import — create new workflow with datetime suffix
+          result = await client.importWorkflow({ ...item.workflow, name: `${item.name}${nameSuffix}` })
+          console.log('[import] created new', item.name, '— n8nId:', result.id)
+        }
+
+        const nodesStored = result.nodes?.length ?? 0
+        importResults.push({
+          name: item.name, role: item.role,
+          n8nId: result.id ?? existingN8nId,
+          nodesStored, success: true,
+          action: existingN8nId ? 'updated' : 'created'
+        })
+      } catch (err) {
+        console.error('[import] workflow failed:', item.name, err.message)
+        importResults.push({ name: item.name, role: item.role, n8nId: null, success: false, error: err.message })
+      }
     }
+
+    // Update manifest with n8n IDs
+    const updatedManifest = {
+      ...manifest,
+      workflows: manifest.workflows.map(wf => {
+        const result = importResults.find(r => r.name === wf.name)
+        return result
+          ? { ...wf, n8nId: result.n8nId, importedAt: new Date().toISOString() }
+          : wf
+      })
+    }
+    saveManifest(slug, updatedManifest)
+
+    const n8nBase = N8N_URL.replace(/\/$/, '')
+    const resultsWithLinks = importResults.map(r => ({
+      ...r,
+      workflowUrl: r.n8nId ? `${n8nBase}/workflow/${r.n8nId}` : null
+    }))
+
+    res.json({ results: resultsWithLinks, manifest: updatedManifest })
+  } catch (err) {
+    console.error('[import] unhandled error:', err.message, err.stack)
+    res.status(500).json({ error: err.message })
   }
-
-  // Update manifest with n8n IDs
-  const updatedManifest = {
-    ...manifest,
-    workflows: manifest.workflows.map(wf => {
-      const result = importResults.find(r => r.name === wf.name)
-      return result
-        ? { ...wf, n8nId: result.n8nId, importedAt: new Date().toISOString() }
-        : wf
-    })
-  }
-  saveManifest(slug, updatedManifest)
-
-  const n8nBase = N8N_URL.replace(/\/$/, '')
-  const resultsWithLinks = importResults.map(r => ({
-    ...r,
-    workflowUrl: r.n8nId ? `${n8nBase}/workflow/${r.n8nId}` : null
-  }))
-
-  res.json({ results: resultsWithLinks, manifest: updatedManifest })
 })
 
 // Suggest a practical answer for a pending info item using Haiku
@@ -332,13 +374,16 @@ router.post('/:slug/identify-request', async (req, res) => {
   try {
     const client = getAnthropicClient()
     const resp = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
       messages: [{
         role: 'user',
-        content: `You manage an n8n workflow project. Given a change request, you must:
-1. Identify which workflows need updating
-2. List any critical missing information that would prevent you from making the right changes
+        content: `You manage an n8n workflow project. Given a change request, do two things:
+
+1. Identify which workflows need updating.
+2. Identify ONLY genuine business decisions the user must make — things where the answer changes what the product does (e.g. "should we notify the customer by email or SMS?"). You should handle ALL technical decisions yourself (node types, error handling, data mapping, retry logic, connection patterns, field formats). Do not ask the user about anything technical.
+
+If you can make a reasonable assumption for a business decision, do so and don't ask. Only surface questions where different answers lead to meaningfully different outcomes for the user's business.
 
 Project: ${manifest.name}
 Workflows:
@@ -346,13 +391,22 @@ ${manifest.workflows.map((w, i) => `${i + 1}. "${w.name}" (${w.role}) — ${w.pu
 
 Change request: "${request}"
 
-Return JSON only:
+Return JSON only — maximum 3 questions, ideally 0:
 {
-  "workflows": ["exact workflow name 1", "exact workflow name 2"],
-  "questions": ["critical question if info is missing — leave empty array if request is clear enough"]
+  "workflows": ["exact workflow name 1"],
+  "questions": [
+    {
+      "text": "Plain language business question (no technical jargon)",
+      "options": [
+        { "label": "Short option name", "description": "One sentence explaining the outcome" },
+        { "label": "Short option name", "description": "One sentence explaining the outcome" }
+      ],
+      "recommendation": 0
+    }
+  ]
 }
 
-Only add questions if the request cannot be fulfilled without more information. If it's reasonably clear, proceed with empty questions.`
+If no business decisions are needed, return "questions": [].`
       }]
     })
 
@@ -362,7 +416,13 @@ Only add questions if the request cannot be fulfilled without more information. 
       const validNames = new Set(manifest.workflows.map(w => w.name))
       workflows = (Array.isArray(parsed.workflows) ? parsed.workflows : []).filter(n => validNames.has(n))
       if (workflows.length === 0) workflows = manifest.workflows.map(w => w.name)
-      questions = Array.isArray(parsed.questions) ? parsed.questions.filter(Boolean) : []
+      // Normalise questions — support both string (legacy) and structured object format
+      questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
+        .filter(Boolean)
+        .map(q => typeof q === 'string'
+          ? { text: q, options: [{ label: 'Yes', description: '' }, { label: 'No', description: '' }], recommendation: 0 }
+          : q
+        )
     } catch {
       workflows = manifest.workflows.map(w => w.name)
       questions = []

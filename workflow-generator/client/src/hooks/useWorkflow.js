@@ -128,7 +128,10 @@ export async function apiSuggestAnswer(slug, item) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ item })
   })
-  const data = await res.json()
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status})`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 200)}`) }
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
   return data.suggestion
 }
@@ -139,7 +142,10 @@ export async function apiIdentifyRequest(slug, request) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ request })
   })
-  const data = await res.json()
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status})`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 200)}`) }
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
   return data  // { workflows: [...names], questions: [...] }
 }
@@ -150,7 +156,10 @@ export async function apiLogConversation(slug, request, updated) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ request, updated })
   })
-  const data = await res.json()
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status})`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 200)}`) }
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
   return data
 }
@@ -175,7 +184,10 @@ export async function apiImportProject(slug, workflows) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workflows })
   })
-  const data = await res.json()
+  const text = await res.text()
+  if (!text) throw new Error(`Server returned empty response (status ${res.status})`)
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 200)}`) }
   if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
   return data
 }

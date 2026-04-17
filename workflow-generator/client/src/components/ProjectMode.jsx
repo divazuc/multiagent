@@ -93,8 +93,8 @@ export default function ProjectMode() {
   const [requestLoading, setRequestLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState([])   // names updated in last request
   const [requestProgress, setRequestProgress] = useState([])  // per-workflow progress during request
-  const [requestQuestions, setRequestQuestions] = useState([]) // clarification questions from identify
-  const [requestClarification, setRequestClarification] = useState('')
+  const [requestQuestions, setRequestQuestions] = useState([]) // structured questions from identify: [{text, options, recommendation}]
+  const [requestSelections, setRequestSelections] = useState({}) // { [questionIndex]: optionIndex }
   const requestAbortRef = useRef(false)
   const requestClarRef = useRef(null)
   const errorRef = useRef(null)
@@ -102,6 +102,7 @@ export default function ProjectMode() {
   // Workspace: import
   const [importResults, setImportResults] = useState(null)
   const [importLoading, setImportLoading] = useState(false)
+  const [importingFor, setImportingFor] = useState({})
 
   // Project list
   const [drafts, setDrafts] = useState(() => listDrafts())
@@ -484,21 +485,17 @@ export default function ProjectMode() {
     setRequestLoading(true)
     setError(null)
     setRequestQuestions([])
-    setRequestClarification('')
+    setRequestSelections({})
     setLastUpdated([])
     setRequestProgress([])
 
     try {
-      // Step 1: identify affected workflows + surface any blocking questions
       const { workflows: toUpdate, questions } = await apiIdentifyRequest(slug, text)
-
       if (questions.length > 0) {
-        // Needs clarification before proceeding — show gate
         setRequestQuestions(questions)
         setRequestLoading(false)
         return
       }
-
       await runRequestGeneration(text, toUpdate)
     } catch (err) {
       setError(err.message)
@@ -507,17 +504,27 @@ export default function ProjectMode() {
   }
 
   async function handleSubmitWithClarification() {
-    if (!requestClarification.trim()) return
-    const combinedText = `${requestText}\n\nAdditional context: ${requestClarification}`
+    const allAnswered = requestQuestions.every((_, i) => requestSelections[i] !== undefined)
+    if (!allAnswered) return
+
+    // Build a plain-language summary of the selections
+    const answerLines = requestQuestions.map((q, i) => {
+      const opt = q.options[requestSelections[i]]
+      return `${q.text}\nChosen: ${opt.label}${opt.description ? ` — ${opt.description}` : ''}`
+    })
+    const combinedText = `${requestText}\n\nAdditional decisions:\n${answerLines.join('\n\n')}`
+
     setRequestLoading(true)
     setError(null)
     setRequestQuestions([])
+    setRequestSelections({})
     setRequestProgress([])
 
     try {
       const { workflows: toUpdate, questions } = await apiIdentifyRequest(slug, combinedText)
       if (questions.length > 0) {
         setRequestQuestions(questions)
+        setRequestSelections({})
         setRequestLoading(false)
         return
       }
@@ -615,7 +622,6 @@ export default function ProjectMode() {
 
     setLastUpdated(succeeded)
     setRequestText('')
-    setRequestClarification('')
     setRequestLoading(false)
 
     if (anySkipped) {
@@ -673,6 +679,24 @@ export default function ProjectMode() {
     }
   }
 
+  async function handleImportOne(item) {
+    const name = item.spec.name
+    setImportingFor(prev => ({ ...prev, [name]: true }))
+    setError(null)
+    try {
+      const data = await apiImportProject(slug, [{
+        name,
+        role: item.spec.role,
+        workflow: item.workflow
+      }])
+      setImportResults(data)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setImportingFor(prev => ({ ...prev, [name]: false }))
+    }
+  }
+
   function handleDownload(workflow, name) {
     const blob = new Blob([JSON.stringify(workflow, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -690,8 +714,8 @@ export default function ProjectMode() {
     setClarifications([]); setCurrentClarification(''); setPendingInfo([])
     setContextExpanded(false); setOptionalAnswers({}); setWfProgress([])
     setRequestText(''); setLastUpdated([]); setRequestProgress([])
-    setRequestQuestions([]); setRequestClarification(''); setLogExpanded(false)
-    setCategoryExpanded({}); setSuggestingFor(null)
+    setRequestQuestions([]); setRequestSelections({}); setLogExpanded(false)
+    setCategoryExpanded({}); setSuggestingFor(null); setImportingFor({})
     apiListProjects().then(setServerProjects).catch(() => {})
   }
 
@@ -1099,12 +1123,21 @@ export default function ProjectMode() {
                           <span className="text-xs text-indigo-600 font-semibold shrink-0">updated</span>
                         )}
                       </div>
-                      <button
-                        onClick={() => handleDownload(item.workflow, item.spec.name)}
-                        className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200 shrink-0 ml-2"
-                      >
-                        Download
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button
+                          onClick={() => handleImportOne(item)}
+                          disabled={importingFor[item.spec.name] || requestLoading}
+                          className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {importingFor[item.spec.name] ? 'Importing…' : 'Import'}
+                        </button>
+                        <button
+                          onClick={() => handleDownload(item.workflow, item.spec.name)}
+                          className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200"
+                        >
+                          Download
+                        </button>
+                      </div>
                     </div>
                     {item.summary && (
                       <p className="text-xs text-slate-500 mt-1.5">{item.summary}</p>
@@ -1133,7 +1166,17 @@ export default function ProjectMode() {
                         {r.success ? '●' : '●'}
                       </span>
                       <span className="text-sm text-slate-700">{r.name}</span>
-                      {r.n8nId && <span className="text-xs text-slate-400">ID: {r.n8nId}</span>}
+                      {r.action && (
+                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${r.action === 'updated' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
+                          {r.action}
+                        </span>
+                      )}
+                      {r.nodesStored != null && (
+                        <span className={`text-xs font-medium ${r.nodesStored > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {r.nodesStored} node{r.nodesStored !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {r.n8nId && <span className="text-xs text-slate-400">#{r.n8nId}</span>}
                     </div>
                     {r.success && r.workflowUrl && (
                       <a href={r.workflowUrl} target="_blank" rel="noreferrer"
@@ -1343,34 +1386,69 @@ export default function ProjectMode() {
           {/* Clarification gate — shown when request needs more info */}
           {requestQuestions.length > 0 && (
             <div ref={requestClarRef} className="mb-4 border-2 border-amber-300 rounded-xl overflow-hidden">
-              <div className="px-4 pt-3 pb-2 bg-amber-50">
-                <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">
-                  A couple of things to clarify first
+              <div className="px-4 pt-4 pb-2 bg-amber-50">
+                <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-0.5">
+                  One decision to make before we proceed
                 </div>
-                <ul className="text-sm text-amber-800 space-y-1 mb-3">
-                  {requestQuestions.map((q, i) => (
-                    <li key={i} className="flex gap-2"><span className="text-amber-500 shrink-0">{i + 1}.</span>{q}</li>
+                <p className="text-xs text-amber-600 mb-4">Claude will handle all the technical choices — these are the only questions that need your input.</p>
+
+                <div className="space-y-5">
+                  {requestQuestions.map((q, qi) => (
+                    <div key={qi}>
+                      <p className="text-sm font-semibold text-amber-900 mb-2">{qi + 1}. {q.text}</p>
+                      <div className="space-y-2">
+                        {q.options.map((opt, oi) => {
+                          const selected = requestSelections[qi] === oi
+                          const isRec = q.recommendation === oi || q.recommendation === opt.label
+                          return (
+                            <button
+                              key={oi}
+                              onClick={() => setRequestSelections(prev => ({ ...prev, [qi]: oi }))}
+                              className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${
+                                selected
+                                  ? 'border-amber-500 bg-amber-100'
+                                  : 'border-amber-200 bg-white hover:border-amber-400 hover:bg-amber-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-sm font-semibold ${selected ? 'text-amber-800' : 'text-slate-700'}`}>
+                                  {opt.label}
+                                </span>
+                                {isRec && (
+                                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white shrink-0">
+                                    Recommended
+                                  </span>
+                                )}
+                              </div>
+                              {opt.description && (
+                                <p className={`text-xs mt-0.5 ${selected ? 'text-amber-700' : 'text-slate-500'}`}>
+                                  {opt.description}
+                                </p>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
                   ))}
-                </ul>
-                <textarea
-                  className="w-full border border-amber-200 rounded-lg p-3 text-sm leading-relaxed resize-none focus:outline-none focus:border-amber-400 bg-white"
-                  rows={3}
-                  placeholder="Answer the questions above in your own words..."
-                  value={requestClarification}
-                  onChange={e => setRequestClarification(e.target.value)}
-                />
+                </div>
               </div>
-              <div className="px-4 py-3 bg-amber-50 border-t border-amber-100 flex gap-3">
+              <div className="px-4 py-3 bg-amber-50 border-t border-amber-100 flex gap-3 items-center">
                 <button
                   onClick={handleSubmitWithClarification}
-                  disabled={requestLoading || !requestClarification.trim()}
+                  disabled={requestLoading || !requestQuestions.every((_, i) => requestSelections[i] !== undefined)}
                   className="bg-amber-600 text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {requestLoading ? 'Updating…' : 'Update workflows →'}
                 </button>
+                {!requestQuestions.every((_, i) => requestSelections[i] !== undefined) && (
+                  <span className="text-xs text-amber-600">
+                    Select an option for each question above
+                  </span>
+                )}
                 <button
-                  onClick={() => { setRequestQuestions([]); setRequestClarification('') }}
-                  className="text-sm text-slate-500 hover:text-slate-700"
+                  onClick={() => { setRequestQuestions([]); setRequestSelections({}) }}
+                  className="ml-auto text-sm text-slate-500 hover:text-slate-700"
                 >
                   Cancel
                 </button>
