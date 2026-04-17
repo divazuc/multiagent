@@ -1,6 +1,6 @@
 -- WhatsApp AI Sales Agent — Production Schema v2
 -- Run in Supabase SQL editor after schema.sql (adds new tables, does not drop old ones)
--- All statements are idempotent (IF NOT EXISTS / OR REPLACE)
+-- Fully idempotent: safe to re-run on fresh DB or one that already has a businesses table.
 --
 -- Table groups:
 --   [PROD]  Production data model (blueprint-aligned, used by admin/client UI)
@@ -11,34 +11,34 @@
 -- ══════════════════════════════════════════════
 -- [PROD] 1. businesses
 --   Core business record. One row per SMB client.
---   Agreed additions vs blueprint:
---     + whatsapp_number        (the WA number the bot answers on)
---     + owner_notification_phone (where to forward escalations)
---     + language               (primary language, default 'he')
---     + guardrails             (global off-limits topics for this business)
+--
+--   Uses CREATE TABLE IF NOT EXISTS to handle a fresh DB.
+--   Followed by ALTER TABLE ADD COLUMN IF NOT EXISTS for every column
+--   so that an existing businesses table (e.g. from BIZ_WA workflow)
+--   is upgraded in-place without losing existing rows.
 -- ══════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS businesses (
-  id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  name                    TEXT        NOT NULL,
-  owner_name              TEXT,
-  phone                   TEXT,
-  whatsapp_number         TEXT,                           -- the WA number the agent answers on
-  owner_notification_phone TEXT,                          -- where escalations are forwarded
-  archetype               TEXT        CHECK (archetype IN (
-                              'service','professional','studio',
-                              'physical_store','ecommerce','custom_quote')),
-  plan_type               TEXT        NOT NULL DEFAULT 'basic'
-                              CHECK (plan_type IN ('basic','pro','social')),
-  language                TEXT        NOT NULL DEFAULT 'he', -- primary language (he / en)
-  agent_enabled           BOOLEAN     NOT NULL DEFAULT TRUE,
-  setup_completed         BOOLEAN     NOT NULL DEFAULT FALSE,
-  setup_stage             TEXT,
-  setup_draft             JSONB,
-  training_completed      BOOLEAN     NOT NULL DEFAULT FALSE,
-  guardrails              JSONB       NOT NULL DEFAULT '{}', -- global topic guardrails
-  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL
 );
+
+-- Add every column idempotently — safe whether the table is new or pre-existing
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS owner_name              TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS phone                   TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS whatsapp_number         TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS owner_notification_phone TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS archetype               TEXT
+    CHECK (archetype IN ('service','professional','studio','physical_store','ecommerce','custom_quote'));
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS plan_type               TEXT NOT NULL DEFAULT 'basic';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS language                TEXT NOT NULL DEFAULT 'he';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS agent_enabled           BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS setup_completed         BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS setup_stage             TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS setup_draft             JSONB;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS training_completed      BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS guardrails              JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_businesses_archetype ON businesses(archetype);
 CREATE INDEX IF NOT EXISTS idx_businesses_plan      ON businesses(plan_type);
@@ -277,12 +277,14 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$;
 
+-- Only attach updated_at triggers to tables that actually have that column.
+-- prod_messages intentionally omitted (insert-only, no updated_at).
 DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'businesses','business_config','business_persona','knowledge_items',
-    'prod_conversations','prod_messages',
+    'prod_conversations',
     'business_usage_daily','business_usage_monthly',
     'external_leads_sources','admin_sessions'
   ] LOOP
