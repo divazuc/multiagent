@@ -10,7 +10,7 @@ export const supabase = createClient(
 export async function listBusinesses() {
   const { data, error } = await supabase
     .from('businesses')
-    .select('id, name, archetype, plan_type, status, is_test, whatsapp_number, setup_completed, setup_stage, created_at')
+    .select('id, name, slug, archetype, plan_type, status, is_test, whatsapp_number, setup_completed, setup_stage, created_at')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
