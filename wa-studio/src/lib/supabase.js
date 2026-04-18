@@ -5,12 +5,61 @@ export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
 
-export async function createSession(sessionId, mode) {
+// ── Businesses ──────────────────────────────────────────────────────────────
+
+export async function listBusinesses() {
+  const { data, error } = await supabase
+    .from('businesses')
+    .select('id, name, archetype, plan_type, status, is_test, whatsapp_number, setup_completed, setup_stage, created_at')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createBusiness({ name, archetype, planType = 'basic', phone, isTest = false }) {
+  // In test mode, generate a fake phone number if none provided
+  const whatsappNumber = phone || (isTest ? `test_${Math.random().toString(36).slice(2, 10).toUpperCase()}` : null)
+  const { data, error } = await supabase
+    .from('businesses')
+    .insert({
+      name,
+      archetype: archetype || null,
+      plan_type: planType,
+      whatsapp_number: whatsappNumber,
+      status: 'active',
+      is_test: isTest,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateBusinessPhone(businessId, phone) {
+  const { error } = await supabase
+    .from('businesses')
+    .update({ whatsapp_number: phone, updated_at: new Date().toISOString() })
+    .eq('id', businessId)
+  if (error) throw error
+}
+
+export async function setBusinessStatus(businessId, status) {
+  const { error } = await supabase
+    .from('businesses')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', businessId)
+  if (error) throw error
+}
+
+// ── Sessions ─────────────────────────────────────────────────────────────────
+
+export async function createSession(sessionId, mode, businessId = null) {
   const { data, error } = await supabase
     .from('sessions')
     .upsert({
       session_id: sessionId,
       session_mode: mode,
+      business_id: businessId,
       setup_completed: mode !== 'setup',
       current_stage: mode === 'setup' ? 'setup_start' : 'start',
       current_setup_stage: mode === 'setup' ? 'collect_business_model' : null,
@@ -31,6 +80,8 @@ export async function listSessions() {
   return data || []
 }
 
+// ── DB state for inspector ───────────────────────────────────────────────────
+
 export async function loadDBState(sessionId) {
   const [sessionRes, draftRes, profileRes, messagesRes] = await Promise.all([
     supabase.from('sessions').select('*').eq('session_id', sessionId).single(),
@@ -40,7 +91,9 @@ export async function loadDBState(sessionId) {
         if (!r.data?.business_id) return { data: null }
         return supabase.from('business_profiles').select('*').eq('business_id', r.data.business_id).single()
       }),
-    supabase.from('conversation_messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true }).limit(50)
+    supabase.from('conversation_messages')
+      .select('*').eq('session_id', sessionId)
+      .order('created_at', { ascending: true }).limit(50)
   ])
   return {
     session: sessionRes.data || null,
@@ -59,7 +112,6 @@ export async function advanceSetupStage(sessionId, nextStage) {
 
 export async function seedBusinessProfile(sessionId, profile) {
   const businessId = `seed-${sessionId}`
-
   await supabase.from('business_profiles').upsert({
     business_id: businessId,
     session_id: sessionId,
@@ -68,7 +120,6 @@ export async function seedBusinessProfile(sessionId, profile) {
     setup_stage: 'completed',
     draft_setup_data: {},
   }, { onConflict: 'business_id' })
-
   await supabase.from('sessions').update({
     business_id: businessId,
     session_mode: 'live',

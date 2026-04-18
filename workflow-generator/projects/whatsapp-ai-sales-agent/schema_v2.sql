@@ -37,11 +37,15 @@ ALTER TABLE businesses ADD COLUMN IF NOT EXISTS setup_stage             TEXT;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS setup_draft             JSONB;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS training_completed      BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS guardrails              JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS status                  TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active','inactive'));               -- account status (not agent hours)
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS is_test                 BOOLEAN NOT NULL DEFAULT FALSE; -- test/demo business flag
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_businesses_archetype ON businesses(archetype);
 CREATE INDEX IF NOT EXISTS idx_businesses_plan      ON businesses(plan_type);
+CREATE INDEX IF NOT EXISTS idx_businesses_status    ON businesses(status);
 
 
 -- ══════════════════════════════════════════════

@@ -35,12 +35,12 @@ export default function App() {
 
   useEffect(() => { refreshSessions() }, [refreshSessions])
 
-  async function handleCreateSession(sessionId, mode) {
+  async function handleCreateSession(sessionId, mode, businessId = null) {
     try {
       setError(null)
-      await createSession(sessionId, mode)
+      const session = await createSession(sessionId, mode, businessId)
       await refreshSessions()
-      selectSession({ session_id: sessionId, session_mode: mode, setup_completed: mode !== 'setup', current_stage: mode === 'setup' ? 'setup_start' : 'start' })
+      selectSession(session)
     } catch (e) {
       setError('Failed to create session: ' + e.message)
     }
@@ -78,7 +78,7 @@ export default function App() {
       const res = await fetch(WEBHOOK_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: activeSession.session_id })
+        body: JSON.stringify({ message: text, session_id: activeSession.session_id, business_id: activeSession.business_id || null })
       })
 
       const body = await res.json().catch(() => ({}))
@@ -123,7 +123,7 @@ export default function App() {
           onRefresh={refreshSessions}
         />
         <ChatInterface
-          session={activeSession}
+          session={activeSession ? { ...activeSession, draft_setup_data: dbState.draft?.draft_setup_data || null } : null}
           messages={messages}
           sending={sending}
           onSend={handleSendMessage}
