@@ -16,13 +16,13 @@ export async function listBusinesses() {
   return data || []
 }
 
-export async function createBusiness({ name, archetype, planType = 'basic', phone, isTest = false }) {
-  // In test mode, generate a fake phone number if none provided
+export async function createBusiness({ name, slug, archetype, planType = 'basic', phone, isTest = false }) {
   const whatsappNumber = phone || (isTest ? `test_${Math.random().toString(36).slice(2, 10).toUpperCase()}` : null)
   const { data, error } = await supabase
     .from('businesses')
     .insert({
       name,
+      slug: slug || null,
       archetype: archetype || null,
       plan_type: planType,
       whatsapp_number: whatsappNumber,

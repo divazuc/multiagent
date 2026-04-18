@@ -17,6 +17,8 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
 
   // New business form
   const [newBizName, setNewBizName] = useState('')
+  const [newBizSlug, setNewBizSlug] = useState('')
+  const [slugEdited, setSlugEdited] = useState(false)
   const [creatingBiz, setCreatingBiz] = useState(false)
   const [showNewBizForm, setShowNewBizForm] = useState(false)
 
@@ -32,16 +34,35 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
     }
   }
 
+  function toSlug(str) {
+    return str.toLowerCase().trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+
+  function handleNameChange(val) {
+    setNewBizName(val)
+    if (!slugEdited) setNewBizSlug(toSlug(val))
+  }
+
+  function handleSlugChange(val) {
+    setNewBizSlug(toSlug(val))
+    setSlugEdited(true)
+  }
+
   async function handleCreateBusiness(e) {
     e.preventDefault()
     if (!newBizName.trim()) return
     setCreatingBiz(true)
     setError(null)
     try {
-      const biz = await createBusiness({ name: newBizName.trim(), isTest: true })
+      const biz = await createBusiness({ name: newBizName.trim(), slug: newBizSlug || null, isTest: true })
       await loadBusinesses()
       setSelectedBizId(biz.id)
       setNewBizName('')
+      setNewBizSlug('')
+      setSlugEdited(false)
       setShowNewBizForm(false)
     } catch (e) {
       setError(e.message)
@@ -93,7 +114,7 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
               <option value="">— select a business —</option>
               {activeBiz.map(b => (
                 <option key={b.id} value={b.id}>
-                  {b.name}{b.is_test ? ' [test]' : ''}{b.archetype ? ` · ${b.archetype}` : ''}
+                  {b.name}{b.slug ? ` · #${b.slug}` : ''}{b.is_test ? ' [test]' : ''}{b.archetype ? ` · ${b.archetype}` : ''}
                 </option>
               ))}
               {inactiveBiz.length > 0 && (
@@ -118,9 +139,19 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
               className="input"
               placeholder="Business name (e.g. TechPro IT)"
               value={newBizName}
-              onChange={e => setNewBizName(e.target.value)}
+              onChange={e => handleNameChange(e.target.value)}
               autoFocus
             />
+            <div style={{ position: 'relative' }}>
+              <input
+                className="input"
+                placeholder="slug"
+                value={newBizSlug}
+                onChange={e => handleSlugChange(e.target.value)}
+                style={{ paddingLeft: 28, fontFamily: 'var(--font-mono)', fontSize: 11 }}
+              />
+              <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', pointerEvents: 'none' }}>#</span>
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn btn-primary" type="submit" disabled={creatingBiz || !newBizName.trim()} style={{ flex: 1 }}>
                 {creatingBiz ? '…' : 'Create'}
