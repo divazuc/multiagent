@@ -3,7 +3,7 @@ import SessionPanel from './components/SessionPanel.jsx'
 import ChatInterface from './components/ChatInterface.jsx'
 import DBInspector from './components/DBInspector.jsx'
 import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters } from './lib/supabase.js'
-import FaqModal from './components/FaqModal.jsx'
+import FaqPanel from './components/FaqModal.jsx'
 
 const WEBHOOK_PATH = '/api/n8n/webhook/wa-inbound'
 
@@ -231,22 +231,25 @@ export default function App() {
           onSeed={handleSeedPreset}
           onRefresh={refreshSessions}
         />
-        <ChatInterface
-          session={activeSession ? { ...activeSession, draft_setup_data: dbState.draft?.draft_setup_data || null } : null}
-          messages={messages}
-          sending={sending}
-          onSend={handleSendMessage}
-          onClear={() => setMessages([])}
-          onStartOnboarding={() => activeSession && handleRestartSession(activeSession, 'learning', activeSession.business_id)}
-          onOpenFaq={() => setFaqOpen(true)}
-        />
-        {faqOpen && activeSession?.business_id && (
-          <FaqModal
-            businessId={activeSession.business_id}
-            businessName={activeSession.business_name || activeSession.session_id}
-            onClose={() => setFaqOpen(false)}
-          />
-        )}
+        {faqOpen && activeSession?.business_id
+          ? (
+            <FaqPanel
+              businessId={activeSession.business_id}
+              businessName={activeSession.business_name || activeSession.session_id}
+              onClose={() => setFaqOpen(false)}
+            />
+          ) : (
+            <ChatInterface
+              session={activeSession ? { ...activeSession, draft_setup_data: dbState.draft?.draft_setup_data || null } : null}
+              messages={messages}
+              sending={sending}
+              onSend={handleSendMessage}
+              onClear={() => setMessages([])}
+              onStartOnboarding={() => activeSession && handleRestartSession(activeSession, 'learning', activeSession.business_id)}
+              onOpenFaq={() => setFaqOpen(true)}
+            />
+          )
+        }
         <DBInspector
           dbState={dbState}
           onRefresh={() => refreshDB(activeSession?.session_id)}

@@ -3,9 +3,9 @@ import { loadFaqItems, updateFaqItem, deleteFaqItem, addFaqItem } from '../lib/s
 import { CATEGORIES } from '../lib/faq-starters.js'
 
 const STATUS = {
-  pending:  { label: 'ממתין',    cls: 'faq-status-pending'  },
-  active:   { label: 'פעיל',     cls: 'faq-status-active'   },
-  inactive: { label: 'לא פעיל',  cls: 'faq-status-inactive' },
+  pending:  { label: 'ממתין',   cls: 'fq-status-pending'  },
+  active:   { label: 'פעיל',    cls: 'fq-status-active'   },
+  inactive: { label: 'לא פעיל', cls: 'fq-status-inactive' },
 }
 
 function itemStatus(item) {
@@ -18,15 +18,15 @@ function sortItems(items) {
   return [...items].sort((a, b) => order[itemStatus(a)] - order[itemStatus(b)])
 }
 
-export default function FaqModal({ businessId, businessName, onClose }) {
-  const [items, setItems]         = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState(null)
+export default function FaqPanel({ businessId, businessName, onClose }) {
+  const [items, setItems]           = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState(null)
   const [expandedId, setExpandedId] = useState(null)
-  const [editState, setEditState] = useState({})
-  const [addMode, setAddMode]     = useState(false)
-  const [newItem, setNewItem]     = useState({ category: 'general', question: '', answer: '' })
-  const [saving, setSaving]       = useState(false)
+  const [editState, setEditState]   = useState({})
+  const [addOpen, setAddOpen]       = useState(false)
+  const [newItem, setNewItem]       = useState({ category: 'general', question: '', answer: '' })
+  const [saving, setSaving]         = useState(false)
 
   useEffect(() => { load() }, [businessId])
 
@@ -86,129 +86,174 @@ export default function FaqModal({ businessId, businessName, onClose }) {
     try {
       await addFaqItem(businessId, newItem)
       setNewItem({ category: 'general', question: '', answer: '' })
-      setAddMode(false)
+      setAddOpen(false)
       await load()
     } catch (e) { setError(e.message) }
     finally { setSaving(false) }
   }
 
-  const pending = items.filter(i => itemStatus(i) === 'pending')
-  const rest    = items.filter(i => itemStatus(i) !== 'pending')
+  const pending  = items.filter(i => itemStatus(i) === 'pending')
+  const answered = items.filter(i => itemStatus(i) !== 'pending')
 
   return (
-    <div className="faq-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="faq-modal">
-        <div className="faq-modal-header">
-          <div className="faq-modal-title">FAQ <span className="faq-biz-name">{businessName}</span></div>
-          <div className="faq-modal-actions">
-            <button className="btn-add-faq" onClick={() => { setAddMode(true); setExpandedId(null) }}>+ הוסף שאלה</button>
-            <button className="btn-icon" onClick={onClose}>✕</button>
+    <div className="fq-panel">
+      <div className="fq-header">
+        <button className="fq-back-btn" onClick={onClose} title="Back to chat">←</button>
+        <div className="fq-header-title">
+          <span className="fq-title">Knowledge Base</span>
+          <span className="fq-subtitle" lang="he">{businessName}</span>
+        </div>
+        <button className="fq-add-btn" onClick={() => setAddOpen(o => !o)}>
+          {addOpen ? '✕' : '+ שאלה חדשה'}
+        </button>
+      </div>
+
+      {error && <div className="fq-error">{error}</div>}
+
+      <div className="fq-list">
+        {addOpen && (
+          <div className="fq-add-form" lang="he">
+            <div className="fq-add-row">
+              <label className="fq-add-label">קטגוריה:</label>
+              <select
+                className="fq-select"
+                value={newItem.category}
+                onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
+              >
+                {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <input
+              className="fq-input"
+              placeholder="שאלה..."
+              value={newItem.question}
+              onChange={e => setNewItem(p => ({ ...p, question: e.target.value }))}
+              dir="rtl"
+            />
+            <textarea
+              className="fq-textarea"
+              placeholder="תשובה (ניתן להשאיר ריק)..."
+              value={newItem.answer}
+              onChange={e => setNewItem(p => ({ ...p, answer: e.target.value }))}
+              rows={3}
+              dir="rtl"
+            />
+            <div className="fq-form-actions">
+              <button className="fq-btn-save" onClick={handleAdd} disabled={saving || !newItem.question.trim()}>שמור</button>
+              <button className="fq-btn-cancel" onClick={() => { setAddOpen(false); setNewItem({ category: 'general', question: '', answer: '' }) }}>ביטול</button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {error && <div className="faq-error">{error}</div>}
+        {loading && <div className="fq-state-msg">טוען...</div>}
 
-        <div className="faq-modal-body">
-          {loading && <div className="faq-loading">טוען...</div>}
+        {!loading && items.length === 0 && !addOpen && (
+          <div className="fq-state-msg" lang="he">אין שאלות עדיין — לחצו על "+ שאלה חדשה" כדי להוסיף.</div>
+        )}
 
-          {addMode && (
-            <div className="faq-add-form" dir="rtl">
-              <div className="faq-add-row">
-                <label className="faq-add-label">קטגוריה</label>
-                <select className="faq-cat-select" value={newItem.category} onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}>
-                  {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
+        {!loading && pending.length > 0 && (
+          <section className="fq-section">
+            <div className="fq-section-hd" lang="he">
+              <span>ממתין לתשובה</span>
+              <span className="fq-count">{pending.length}</span>
+            </div>
+            {pending.map(item => (
+              <FaqRow key={item.id} item={item}
+                expanded={expandedId === item.id} editing={editState[item.id]} saving={saving}
+                onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                onEdit={() => startEdit(item)} onCancelEdit={() => cancelEdit(item.id)}
+                onSave={() => saveEdit(item)} onDelete={() => handleDelete(item.id)}
+                onToggleActive={() => toggleActive(item)}
+                onEditChange={patch => setEditState(prev => ({ ...prev, [item.id]: { ...prev[item.id], ...patch } }))}
+              />
+            ))}
+          </section>
+        )}
+
+        {!loading && answered.length > 0 && (
+          <section className="fq-section">
+            {pending.length > 0 && (
+              <div className="fq-section-hd" lang="he">
+                <span>שאלות קיימות</span>
+                <span className="fq-count">{answered.length}</span>
               </div>
-              <input className="faq-input" placeholder="שאלה..." value={newItem.question} onChange={e => setNewItem(p => ({ ...p, question: e.target.value }))} dir="rtl" />
-              <textarea className="faq-textarea" placeholder="תשובה (ניתן להשאיר ריק בינתיים)..." value={newItem.answer} onChange={e => setNewItem(p => ({ ...p, answer: e.target.value }))} rows={3} dir="rtl" />
-              <div className="faq-edit-buttons">
-                <button className="btn-save-faq" onClick={handleAdd} disabled={saving || !newItem.question.trim()}>שמור</button>
-                <button className="btn-cancel-faq" onClick={() => { setAddMode(false); setNewItem({ category: 'general', question: '', answer: '' }) }}>ביטול</button>
-              </div>
-            </div>
-          )}
-
-          {!loading && pending.length > 0 && (
-            <div className="faq-section">
-              <div className="faq-section-label">ממתין לתשובה · {pending.length}</div>
-              {pending.map(item => (
-                <FaqItem key={item.id} item={item} expanded={expandedId === item.id} editing={editState[item.id]}
-                  onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                  onEdit={() => startEdit(item)} onCancelEdit={() => cancelEdit(item.id)}
-                  onSave={() => saveEdit(item)} onDelete={() => handleDelete(item.id)}
-                  onToggleActive={() => toggleActive(item)}
-                  onEditChange={patch => setEditState(prev => ({ ...prev, [item.id]: { ...prev[item.id], ...patch } }))}
-                  saving={saving} />
-              ))}
-            </div>
-          )}
-
-          {!loading && rest.length > 0 && (
-            <div className="faq-section">
-              {pending.length > 0 && <div className="faq-section-label">שאלות קיימות · {rest.length}</div>}
-              {rest.map(item => (
-                <FaqItem key={item.id} item={item} expanded={expandedId === item.id} editing={editState[item.id]}
-                  onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                  onEdit={() => startEdit(item)} onCancelEdit={() => cancelEdit(item.id)}
-                  onSave={() => saveEdit(item)} onDelete={() => handleDelete(item.id)}
-                  onToggleActive={() => toggleActive(item)}
-                  onEditChange={patch => setEditState(prev => ({ ...prev, [item.id]: { ...prev[item.id], ...patch } }))}
-                  saving={saving} />
-              ))}
-            </div>
-          )}
-
-          {!loading && items.length === 0 && !addMode && (
-            <div className="faq-empty">אין שאלות עדיין. לחצו על + הוסף שאלה.</div>
-          )}
-        </div>
+            )}
+            {answered.map(item => (
+              <FaqRow key={item.id} item={item}
+                expanded={expandedId === item.id} editing={editState[item.id]} saving={saving}
+                onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                onEdit={() => startEdit(item)} onCancelEdit={() => cancelEdit(item.id)}
+                onSave={() => saveEdit(item)} onDelete={() => handleDelete(item.id)}
+                onToggleActive={() => toggleActive(item)}
+                onEditChange={patch => setEditState(prev => ({ ...prev, [item.id]: { ...prev[item.id], ...patch } }))}
+              />
+            ))}
+          </section>
+        )}
       </div>
     </div>
   )
 }
 
-function FaqItem({ item, expanded, editing, onToggle, onEdit, onCancelEdit, onSave, onDelete, onToggleActive, onEditChange, saving }) {
+function FaqRow({ item, expanded, editing, onToggle, onEdit, onCancelEdit, onSave, onDelete, onToggleActive, onEditChange, saving }) {
   const status   = itemStatus(item)
   const st       = STATUS[status]
   const catLabel = CATEGORIES[item.category] || item.category
 
   return (
-    <div className={`faq-item faq-item-${status}`}>
-      <div className="faq-item-header" dir="rtl" onClick={onToggle}>
-        <span className="faq-toggle">{expanded ? '▲' : '▼'}</span>
-        <span className="faq-cat-badge">{catLabel}</span>
-        <span className="faq-question">{item.question}</span>
-        <span className={`faq-status-badge ${st.cls}`}>{st.label}</span>
-        <div className="faq-item-actions" onClick={e => e.stopPropagation()}>
-          <button className="faq-action-btn" onClick={onEdit} title="ערוך">✏️</button>
-          <button className="faq-action-btn" onClick={onDelete} title="מחק">🗑️</button>
-        </div>
+    <div className={`fq-row fq-row-${status}`}>
+      <div className="fq-row-hd" onClick={onToggle}>
+        <span className="fq-chevron">{expanded ? '▾' : '▸'}</span>
+        <span className="fq-cat-badge" lang="he">{catLabel}</span>
+        <span className="fq-q-text" lang="he" dir="rtl">{item.question || '(שאלה ריקה)'}</span>
+        <span className={`fq-status-badge ${st.cls}`} lang="he">{st.label}</span>
+        <span className="fq-row-btns" onClick={e => e.stopPropagation()}>
+          <button className="fq-icon-btn" onClick={onEdit} title="ערוך">✏️</button>
+          <button className="fq-icon-btn" onClick={onDelete} title="מחק">🗑️</button>
+        </span>
       </div>
 
       {expanded && (
-        <div className="faq-item-body" dir="rtl">
+        <div className="fq-row-body" lang="he">
           {editing ? (
             <>
-              <input className="faq-input" value={editing.question} onChange={e => onEditChange({ question: e.target.value })} dir="rtl" placeholder="שאלה" />
-              <textarea className="faq-textarea" value={editing.answer} onChange={e => onEditChange({ answer: e.target.value })} rows={3} dir="rtl" placeholder="תשובה..." />
-              <select className="faq-cat-select" value={editing.category} onChange={e => onEditChange({ category: e.target.value })}>
+              <input
+                className="fq-input"
+                value={editing.question}
+                onChange={e => onEditChange({ question: e.target.value })}
+                dir="rtl"
+                placeholder="שאלה"
+              />
+              <textarea
+                className="fq-textarea"
+                value={editing.answer}
+                onChange={e => onEditChange({ answer: e.target.value })}
+                rows={4}
+                dir="rtl"
+                placeholder="תשובה..."
+              />
+              <select
+                className="fq-select"
+                value={editing.category}
+                onChange={e => onEditChange({ category: e.target.value })}
+              >
                 {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
-              <div className="faq-edit-buttons">
-                <button className="btn-save-faq" onClick={onSave} disabled={saving}>שמור</button>
-                <button className="btn-cancel-faq" onClick={onCancelEdit}>ביטול</button>
+              <div className="fq-form-actions">
+                <button className="fq-btn-save" onClick={onSave} disabled={saving}>שמור</button>
+                <button className="fq-btn-cancel" onClick={onCancelEdit}>ביטול</button>
               </div>
             </>
           ) : (
             <>
               {item.answer
-                ? <div className="faq-answer-text">{item.answer}</div>
-                : <div className="faq-answer-empty">אין תשובה עדיין — לחצו על ✏️ לעריכה</div>
+                ? <div className="fq-answer-text" dir="rtl">{item.answer}</div>
+                : <div className="fq-answer-empty">אין תשובה עדיין — לחצו על ✏️ לעריכה</div>
               }
               {item.answer && (
-                <label className="faq-active-toggle">
+                <label className="fq-active-label">
                   <input type="checkbox" checked={item.is_active} onChange={onToggleActive} />
-                  {item.is_active ? 'פעיל' : 'לא פעיל — סמנו להפעלה'}
+                  <span>{item.is_active ? 'פעיל — בטל סימון להשבית' : 'לא פעיל — סמנו להפעלה'}</span>
                 </label>
               )}
             </>
