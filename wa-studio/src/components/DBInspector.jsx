@@ -1,11 +1,15 @@
 import { useState } from 'react'
 
-const TABS = ['session', 'draft', 'profile', 'messages']
+const TABS = [
+  { key: 'session',  label: 'Session' },
+  { key: 'draft',    label: 'Draft' },
+  { key: 'profile',  label: 'Profile' },
+  { key: 'messages', label: 'Messages' },
+]
 
 function JsonView({ data }) {
   if (!data) return <div className="json-empty">—</div>
-  const text = JSON.stringify(data, null, 2)
-  return <pre className="json-view">{text}</pre>
+  return <pre className="json-view">{JSON.stringify(data, null, 2)}</pre>
 }
 
 function MessagesView({ messages }) {
@@ -18,7 +22,7 @@ function MessagesView({ messages }) {
             <span className="db-msg-stage">{m.stage || '—'}</span>
             <span className="db-msg-ts">{new Date(m.created_at).toLocaleTimeString()}</span>
           </div>
-          {m.user_message && <div className="db-msg-user">👤 {m.user_message}</div>}
+          {m.user_message  && <div className="db-msg-user">👤 {m.user_message}</div>}
           {m.agent_response && <div className="db-msg-agent">🤖 {m.agent_response}</div>}
         </div>
       ))}
@@ -30,10 +34,10 @@ export default function DBInspector({ dbState, onRefresh }) {
   const [tab, setTab] = useState('session')
 
   const counts = {
-    session: dbState.session ? '1' : '0',
-    draft: dbState.draft ? '1' : '0',
-    profile: dbState.profile ? '1' : '0',
-    messages: dbState.messages?.length || 0
+    session:  dbState.session  ? '1' : '0',
+    draft:    dbState.draft    ? '1' : '0',
+    profile:  dbState.profile  ? '1' : '0',
+    messages: dbState.messages?.length || 0,
   }
 
   return (
@@ -46,20 +50,20 @@ export default function DBInspector({ dbState, onRefresh }) {
       <div className="db-tabs">
         {TABS.map(t => (
           <button
-            key={t}
-            className={`db-tab ${tab === t ? 'active' : ''}`}
-            onClick={() => setTab(t)}
+            key={t.key}
+            className={`db-tab ${tab === t.key ? 'active' : ''}`}
+            onClick={() => setTab(t.key)}
           >
-            {t}
-            <span className="tab-count">{counts[t]}</span>
+            {t.label}
+            <span className="tab-count">{counts[t.key]}</span>
           </button>
         ))}
       </div>
 
       <div className="db-content">
-        {tab === 'session' && <JsonView data={dbState.session} />}
-        {tab === 'draft' && <JsonView data={dbState.draft} />}
-        {tab === 'profile' && <JsonView data={dbState.profile} />}
+        {tab === 'session'  && <JsonView data={dbState.session} />}
+        {tab === 'draft'    && <JsonView data={dbState.draft} />}
+        {tab === 'profile'  && <JsonView data={dbState.profile} />}
         {tab === 'messages' && <MessagesView messages={dbState.messages} />}
       </div>
     </aside>

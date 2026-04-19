@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node tests/run.js",
+    "test:setup": "node tests/run.js setup",
+    "test:onboarding": "node tests/run.js onboarding",
+    "test:live": "node tests/run.js live"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

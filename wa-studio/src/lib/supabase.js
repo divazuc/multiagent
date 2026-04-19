@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { FAQ_STARTERS_BY_ARCHETYPE } from './faq-starters.js'
 
 export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -103,11 +104,84 @@ export async function loadDBState(sessionId) {
   }
 }
 
-export async function advanceSetupStage(sessionId, nextStage) {
+export async function clearSessionData(sessionId) {
+  await Promise.all([
+    supabase.from('conversation_messages').delete().eq('session_id', sessionId),
+    supabase.from('setup_drafts').delete().eq('session_id', sessionId),
+  ])
+  await supabase.from('sessions').delete().eq('session_id', sessionId)
+}
+
+export async function advanceSetupStage(sessionId, nextStage, setupCompleted = false) {
   await supabase
     .from('sessions')
-    .update({ current_stage: nextStage, current_setup_stage: nextStage, updated_at: new Date().toISOString() })
+    .update({ current_stage: nextStage, current_setup_stage: nextStage, setup_completed: setupCompleted || undefined, updated_at: new Date().toISOString() })
     .eq('session_id', sessionId)
+}
+
+export async function markSetupComplete(sessionId) {
+  await supabase
+    .from('sessions')
+    .update({ setup_completed: true, updated_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+}
+
+export async function loadFaqItems(businessId) {
+  const { data, error } = await supabase
+    .from('knowledge_items')
+    .select('id, category, question, answer, is_active, created_at')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function updateFaqItem(id, updates) {
+  const { error } = await supabase
+    .from('knowledge_items')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteFaqItem(id) {
+  const { error } = await supabase.from('knowledge_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function addFaqItem(businessId, { category, question, answer = '' }) {
+  const { data, error } = await supabase
+    .from('knowledge_items')
+    .insert({ business_id: businessId, category: category || 'general', question, answer, language: 'he', is_active: false })
+    .select().single()
+  if (error) throw error
+  return data
+}
+
+export async function seedFaqStarters(businessId, archetype) {
+  const { count, error: countError } = await supabase
+    .from('knowledge_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_id', businessId)
+  if (countError) throw countError
+  if (count > 0) return
+
+  const starters = FAQ_STARTERS_BY_ARCHETYPE[archetype] || FAQ_STARTERS_BY_ARCHETYPE['service']
+  if (!starters?.length) return
+
+  const rows = starters
+    .filter(item => item.question)
+    .map(item => ({
+      business_id: businessId,
+      category: item.category,
+      question: item.question,
+      answer: '',
+      language: 'he',
+      is_active: false,
+    }))
+
+  const { error } = await supabase.from('knowledge_items').insert(rows)
+  if (error) throw error
 }
 
 export async function seedBusinessProfile(sessionId, profile) {

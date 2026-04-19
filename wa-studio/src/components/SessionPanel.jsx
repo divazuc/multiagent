@@ -5,11 +5,12 @@ import { listBusinesses, createBusiness } from '../lib/supabase.js'
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 const MODE_COLORS = { setup: '#f59e0b', live: '#22c55e', learning: '#818cf8' }
 
-export default function SessionPanel({ sessions, activeSession, onSelect, onCreate, onSeed, onRefresh }) {
+export default function SessionPanel({ sessions, activeSession, onSelect, onCreate, onRestart, onSeed, onRefresh }) {
   const [mode, setMode] = useState('setup')
   const [creating, setCreating] = useState(false)
   const [showSeed, setShowSeed] = useState(false)
   const [error, setError] = useState(null)
+  const [conflict, setConflict] = useState(null) // existing session for selected business
 
   // Business list
   const [businesses, setBusinesses] = useState([])
@@ -74,11 +75,35 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
   async function handleStartSession(e) {
     e.preventDefault()
     if (!selectedBizId) return
+    const existing = sessions.find(s => s.business_id === selectedBizId)
+    if (existing) {
+      setConflict(existing)
+      return
+    }
     setCreating(true)
     setError(null)
     const sessionId = `${selectedBizId.slice(0, 8)}_${Date.now()}`
     try {
       await onCreate(sessionId, mode, selectedBizId)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  function handleResume() {
+    onSelect(conflict)
+    setConflict(null)
+  }
+
+  async function handleRestart() {
+    const existing = conflict
+    setConflict(null)
+    setCreating(true)
+    setError(null)
+    try {
+      await onRestart(existing, mode, selectedBizId)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -130,7 +155,7 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
               className="btn btn-secondary"
               onClick={() => setShowNewBizForm(true)}
             >
-              + New test business
+              + New Business (test)
             </button>
           </>
         ) : (
@@ -161,7 +186,7 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
               </button>
             </div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-              A test phone number will be generated automatically.
+              A test phone number will be created automatically.
             </div>
           </form>
         )}
@@ -178,14 +203,30 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
 
         {/* ── Step 3: Start ── */}
         {error && <div style={{ fontSize: 10, color: 'var(--error-text)', marginTop: 2 }}>{error}</div>}
-        <button
-          className="btn btn-primary"
-          onClick={handleStartSession}
-          disabled={creating || !selectedBizId || showNewBizForm}
-          style={{ marginTop: 2 }}
-        >
-          {creating ? '…' : selectedBiz ? `▶ Start with ${selectedBiz.name}` : '▶ Start Session'}
-        </button>
+
+        {conflict ? (
+          <div className="session-conflict">
+            <div className="session-conflict-msg">
+              A session already exists for <strong>{selectedBiz?.name}</strong>. Resume where you left off or restart from scratch?
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleResume}>↩ Resume</button>
+              <button className="btn btn-danger" style={{ flex: 1 }} onClick={handleRestart} disabled={creating}>
+                {creating ? '…' : '↺ Restart'}
+              </button>
+            </div>
+            <button className="btn" style={{ width: '100%' }} onClick={() => setConflict(null)}>Cancel</button>
+          </div>
+        ) : (
+          <button
+            className="btn btn-primary"
+            onClick={handleStartSession}
+            disabled={creating || !selectedBizId || showNewBizForm}
+            style={{ marginTop: 2 }}
+          >
+            {creating ? '…' : selectedBiz ? `▶ Start with ${selectedBiz.name}` : '▶ Start Session'}
+          </button>
+        )}
       </div>
 
       {/* ── Session list ── */}
