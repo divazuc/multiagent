@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import SessionPanel from './components/SessionPanel.jsx'
 import ChatInterface from './components/ChatInterface.jsx'
 import DBInspector from './components/DBInspector.jsx'
-import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters } from './lib/supabase.js'
+import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
 
 const WEBHOOK_PATH = '/api/n8n/webhook/wa-inbound'
@@ -98,10 +98,7 @@ export default function App() {
       const newSessionId = `${businessId.slice(0, 8)}_${Date.now()}`
       const session = await createSession(newSessionId, mode, businessId)
       await refreshSessions()
-      selectSession(session)
-      if (mode === 'learning') {
-        await autoStartOnboarding(session)
-      }
+      await selectSession(session)
     } catch (e) {
       setError('Failed to restart session: ' + e.message)
     }
@@ -118,7 +115,11 @@ export default function App() {
       const body = await res.json().catch(() => ({}))
       if (res.ok && body.status !== 'error') {
         const reply = body.message || body.result?.onboarding_response || '(no response)'
-        setMessages(prev => [...prev, { role: 'assistant', content: reply, ts: Date.now() }])
+        setMessages(prev => {
+          const next = [...prev, { role: 'assistant', content: reply, ts: Date.now() }]
+          if (body.result?.is_done) next.push({ role: 'cta', type: 'live', ts: Date.now() + 1 })
+          return next
+        })
       }
     } catch (e) {
       console.warn('Auto-start onboarding failed:', e)
@@ -148,6 +149,23 @@ export default function App() {
     } catch (e) {
       console.error('DB refresh failed', e)
       setMessages([buildWelcomeMessage(session, { messages: [] })])
+    }
+  }
+
+  async function handleActivateLive() {
+    if (!activeSession) return
+    try {
+      setError(null)
+      await setSessionMode(activeSession.session_id, 'live')
+      setActiveSession(prev => ({ ...prev, session_mode: 'live' }))
+      await refreshSessions()
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '\u{1F7E2} \u05de\u05e6\u05d1 \u05dc\u05d9\u05d9\u05d1 \u05d4\u05d5\u05e4\u05e2\u05dc \u2014 \u05e9\u05dc\u05d7\u05d5 \u05d4\u05d5\u05d3\u05e2\u05ea \u05dc\u05e7\u05d5\u05d7 \u05dc\u05d1\u05d3\u05d9\u05e7\u05d4.',
+        ts: Date.now(),
+      }])
+    } catch (e) {
+      setError('Activate live failed: ' + e.message)
     }
   }
 
@@ -190,7 +208,13 @@ export default function App() {
       const nextStage = body.state?.stage || body.result?.next_setup_stage || null
       const action = body.result?.action || null
 
-      setMessages(prev => [...prev, { role: 'assistant', content: reply, ts: Date.now(), stage: nextStage }])
+      setMessages(prev => {
+        const next = [...prev, { role: 'assistant', content: reply, ts: Date.now(), stage: nextStage }]
+        if (body.result?.is_done && activeSession.session_mode === 'learning') {
+          next.push({ role: 'cta', type: 'live', ts: Date.now() + 1 })
+        }
+        return next
+      })
 
       if (nextStage && activeSession.session_mode === 'setup') {
         await advanceSetupStage(activeSession.session_id, nextStage)
@@ -200,7 +224,9 @@ export default function App() {
       if (action === 'commit' && activeSession.business_id) {
         await markSetupComplete(activeSession.session_id).catch(e => console.warn('markSetupComplete failed:', e))
         setActiveSession(prev => ({ ...prev, setup_completed: true }))
-        const archetype = dbState.draft?.draft_setup_data?.archetype
+        const draft = dbState.draft?.draft_setup_data
+        const archetype = draft?.archetype || draft?.collect_business_model || body.result?.archetype
+        if (!archetype) console.warn('FAQ seed: archetype missing, defaulting to service', draft)
         await seedFaqStarters(activeSession.business_id, archetype).catch(e => console.warn('FAQ seed failed:', e))
         setMessages(prev => [...prev, { role: 'cta', type: 'onboarding', ts: Date.now() }])
       }
@@ -246,6 +272,7 @@ export default function App() {
               onSend={handleSendMessage}
               onClear={() => setMessages([])}
               onStartOnboarding={() => activeSession && handleRestartSession(activeSession, 'learning', activeSession.business_id)}
+              onActivateLive={handleActivateLive}
               onOpenFaq={() => setFaqOpen(true)}
             />
           )

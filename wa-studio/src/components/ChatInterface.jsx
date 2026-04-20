@@ -3,7 +3,7 @@ import { SETUP_STAGES, ARCHETYPE_STAGE_PATHS } from '../lib/presets.js'
 
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 
-export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onOpenFaq }) {
+export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq }) {
   const [input, setInput] = useState('')
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -101,6 +101,17 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
                   <div className="cta-title">✅ Setup complete</div>
                   <div className="cta-body">Next step: review your FAQ and teach the agent about your business.</div>
                   <button className="btn-cta" onClick={onStartOnboarding}>→ Start Onboarding</button>
+                </div>
+              </div>
+            )
+          }
+          if (m.role === 'cta' && m.type === 'live') {
+            return (
+              <div key={i} className="message message-cta">
+                <div className="cta-card">
+                  <div className="cta-title">🎉 Onboarding complete</div>
+                  <div className="cta-body">Your agent is ready for real customer conversations.</div>
+                  <button className="btn-cta" onClick={onActivateLive}>→ Go Live</button>
                 </div>
               </div>
             )
