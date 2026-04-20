@@ -364,6 +364,62 @@ export const setupClarificationLoop = {
   },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. LIVE MODE — save pipeline writes to conversation_messages + prod_* + contacts
+// ─────────────────────────────────────────────────────────────────────────────
+export const liveSavePipeline = {
+  name: 'live / save pipeline writes all tables',
+  description: 'Live turn populates conversation_messages, contacts, prod_conversations, prod_messages (2 rows per turn) and reuses the same conversation across turns',
+  async run({ send, assert, supabase, createTestBusiness, seedBusinessProfile, cleanup }) {
+    const biz = await createTestBusiness('Test Save Pipeline')
+    const sessionId = `test_save_${Date.now()}`
+    await supabase.from('sessions').upsert({
+      session_id: sessionId, session_mode: 'live', business_id: biz.id,
+      setup_completed: true, current_stage: 'start',
+    }, { onConflict: 'session_id' })
+    await seedBusinessProfile(biz.id, sessionId)
+
+    try {
+      // Turn 1
+      const r1 = await send(sessionId, 'שלום, מה השירותים שלכם?', biz.id)
+      assert(r1.ok, `turn1 HTTP. body: ${JSON.stringify(r1.body)}`)
+      // Postgres writes are async to webhook response — small buffer
+      await new Promise(r => setTimeout(r, 1200))
+
+      const cm1 = await supabase.from('conversation_messages').select('user_message, agent_response').eq('session_id', sessionId)
+      assert(cm1.data?.length === 1, `expected 1 conversation_messages row, got ${cm1.data?.length}`)
+      const c1 = await supabase.from('contacts').select('phone').eq('business_id', biz.id)
+      assert(c1.data?.length === 1, `expected 1 contacts row, got ${c1.data?.length}`)
+      const pc1 = await supabase.from('prod_conversations').select('id, status').eq('business_id', biz.id)
+      assert(pc1.data?.length === 1, `expected 1 prod_conversations row, got ${pc1.data?.length}`)
+      assert(pc1.data[0].status === 'open', `expected status=open, got ${pc1.data[0].status}`)
+      const pm1 = await supabase.from('prod_messages').select('direction, sender_type, message_text').eq('conversation_id', pc1.data[0].id)
+      assert(pm1.data?.length === 2, `expected 2 prod_messages rows (user+assistant), got ${pm1.data?.length}`)
+      assert(pm1.data.some(m => m.direction === 'inbound' && m.sender_type === 'user'), 'missing inbound/user row')
+      assert(pm1.data.some(m => m.direction === 'outbound' && m.sender_type === 'assistant'), 'missing outbound/assistant row')
+
+      // Turn 2 — conversation must be reused, message count doubles
+      const r2 = await send(sessionId, 'איפה אתם נמצאים?', biz.id)
+      assert(r2.ok, `turn2 HTTP. body: ${JSON.stringify(r2.body)}`)
+      await new Promise(r => setTimeout(r, 1200))
+
+      const pc2 = await supabase.from('prod_conversations').select('id').eq('business_id', biz.id)
+      assert(pc2.data?.length === 1, `expected still 1 prod_conversations after turn 2, got ${pc2.data?.length}`)
+      const pm2 = await supabase.from('prod_messages').select('id').eq('conversation_id', pc2.data[0].id)
+      assert(pm2.data?.length === 4, `expected 4 prod_messages rows after turn 2, got ${pm2.data?.length}`)
+
+      return { note: `turn1: 1 conv_msg + 2 prod_msg + 1 contact + 1 conv; turn2 reused conv → 4 prod_msg total` }
+    } finally {
+      // Extra cleanup beyond the standard helper — remove prod_* rows
+      const pc = await supabase.from('prod_conversations').select('id').eq('business_id', biz.id)
+      for (const conv of pc.data || []) await supabase.from('prod_messages').delete().eq('conversation_id', conv.id)
+      await supabase.from('prod_conversations').delete().eq('business_id', biz.id)
+      await supabase.from('contacts').delete().eq('business_id', biz.id)
+      await cleanup([sessionId], [biz.id])
+    }
+  },
+}
+
 export const ALL_SCENARIOS = [
   setupRouting,
   setupCommit,
@@ -374,4 +430,5 @@ export const ALL_SCENARIOS = [
   liveFaqInjection,
   setupStudioPath,
   setupClarificationLoop,
+  liveSavePipeline,
 ]
