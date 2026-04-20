@@ -245,11 +245,15 @@ export const setupStudioPath = {
       },
     }, { onConflict: 'session_id' })
 
-    async function readDraft() {
-      const { data } = await supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', sessionId).single()
+    async function readState() {
+      const [{ data: draft }, { data: session }] = await Promise.all([
+        supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', sessionId).single(),
+        supabase.from('sessions').select('current_setup_stage').eq('session_id', sessionId).single(),
+      ])
       return {
-        turns: data?.draft_setup_data?.[`${stage}_turns`] || 0,
-        draftStage: data?.current_setup_stage,
+        turns: draft?.draft_setup_data?.[`${stage}_turns`] || 0,
+        draftStage: draft?.current_setup_stage,
+        sessionStage: session?.current_setup_stage,
       }
     }
 
@@ -262,12 +266,14 @@ export const setupStudioPath = {
       let advanced = false
       let lastAction = null
       let turnsUsed = 0
+      let finalSessionStage = null
       for (let i = 0; i < 3; i++) {
         const r = await send(sessionId, answers[i], biz.id)
         assert(r.ok, `turn${i + 1} HTTP error. body: ${JSON.stringify(r.body)}`)
         lastAction = r.body.result?.action
-        const d = await readDraft()
+        const d = await readState()
         turnsUsed = d.turns
+        finalSessionStage = d.sessionStage
         if (d.draftStage === 'collect_sales_goal') {
           advanced = true
           break
@@ -275,7 +281,9 @@ export const setupStudioPath = {
       }
       assert(advanced,
         `studio_collect_booking never advanced to collect_sales_goal after 3 turns. lastAction=${lastAction} turns=${turnsUsed}`)
-      return { note: `advanced after ${turnsUsed} turn(s), lastAction=${lastAction}` }
+      assert(finalSessionStage === 'collect_sales_goal',
+        `sessions.current_setup_stage should have advanced to collect_sales_goal, got: ${finalSessionStage}. WA_04 session-advance fix may be regressed.`)
+      return { note: `advanced after ${turnsUsed} turn(s), lastAction=${lastAction}, sessions row advanced` }
     } finally {
       await cleanup([sessionId], [biz.id])
     }
@@ -308,11 +316,15 @@ export const setupClarificationLoop = {
       draft_setup_data: { archetype: 'studio', collect_business_model: 'studio' },
     }, { onConflict: 'session_id' })
 
-    async function readDraft() {
-      const { data } = await supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', sessionId).single()
+    async function readState() {
+      const [{ data: draft }, { data: session }] = await Promise.all([
+        supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', sessionId).single(),
+        supabase.from('sessions').select('current_setup_stage').eq('session_id', sessionId).single(),
+      ])
       return {
-        turns: data?.draft_setup_data?.[`${stage}_turns`] || 0,
-        draftStage: data?.current_setup_stage,
+        turns: draft?.draft_setup_data?.[`${stage}_turns`] || 0,
+        draftStage: draft?.current_setup_stage,
+        sessionStage: session?.current_setup_stage,
       }
     }
 
@@ -321,29 +333,31 @@ export const setupClarificationLoop = {
       const r1 = await send(sessionId, 'לא יודע', biz.id)
       assert(r1.ok, `turn1 HTTP error. body: ${JSON.stringify(r1.body)}`)
       const act1 = r1.body.result?.action
-      const d1 = await readDraft()
-      assert(d1.turns >= 1, `expected turns>=1 after turn 1, got: ${d1.turns}, action=${act1}`)
+      const s1 = await readState()
+      assert(s1.turns >= 1, `expected turns>=1 after turn 1, got: ${s1.turns}, action=${act1}`)
 
       // Turn 2: vague again
       const r2 = await send(sessionId, 'אולי', biz.id)
       assert(r2.ok, `turn2 HTTP error. body: ${JSON.stringify(r2.body)}`)
       const act2 = r2.body.result?.action
-      const d2 = await readDraft()
-      assert(d2.turns >= 2, `expected turns>=2 after turn 2, got: ${d2.turns}, action=${act2}`)
+      const s2 = await readState()
+      assert(s2.turns >= 2, `expected turns>=2 after turn 2, got: ${s2.turns}, action=${act2}`)
 
       // Turn 3: vague → WA_04 forces save_draft (Build draft: turns>=3 && action==clarify → save_draft)
-      // This advances setup_drafts.current_setup_stage to studio_collect_pricing.
+      // This advances setup_drafts.current_setup_stage AND sessions.current_setup_stage to studio_collect_pricing.
       const r3 = await send(sessionId, 'תשובה כללית', biz.id)
       assert(r3.ok, `turn3 HTTP error. body: ${JSON.stringify(r3.body)}`)
       const act3 = r3.body.result?.action
       const next3 = r3.body.result?.next_setup_stage
-      const d3 = await readDraft()
+      const s3 = await readState()
       assert(act3 === 'save_draft',
         `expected action=save_draft at turn 3, got action=${act3} next=${next3}`)
-      assert(d3.draftStage === 'studio_collect_pricing',
-        `expected draft to advance to studio_collect_pricing at turn 3, got draftStage=${d3.draftStage} turns=${d3.turns} action=${act3}`)
+      assert(s3.draftStage === 'studio_collect_pricing',
+        `expected draft to advance to studio_collect_pricing at turn 3, got draftStage=${s3.draftStage} turns=${s3.turns} action=${act3}`)
+      assert(s3.sessionStage === 'studio_collect_pricing',
+        `expected sessions.current_setup_stage to advance, got: ${s3.sessionStage}. WA_04 session-advance fix may be regressed.`)
 
-      return { note: `actions: t1=${act1} t2=${act2} t3=${act3}, turns=${d3.turns}, draft advanced to ${d3.draftStage}` }
+      return { note: `actions: t1=${act1} t2=${act2} t3=${act3}, turns=${s3.turns}, both draft+session advanced to ${s3.draftStage}` }
     } finally {
       await cleanup([sessionId], [biz.id])
     }
