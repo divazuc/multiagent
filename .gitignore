@@ -1,1 +1,4 @@
 .worktrees/
+.superpowers/
+workflow-generator/projects/
+wa02_*.json
