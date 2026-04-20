@@ -18,7 +18,20 @@
       "Bash(cp \"/c/Users/Diva/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1\" \"/c/Users/Diva/Documents/PowerShell/Microsoft.PowerShell_profile.ps1\")",
       "Bash(powershell.exe *)",
       "Bash(python3 -c ' *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(curl *)",
+      "Bash(cat vite.config.js)",
+      "Bash(cat vite.config.ts)",
+      "Bash(netstat -ano)",
+      "Bash(echo '')",
+      "Bash(echo '# Claude Code with full permissions')",
+      "Bash(echo \"alias cc='claude --dangerously-skip-permissions'\")",
+      "Bash(gh repo *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(claude mcp *)",
+      "Bash(mkdir -p /c/Users/Diva/.claude/skills)",
+      "Bash(cp -r /tmp/n8n-skills/skills/* /c/Users/Diva/.claude/skills/)",
+      "Read(//c/Users/Diva/.claude/**)"
     ]
   }
 }
