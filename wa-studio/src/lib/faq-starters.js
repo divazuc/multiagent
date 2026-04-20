@@ -1,24 +1,3 @@
-/**
- * Archetype starter FAQ packs.
- *
- * These are seeded into `knowledge_items` automatically when a business
- * completes setup. The business owner can review / edit / add before
- * the onboarding conversation (WA_08) and before going live (WA_03).
- *
- * Schema reference:
- *   knowledge_items { business_id, category, question, answer, language, is_active }
- *
- * Instructions for filling in:
- *   - question: write as a customer would actually send it on WhatsApp (informal, Hebrew)
- *   - answer:   write as the agent should respond — complete, friendly, on-brand
- *   - category: use the category slugs defined in CATEGORIES below
- *   - Keep answers short enough for WhatsApp (2–4 sentences max)
- *   - Add as many items per category as you need — no fixed limit
- */
-
-// ─── Categories ────────────────────────────────────────────────────────────────
-// These appear as filter/group labels in the wa-studio FAQ editor.
-
 export const CATEGORIES = {
   pricing:      'תמחור',
   scheduling:   'שעות ולוח זמנים',
@@ -30,112 +9,74 @@ export const CATEGORIES = {
   general:      'כללי',
 }
 
-// ─── Studio archetype ──────────────────────────────────────────────────────────
-// Suitable for: fitness studios, yoga, dance, martial arts, pilates, etc.
+export const ARCHETYPES = {
+  studio:  'סטודיו',
+  service: 'שירות',
+  other:   'אחר',
+}
 
-export const STUDIO_STARTERS = [
-  {
-    category: 'general',
-    question: 'מה צריך להביא לשיעור ראשון?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'כמה זמן נמשך שיעור?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'יש מקלחות במקום?',
-    answer:   '',
-  },
-  // Add more items here ↓
-]
+export const ARCHETYPE_KEYS = Object.keys(ARCHETYPES)
 
-// ─── Service / Professional archetype ─────────────────────────────────────────
-// Suitable for: consultants, therapists, freelancers, contractors, clinics, etc.
+export const FAQ_STARTERS_BY_CATEGORY = {
+  pricing: [
+    { question: 'כמה זה עולה?',                        archetypes: [] },
+    { question: 'יש מנוי חודשי או כרטיסייה?',           archetypes: ['studio'] },
+    { question: 'יש אפשרות לתשלומים?',                  archetypes: ['service'] },
+    { question: 'יש הנחה לקבוצה / לחבר שמביא חבר?',     archetypes: ['studio'] },
+  ],
+  scheduling: [
+    { question: 'מה שעות הפעילות?',       archetypes: [] },
+    { question: 'יש שיעורים בסופ"ש?',     archetypes: ['studio'] },
+    { question: 'אפשר לקבוע פגישה בערב?', archetypes: ['service'] },
+  ],
+  booking: [
+    { question: 'מתי אפשר להתחיל?',    archetypes: [] },
+    { question: 'איך נרשמים לשיעור?',  archetypes: ['studio'] },
+    { question: 'איך קובעים פגישה?',   archetypes: ['service'] },
+    { question: 'צריך להירשם מראש?',   archetypes: [] },
+  ],
+  cancellation: [
+    { question: 'אפשר לבטל או לשנות פגישה?',            archetypes: ['service'] },
+    { question: 'אפשר לבטל שיעור? מה מדיניות הביטולים?', archetypes: ['studio'] },
+    { question: 'מה קורה אם לא הגעתי?',                  archetypes: [] },
+  ],
+  services: [
+    { question: 'איך התהליך עובד?',          archetypes: ['service'] },
+    { question: 'אילו שיעורים מוצעים?',      archetypes: ['studio'] },
+    { question: 'אפשר לראות עבודות קודמות?', archetypes: ['service'] },
+    { question: 'עבדתם כבר עם מקרים דומים?', archetypes: ['service'] },
+  ],
+  location: [
+    { question: 'איפה אתם נמצאים?',            archetypes: [] },
+    { question: 'יש חניה?',                    archetypes: [] },
+    { question: 'יש מקלחות במקום?',            archetypes: ['studio'] },
+    { question: 'אפשר להגיע בתחבורה ציבורית?', archetypes: [] },
+  ],
+  trial: [
+    { question: 'יש שיעור ניסיון?',                  archetypes: ['studio'] },
+    { question: 'אפשר שיחת היכרות לפני שמתחייבים?', archetypes: ['service'] },
+    { question: 'זה מתאים גם למתחילים?',            archetypes: ['studio'] },
+  ],
+  general: [
+    { question: 'מה צריך להביא לשיעור ראשון?', archetypes: ['studio'] },
+    { question: 'כמה זמן נמשך שיעור?',         archetypes: ['studio'] },
+    { question: 'כמה זמן זה לוקח?',            archetypes: ['service'] },
+    { question: 'מה צריך להכין מראש?',         archetypes: ['service'] },
+    { question: 'יש ליווי לאורך כל התהליך?',  archetypes: ['service'] },
+  ],
+}
 
-export const SERVICE_STARTERS = [
-  {
-    category: 'booking',
-    question: 'מתי אפשר להתחיל?',
-    answer:   '',
-  },
-  {
-    category: 'cancellation',
-    question: 'אפשר לבטל או לשנות פגישה?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'איך התהליך עובד?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'כמה זמן זה לוקח?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'מה צריך להכין מראש?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'עבדתם כבר עם מקרים דומים?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'אפשר לראות עבודות קודמות?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'זה מתאים גם למתחילים?',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: 'יש ליווי לאורך כל התהליך?',
-    answer:   '',
-  },
-  // Add more items here ↓
-]
-
-// ─── Generic / Other archetype ─────────────────────────────────────────────────
-// Fallback for businesses that don't fit studio or service.
-
-export const GENERIC_STARTERS = [
-  {
-    category: 'general',
-    question: '', // e.g. "מה אתם עושים?"
-    answer:   '', // e.g. "אנחנו [תיאור קצר]. שלחו לי שאלה ואשמח לעזור!"
-  },
-  {
-    category: 'pricing',
-    question: '',
-    answer:   '',
-  },
-  {
-    category: 'booking',
-    question: '',
-    answer:   '',
-  },
-  {
-    category: 'general',
-    question: '',
-    answer:   '',
-  },
-  // Add more items here ↓
-]
-
-// ─── Archetype → starter pack map ─────────────────────────────────────────────
-// Used by the FAQ seeder when setup commits.
-
-export const FAQ_STARTERS_BY_ARCHETYPE = {
-  studio:      STUDIO_STARTERS,
-  service:     SERVICE_STARTERS,
-  other:       GENERIC_STARTERS,
+export function filterStartersForArchetype(archetype) {
+  const valid = ARCHETYPE_KEYS.includes(archetype)
+  const out = []
+  for (const [category, items] of Object.entries(FAQ_STARTERS_BY_CATEGORY)) {
+    for (const item of items) {
+      const universal = item.archetypes.length === 0
+      const match = valid && item.archetypes.includes(archetype)
+      if (universal || match) {
+        out.push({ category, question: item.question, archetypes: item.archetypes })
+      }
+    }
+  }
+  return out
 }
