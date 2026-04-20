@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { loadFaqItems, updateFaqItem, deleteFaqItem, addFaqItem } from '../lib/supabase.js'
-import { CATEGORIES } from '../lib/faq-starters.js'
+import { CATEGORIES, ARCHETYPES, ARCHETYPE_KEYS } from '../lib/faq-starters.js'
 
 const STATUS = {
   pending:  { label: 'ממתין',   cls: 'fq-status-pending'  },
@@ -199,12 +199,21 @@ function FaqRow({ item, expanded, editing, onToggle, onEdit, onCancelEdit, onSav
   const status   = itemStatus(item)
   const st       = STATUS[status]
   const catLabel = CATEGORIES[item.category] || item.category
+  const archetypes = Array.isArray(item.archetypes) ? item.archetypes : []
+  const archetypePills = archetypes.length === 0
+    ? [{ key: 'universal', label: 'כללי', cls: 'fq-arc-universal' }]
+    : archetypes
+        .filter(a => ARCHETYPE_KEYS.includes(a))
+        .map(a => ({ key: a, label: ARCHETYPES[a], cls: `fq-arc-${a}` }))
 
   return (
     <div className={`fq-row fq-row-${status}`}>
       <div className="fq-row-hd" onClick={onToggle}>
         <span className="fq-chevron">{expanded ? '▾' : '▸'}</span>
         <span className="fq-cat-badge" lang="he">{catLabel}</span>
+        {archetypePills.map(p => (
+          <span key={p.key} className={`fq-arc-badge ${p.cls}`} lang="he">{p.label}</span>
+        ))}
         <span className="fq-q-text" lang="he" dir="rtl">{item.question || '(שאלה ריקה)'}</span>
         <span className={`fq-status-badge ${st.cls}`} lang="he">{st.label}</span>
         <span className="fq-row-btns" onClick={e => e.stopPropagation()}>

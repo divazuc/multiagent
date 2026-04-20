@@ -448,3 +448,14 @@ html, body, #root {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
+
+/* FAQ archetype badges */
+.fq-arc-badge {
+  font-size: 10px; padding: 2px 8px; border-radius: 10px; flex-shrink: 0;
+  font-family: 'Segoe UI', 'Arial Unicode MS', system-ui, sans-serif;
+  border: 1px solid transparent;
+}
+.fq-arc-universal { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+.fq-arc-studio    { background: rgba(0,170,180,0.15);  color: #00bcd4; }
+.fq-arc-service   { background: rgba(255,170,0,0.15);  color: #ffb000; }
+.fq-arc-other     { background: rgba(180,120,255,0.15); color: #b478ff; }
