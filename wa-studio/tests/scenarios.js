@@ -208,6 +208,148 @@ export const liveFaqInjection = {
   },
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. SETUP FLOW — studio exit stage advances to shared tail
+//
+// Verifies the last studio-specific stage (studio_collect_booking) exits into
+// the shared tail (collect_sales_goal). Uses either a natural save_draft on the
+// first clear answer, or the turn-3 force-advance if the AI clarifies. Draft is
+// pre-populated with classes + pricing so the AI focuses on booking only.
+// ─────────────────────────────────────────────────────────────────────────────
+export const setupStudioPath = {
+  name: 'setup / studio exit stage → shared tail',
+  description: 'studio_collect_booking advances to collect_sales_goal (tolerant of clarify + turn-3 force)',
+  async run({ send, assert, supabase, createTestBusiness, cleanup }) {
+    const biz = await createTestBusiness('Test Studio Exit Biz')
+    const sessionId = `test_studio_exit_${Date.now()}`
+    const stage = 'studio_collect_booking'
+
+    await supabase.from('sessions').upsert({
+      session_id: sessionId,
+      session_mode: 'setup',
+      business_id: biz.id,
+      setup_completed: false,
+      current_stage: stage,
+      current_setup_stage: stage,
+    }, { onConflict: 'session_id' })
+    await supabase.from('setup_drafts').upsert({
+      session_id: sessionId,
+      business_id: biz.id,
+      current_setup_stage: stage,
+      setup_completed: false,
+      draft_setup_data: {
+        archetype: 'studio',
+        collect_business_model: 'studio',
+        studio_collect_classes: { classes: ['יוגה', 'פילאטיס'], schedule: 'בוקר וערב' },
+        studio_collect_pricing: { subscription: '350₪/חודש', single: '50₪' },
+      },
+    }, { onConflict: 'session_id' })
+
+    async function readDraft() {
+      const { data } = await supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', sessionId).single()
+      return {
+        turns: data?.draft_setup_data?.[`${stage}_turns`] || 0,
+        draftStage: data?.current_setup_stage,
+      }
+    }
+
+    try {
+      const answers = [
+        'הרשמה דרך וואטסאפ, ביטול חינם עד 12 שעות לפני, תשלום במזומן או באפליקציה, מתקבלים לקוחות חדשים ללא הרשמה מוקדמת.',
+        'וואטסאפ, ביטול 12 שעות, מזומן או אפליקציה.',
+        'וואטסאפ, ביטול 12 שעות.',
+      ]
+      let advanced = false
+      let lastAction = null
+      let turnsUsed = 0
+      for (let i = 0; i < 3; i++) {
+        const r = await send(sessionId, answers[i], biz.id)
+        assert(r.ok, `turn${i + 1} HTTP error. body: ${JSON.stringify(r.body)}`)
+        lastAction = r.body.result?.action
+        const d = await readDraft()
+        turnsUsed = d.turns
+        if (d.draftStage === 'collect_sales_goal') {
+          advanced = true
+          break
+        }
+      }
+      assert(advanced,
+        `studio_collect_booking never advanced to collect_sales_goal after 3 turns. lastAction=${lastAction} turns=${turnsUsed}`)
+      return { note: `advanced after ${turnsUsed} turn(s), lastAction=${lastAction}` }
+    } finally {
+      await cleanup([sessionId], [biz.id])
+    }
+  },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. SETUP FLOW — clarification loop forces advance at turn 3
+// ─────────────────────────────────────────────────────────────────────────────
+export const setupClarificationLoop = {
+  name: 'setup / clarification loop force-advance',
+  description: 'Vague answers trigger clarify; turn 3 forces save_draft and advances',
+  async run({ send, assert, supabase, createTestBusiness, cleanup }) {
+    const biz = await createTestBusiness('Test Clarify Biz')
+    const sessionId = `test_clarify_${Date.now()}`
+    const stage = 'studio_collect_classes'
+    await supabase.from('sessions').upsert({
+      session_id: sessionId,
+      session_mode: 'setup',
+      business_id: biz.id,
+      setup_completed: false,
+      current_stage: stage,
+      current_setup_stage: stage,
+    }, { onConflict: 'session_id' })
+    await supabase.from('setup_drafts').upsert({
+      session_id: sessionId,
+      business_id: biz.id,
+      current_setup_stage: stage,
+      setup_completed: false,
+      draft_setup_data: { archetype: 'studio', collect_business_model: 'studio' },
+    }, { onConflict: 'session_id' })
+
+    async function readDraft() {
+      const { data } = await supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', sessionId).single()
+      return {
+        turns: data?.draft_setup_data?.[`${stage}_turns`] || 0,
+        draftStage: data?.current_setup_stage,
+      }
+    }
+
+    try {
+      // Turn 1: vague — expect clarify
+      const r1 = await send(sessionId, 'לא יודע', biz.id)
+      assert(r1.ok, `turn1 HTTP error. body: ${JSON.stringify(r1.body)}`)
+      const act1 = r1.body.result?.action
+      const d1 = await readDraft()
+      assert(d1.turns >= 1, `expected turns>=1 after turn 1, got: ${d1.turns}, action=${act1}`)
+
+      // Turn 2: vague again
+      const r2 = await send(sessionId, 'אולי', biz.id)
+      assert(r2.ok, `turn2 HTTP error. body: ${JSON.stringify(r2.body)}`)
+      const act2 = r2.body.result?.action
+      const d2 = await readDraft()
+      assert(d2.turns >= 2, `expected turns>=2 after turn 2, got: ${d2.turns}, action=${act2}`)
+
+      // Turn 3: vague → WA_04 forces save_draft (Build draft: turns>=3 && action==clarify → save_draft)
+      // This advances setup_drafts.current_setup_stage to studio_collect_pricing.
+      const r3 = await send(sessionId, 'תשובה כללית', biz.id)
+      assert(r3.ok, `turn3 HTTP error. body: ${JSON.stringify(r3.body)}`)
+      const act3 = r3.body.result?.action
+      const next3 = r3.body.result?.next_setup_stage
+      const d3 = await readDraft()
+      assert(act3 === 'save_draft',
+        `expected action=save_draft at turn 3, got action=${act3} next=${next3}`)
+      assert(d3.draftStage === 'studio_collect_pricing',
+        `expected draft to advance to studio_collect_pricing at turn 3, got draftStage=${d3.draftStage} turns=${d3.turns} action=${act3}`)
+
+      return { note: `actions: t1=${act1} t2=${act2} t3=${act3}, turns=${d3.turns}, draft advanced to ${d3.draftStage}` }
+    } finally {
+      await cleanup([sessionId], [biz.id])
+    }
+  },
+}
+
 export const ALL_SCENARIOS = [
   setupRouting,
   setupCommit,
@@ -216,4 +358,6 @@ export const ALL_SCENARIOS = [
   onboardingDone,
   liveResponse,
   liveFaqInjection,
+  setupStudioPath,
+  setupClarificationLoop,
 ]
