@@ -365,6 +365,50 @@ export const setupClarificationLoop = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// G5 regression guard: live replies respect the business profile (language + content)
+// ─────────────────────────────────────────────────────────────────────────────
+export const liveProfileAware = {
+  name: 'live / response respects profile (G5)',
+  description: 'Hebrew customer message + studio profile → reply in Hebrew, mentions real service from profile',
+  async run({ send, assert, supabase, createTestBusiness, seedBusinessProfile, cleanup }) {
+    const biz = await createTestBusiness('Test G5 Profile Aware')
+    const sessionId = `test_g5_${Date.now()}`
+    await supabase.from('sessions').upsert({
+      session_id: sessionId, session_mode: 'live', business_id: biz.id,
+      setup_completed: true, current_stage: 'start',
+    }, { onConflict: 'session_id' })
+    await seedBusinessProfile(biz.id, sessionId)
+    await supabase.from('business_profiles').update({
+      business_model: '"studio"',
+      sales_goal: 'רישום לשיעורים',
+      services: JSON.stringify([
+        { name: 'שיעור יוגה', price: '50 ש"ח' },
+        { name: 'מנוי חודשי', price: '350 ש"ח' },
+      ]),
+      persona: JSON.stringify({ name: 'מלווה הסטודיו', tone: 'warm', style: 'friendly_hebrew' }),
+    }).eq('business_id', biz.id)
+
+    try {
+      const r = await send(sessionId, 'שלום, כמה עולה מנוי חודשי?', biz.id)
+      assert(r.ok, `HTTP error. body: ${JSON.stringify(r.body)}`)
+      assert(r.body.status !== 'error', `Error response: ${r.body.message}`)
+      const reply = r.body.message || ''
+      // Hebrew characters present (profile respected: language + persona tone in Hebrew)
+      assert(/[\u0590-\u05FF]/.test(reply), `expected Hebrew in reply, got: ${reply.slice(0, 120)}`)
+      // Mentions the concrete price from the profile (proves WA_02 → WA_03 data flow works)
+      assert(reply.includes('350'), `expected price '350' from profile in reply, got: ${reply.slice(0, 160)}`)
+      return { note: `reply: ${reply.slice(0, 100)}...` }
+    } finally {
+      const pc = await supabase.from('prod_conversations').select('id').eq('business_id', biz.id)
+      for (const conv of pc.data || []) await supabase.from('prod_messages').delete().eq('conversation_id', conv.id)
+      await supabase.from('prod_conversations').delete().eq('business_id', biz.id)
+      await supabase.from('contacts').delete().eq('business_id', biz.id)
+      await cleanup([sessionId], [biz.id])
+    }
+  },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 10. LIVE MODE — save pipeline writes to conversation_messages + prod_* + contacts
 // ─────────────────────────────────────────────────────────────────────────────
 export const liveSavePipeline = {
@@ -431,4 +475,5 @@ export const ALL_SCENARIOS = [
   setupStudioPath,
   setupClarificationLoop,
   liveSavePipeline,
+  liveProfileAware,
 ]
