@@ -18,29 +18,6 @@ function sortItems(items) {
   return [...items].sort((a, b) => order[itemStatus(a)] - order[itemStatus(b)])
 }
 
-function ArchetypeCheckboxes({ value, onChange }) {
-  const current = Array.isArray(value) ? value : []
-  function toggle(key) {
-    onChange(current.includes(key) ? current.filter(k => k !== key) : [...current, key])
-  }
-  return (
-    <div className="fq-arc-checkboxes" lang="he">
-      <span className="fq-arc-cb-label">ארכיטיפ:</span>
-      {ARCHETYPE_KEYS.map(k => (
-        <label key={k} className="fq-arc-cb">
-          <input
-            type="checkbox"
-            checked={current.includes(k)}
-            onChange={() => toggle(k)}
-          />
-          <span>{ARCHETYPES[k]}</span>
-        </label>
-      ))}
-      <span className="fq-arc-cb-hint">(ללא סימון = כללי)</span>
-    </div>
-  )
-}
-
 export default function FaqPanel({ businessId, businessName, onClose }) {
   const [items, setItems]           = useState([])
   const [loading, setLoading]       = useState(true)
@@ -48,7 +25,7 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
   const [expandedId, setExpandedId] = useState(null)
   const [editState, setEditState]   = useState({})
   const [addOpen, setAddOpen]       = useState(false)
-  const [newItem, setNewItem]       = useState({ category: 'general', question: '', answer: '', archetypes: [] })
+  const [newItem, setNewItem]       = useState({ category: 'general', question: '', answer: '' })
   const [saving, setSaving]         = useState(false)
 
   useEffect(() => { load() }, [businessId])
@@ -73,7 +50,6 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
         question: item.question,
         answer: item.answer,
         category: item.category || 'general',
-        archetypes: Array.isArray(item.archetypes) ? [...item.archetypes] : [],
       },
     }))
     setExpandedId(item.id)
@@ -92,7 +68,6 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
         question: edit.question,
         answer: edit.answer,
         category: edit.category,
-        archetypes: edit.archetypes,
       })
       cancelEdit(item.id)
       await load()
@@ -121,7 +96,7 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
     setSaving(true)
     try {
       await addFaqItem(businessId, newItem)
-      setNewItem({ category: 'general', question: '', answer: '', archetypes: [] })
+      setNewItem({ category: 'general', question: '', answer: '' })
       setAddOpen(false)
       await load()
     } catch (e) { setError(e.message) }
@@ -159,10 +134,6 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
                 {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            <ArchetypeCheckboxes
-              value={newItem.archetypes}
-              onChange={ar => setNewItem(p => ({ ...p, archetypes: ar }))}
-            />
             <input
               className="fq-input"
               placeholder="שאלה..."
@@ -180,7 +151,7 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
             />
             <div className="fq-form-actions">
               <button className="fq-btn-save" onClick={handleAdd} disabled={saving || !newItem.question.trim()}>שמור</button>
-              <button className="fq-btn-cancel" onClick={() => { setAddOpen(false); setNewItem({ category: 'general', question: '', answer: '', archetypes: [] }) }}>ביטול</button>
+              <button className="fq-btn-cancel" onClick={() => { setAddOpen(false); setNewItem({ category: 'general', question: '', answer: '' }) }}>ביטול</button>
             </div>
           </div>
         )}
@@ -288,10 +259,6 @@ function FaqRow({ item, expanded, editing, onToggle, onEdit, onCancelEdit, onSav
               >
                 {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
-              <ArchetypeCheckboxes
-                value={editing.archetypes}
-                onChange={ar => onEditChange({ archetypes: ar })}
-              />
               <div className="fq-form-actions">
                 <button className="fq-btn-save" onClick={onSave} disabled={saving}>שמור</button>
                 <button className="fq-btn-cancel" onClick={onCancelEdit}>ביטול</button>

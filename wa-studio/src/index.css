@@ -299,10 +299,13 @@ html, body, #root {
 }
 .fq-textarea:focus { outline: none; border-color: var(--border-bright); }
 .fq-select {
-  background: var(--input-bg); border: 1px solid var(--border-dim);
+  background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 6px; padding: 5px 8px; color: var(--text); font-size: 13px;
   font-family: 'Segoe UI', 'Arial Unicode MS', system-ui, sans-serif;
+  cursor: pointer;
 }
+.fq-select:focus { outline: none; border-color: var(--border-bright); }
+.fq-select option { background: var(--surface-2); color: var(--text); }
 .fq-form-actions { display: flex; gap: 8px; }
 .fq-btn-save {
   background: var(--accent); color: #fff; border: none; border-radius: 6px;
@@ -460,12 +463,3 @@ html, body, #root {
 .fq-arc-service   { background: rgba(255,170,0,0.15);  color: #ffb000; }
 .fq-arc-other     { background: rgba(180,120,255,0.15); color: #b478ff; }
 
-.fq-arc-checkboxes {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-  padding: 6px 0; font-size: 13px; color: var(--text-dim);
-  direction: rtl;
-}
-.fq-arc-cb-label { font-weight: 500; color: var(--text-default); }
-.fq-arc-cb { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.fq-arc-cb input[type=checkbox] { cursor: pointer; }
-.fq-arc-cb-hint { font-size: 11px; color: var(--text-muted); }
