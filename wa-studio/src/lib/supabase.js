@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { FAQ_STARTERS_BY_ARCHETYPE } from './faq-starters.js'
+import { ARCHETYPE_KEYS, filterStartersForArchetype } from './faq-starters.js'
 
 export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -129,7 +129,7 @@ export async function markSetupComplete(sessionId) {
 export async function loadFaqItems(businessId) {
   const { data, error } = await supabase
     .from('knowledge_items')
-    .select('id, category, question, answer, is_active, created_at')
+    .select('id, category, question, answer, archetypes, is_active, created_at')
     .eq('business_id', businessId)
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -137,9 +137,15 @@ export async function loadFaqItems(businessId) {
 }
 
 export async function updateFaqItem(id, updates) {
+  const clean = { ...updates }
+  if ('archetypes' in clean) {
+    clean.archetypes = Array.isArray(clean.archetypes)
+      ? clean.archetypes.filter(a => ARCHETYPE_KEYS.includes(a))
+      : []
+  }
   const { error } = await supabase
     .from('knowledge_items')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...clean, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
 }
@@ -149,10 +155,21 @@ export async function deleteFaqItem(id) {
   if (error) throw error
 }
 
-export async function addFaqItem(businessId, { category, question, answer = '' }) {
+export async function addFaqItem(businessId, { category, question, answer = '', archetypes = [] }) {
+  const safeArchetypes = Array.isArray(archetypes)
+    ? archetypes.filter(a => ARCHETYPE_KEYS.includes(a))
+    : []
   const { data, error } = await supabase
     .from('knowledge_items')
-    .insert({ business_id: businessId, category: category || 'general', question, answer, language: 'he', is_active: false })
+    .insert({
+      business_id: businessId,
+      category: category || 'general',
+      question,
+      answer,
+      archetypes: safeArchetypes,
+      language: 'he',
+      is_active: false,
+    })
     .select().single()
   if (error) throw error
   return data
@@ -166,19 +183,18 @@ export async function seedFaqStarters(businessId, archetype) {
   if (countError) throw countError
   if (count > 0) return
 
-  const starters = FAQ_STARTERS_BY_ARCHETYPE[archetype] || FAQ_STARTERS_BY_ARCHETYPE['service']
-  if (!starters?.length) return
+  const starters = filterStartersForArchetype(archetype)
+  if (!starters.length) return
 
-  const rows = starters
-    .filter(item => item.question)
-    .map(item => ({
-      business_id: businessId,
-      category: item.category,
-      question: item.question,
-      answer: '',
-      language: 'he',
-      is_active: false,
-    }))
+  const rows = starters.map(item => ({
+    business_id: businessId,
+    category: item.category,
+    question: item.question,
+    answer: '',
+    archetypes: item.archetypes,
+    language: 'he',
+    is_active: false,
+  }))
 
   const { error } = await supabase.from('knowledge_items').insert(rows)
   if (error) throw error
