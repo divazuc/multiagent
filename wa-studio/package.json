@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node tests/run.js",
-    "test:unit": "node --test tests/unit/",
+    "test:unit": "node --test \"tests/unit/**/*.test.js\"",
     "test:setup": "node tests/run.js setup",
     "test:onboarding": "node tests/run.js onboarding",
     "test:live": "node tests/run.js live"
