@@ -126,6 +126,13 @@ export async function markSetupComplete(sessionId) {
     .eq('session_id', sessionId)
 }
 
+export async function setSessionMode(sessionId, mode) {
+  await supabase
+    .from('sessions')
+    .update({ session_mode: mode, updated_at: new Date().toISOString() })
+    .eq('session_id', sessionId)
+}
+
 export async function loadFaqItems(businessId) {
   const { data, error } = await supabase
     .from('knowledge_items')
