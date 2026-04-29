@@ -135,7 +135,7 @@ app.post('/wa-inbound', async (req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT ?? 3001;
+const PORT = process.env.PORT ?? 8080;
 loadAgents().then(() => {
   app.listen(PORT, () => console.log(`[server] listening on :${PORT}`));
 });
