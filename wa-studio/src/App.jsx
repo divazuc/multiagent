@@ -6,7 +6,8 @@ import RunsPanel from './components/RunsPanel.jsx'
 import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
 
-const WEBHOOK_PATH = '/api/agent/wa-inbound'
+const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
+const WEBHOOK_PATH = AGENT_BASE ? `${AGENT_BASE}/wa-inbound` : '/api/agent/wa-inbound'
 
 export default function App() {
   const [sessions, setSessions] = useState([])
