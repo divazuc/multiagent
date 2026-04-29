@@ -14,6 +14,11 @@ export default defineConfig(({ mode }) => {
           target: n8nBase,
           changeOrigin: true,
           rewrite: path => path.replace(/^\/api\/n8n/, '')
+        },
+        '/api/agent': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+          rewrite: path => path.replace(/^\/api\/agent/, '')
         }
       }
     }

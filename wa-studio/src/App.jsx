@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import SessionPanel from './components/SessionPanel.jsx'
 import ChatInterface from './components/ChatInterface.jsx'
 import DBInspector from './components/DBInspector.jsx'
+import RunsPanel from './components/RunsPanel.jsx'
 import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
 
-const WEBHOOK_PATH = '/api/n8n/webhook/wa-inbound'
+const WEBHOOK_PATH = '/api/agent/wa-inbound'
 
 export default function App() {
   const [sessions, setSessions] = useState([])
@@ -15,6 +16,7 @@ export default function App() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
   const [faqOpen, setFaqOpen] = useState(false)
+  const [rightPanel, setRightPanel] = useState('db') // 'db' | 'runs'
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -246,6 +248,16 @@ export default function App() {
         <span className="logo">💬 WA Studio</span>
         <span className="header-sub">סביבת בדיקה לסוכן עסקי</span>
         {error && <span className="header-error">{error}</span>}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => setRightPanel('db')}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: rightPanel === 'db' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
+          >DB</button>
+          <button
+            onClick={() => setRightPanel('runs')}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: rightPanel === 'runs' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
+          >Runs</button>
+        </div>
       </header>
       <div className="app-body">
         <SessionPanel
@@ -277,10 +289,10 @@ export default function App() {
             />
           )
         }
-        <DBInspector
-          dbState={dbState}
-          onRefresh={() => refreshDB(activeSession?.session_id)}
-        />
+        {rightPanel === 'runs'
+          ? <RunsPanel activeSession={activeSession} />
+          : <DBInspector dbState={dbState} onRefresh={() => refreshDB(activeSession?.session_id)} />
+        }
       </div>
     </div>
   )

@@ -15,8 +15,8 @@ export async function loadContext({ message, session_id }) {
 
     if (sessionErr) return err(`Session lookup failed: ${sessionErr.message}`);
 
-    // New session — upsert a session row and return minimal context
-    if (!session?.business_id) {
+    // Brand-new session — no DB row exists at all
+    if (!session) {
       await supabase.from('sessions').upsert(
         { session_id, session_mode: 'setup', current_stage: 'collect_business_model', setup_completed: false },
         { onConflict: 'session_id', ignoreDuplicates: true }
