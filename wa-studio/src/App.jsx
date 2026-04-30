@@ -285,6 +285,7 @@ export default function App() {
               draft={dbState.draft?.draft_setup_data ?? null}
               sending={sending}
               onSend={handleSendMessage}
+              onRefreshDB={() => refreshDB(activeSession?.session_id)}
             />
           ) : (
             <ChatInterface

@@ -1,163 +1,199 @@
 import { useState } from 'react'
-import { SETUP_STAGES } from '../lib/presets.js'
+
+const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
+const API = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
+
+// ── FAQ topic options by archetype ────────────────────────────────────────────
+const FAQ_TOPICS = {
+  service: [
+    { value: 'pricing',       label: 'Pricing & quotes',        icon: '💰' },
+    { value: 'availability',  label: 'Availability & timeline', icon: '📅' },
+    { value: 'how_it_works',  label: 'How it works',            icon: '⚙️' },
+    { value: 'experience',    label: 'Experience & credentials', icon: '🏆' },
+    { value: 'service_area',  label: 'Service area',            icon: '📍' },
+    { value: 'cancellation',  label: 'Cancellation policy',     icon: '↩️' },
+    { value: 'after_service', label: 'After-service support',   icon: '🔧' },
+    { value: 'contact',       label: 'Contact & support',       icon: '💬' },
+  ],
+  product: [
+    { value: 'menu',          label: 'Menu / catalog',          icon: '📋' },
+    { value: 'pricing',       label: 'Pricing',                 icon: '💰' },
+    { value: 'allergies',     label: 'Allergies & dietary',     icon: '🥗' },
+    { value: 'hours',         label: 'Opening hours',           icon: '🕐' },
+    { value: 'location',      label: 'Location & delivery',     icon: '📍' },
+    { value: 'returns',       label: 'Returns & refunds',       icon: '↩️' },
+    { value: 'offers',        label: 'Special offers',          icon: '🎁' },
+    { value: 'contact',       label: 'Contact & support',       icon: '💬' },
+  ],
+  booking: [
+    { value: 'availability',  label: 'Availability & schedule', icon: '📅' },
+    { value: 'pricing',       label: 'Pricing & packages',      icon: '💰' },
+    { value: 'preparation',   label: 'What to bring / prepare', icon: '🎒' },
+    { value: 'group',         label: 'Group bookings',          icon: '👥' },
+    { value: 'cancellation',  label: 'Cancellation policy',     icon: '↩️' },
+    { value: 'trial',         label: 'Trial sessions',          icon: '✨' },
+    { value: 'membership',    label: 'Membership options',      icon: '🏷️' },
+    { value: 'contact',       label: 'Contact & support',       icon: '💬' },
+  ],
+}
 
 // ── Stage definitions ─────────────────────────────────────────────────────────
-
-const STAGE_CONFIG = {
-  collect_business_model: {
-    question: 'What type of business do you run?',
+const STAGES = [
+  {
+    key: 'business_type',
+    title: 'What type of business do you run?',
     type: 'single',
     options: [
-      { value: 'service', label: 'Service',  desc: 'Cleaning, repairs, consulting, legal, construction',   icon: '🔧' },
-      { value: 'product', label: 'Product',  desc: 'Restaurant, café, online store, retail, spa menu',     icon: '🛍️' },
-      { value: 'booking', label: 'Booking',  desc: 'Gym, nail salon, hair salon, physio, dentist, clinic', icon: '📅' },
+      { value: 'service', label: 'Service',  desc: 'Cleaning, repairs, consulting, legal, construction', icon: '🔧' },
+      { value: 'product', label: 'Product',  desc: 'Restaurant, café, online store, retail',             icon: '🛍️' },
+      { value: 'booking', label: 'Booking',  desc: 'Gym, nail salon, hair salon, physio, clinic',        icon: '📅' },
     ],
   },
-  collect_agent_mode: {
-    question: "What's the agent's main purpose?",
+  {
+    key: 'faq_topics',
+    title: 'What do leads usually ask about?',
+    subtitle: 'Pick all that apply',
+    type: 'multi',
+    max: 8,
+    dynamic: (draft) => FAQ_TOPICS[draft?.archetype ?? 'service'],
+  },
+  {
+    key: 'cta_goal',
+    title: 'What action do you want leads to take?',
     type: 'single',
     options: [
-      { value: 'sales',   label: 'Sales',   desc: 'Push leads toward booking, purchase, or quote',          icon: '🎯' },
-      { value: 'support', label: 'Support', desc: 'Answer questions, handle complaints, provide info',       icon: '💬' },
-      { value: 'hybrid',  label: 'Hybrid',  desc: 'Answer first, then gently guide toward conversion',       icon: '⚡' },
+      { value: 'book_appointment', label: 'Book an appointment', icon: '📅' },
+      { value: 'book_call',        label: 'Book a call',         icon: '📞' },
+      { value: 'get_quote',        label: 'Get a quote',         icon: '📋' },
+      { value: 'make_purchase',    label: 'Make a purchase',     icon: '🛒' },
+      { value: 'book_table',       label: 'Book a table',        icon: '🍽️' },
+      { value: 'leave_details',    label: 'Leave details',       icon: '📝' },
+      { value: 'support_only',     label: 'No CTA — info & support only', icon: '💬' },
     ],
   },
-  collect_cta_goal: (draft) => {
-    const archetype = draft?.archetype ?? 'service'
-    const optionsByArchetype = {
-      service: [
-        { value: 'book_call',    label: 'Book a call',     icon: '📞' },
-        { value: 'get_quote',    label: 'Get a quote',     icon: '📋' },
-        { value: 'leave_details',label: 'Leave details',   icon: '📝' },
-        { value: 'chat_qualify', label: 'Chat to qualify', icon: '💭' },
-      ],
-      product: [
-        { value: 'purchase',      label: 'Make a purchase',     icon: '🛒' },
-        { value: 'book_table',    label: 'Book a table',        icon: '🍽️' },
-        { value: 'get_price_list',label: 'Get price list',      icon: '💰' },
-        { value: 'leave_details', label: 'Leave details',       icon: '📝' },
-      ],
-      booking: [
-        { value: 'book_appointment', label: 'Book an appointment', icon: '📅' },
-        { value: 'book_trial',       label: 'Book a trial session',icon: '✨' },
-        { value: 'get_pricing',      label: 'Get pricing info',    icon: '💰' },
-        { value: 'leave_details',    label: 'Leave details',       icon: '📝' },
-      ],
-    }
-    return {
-      question: 'What is the main action you want leads to take?',
-      type: 'single',
-      options: optionsByArchetype[archetype] ?? optionsByArchetype.service,
-    }
-  },
-  primary_goal: {
-    question: 'What is the main action you want a new lead to take?',
+  {
+    key: 'push_speed',
+    title: 'How quickly should the agent push toward the goal?',
     type: 'single',
+    skip: (draft) => draft?.cta_goal === 'support_only',
     options: [
-      { value: 'book_call',    label: 'Book a call',              icon: '📞' },
-      { value: 'leave_details',label: 'Leave details',            icon: '📝' },
-      { value: 'purchase',     label: 'Make a purchase',          icon: '🛒' },
-      { value: 'chat',         label: 'Continue chatting',        icon: '💬' },
+      { value: 'fast',     label: 'Fast',     desc: 'Push to CTA in 2–3 turns',   icon: '⚡' },
+      { value: 'balanced', label: 'Balanced', desc: 'Qualify first, then push',    icon: '⚖️' },
+      { value: 'slow',     label: 'Slow',     desc: 'Build rapport, no rush',      icon: '🌱' },
     ],
   },
-  conversation_priority: {
-    question: 'What matters most in the first conversation?',
-    type: 'single',
-    options: [
-      { value: 'understand',  label: 'Understand the need',     icon: '🔍' },
-      { value: 'filter',      label: 'Filter irrelevant leads', icon: '🔽' },
-      { value: 'close',       label: 'Close quickly',           icon: '⚡' },
-      { value: 'inform',      label: 'Give information only',   icon: 'ℹ️' },
-    ],
-  },
-  persona_tone: {
-    question: 'How should the agent sound? (pick up to 2)',
+  {
+    key: 'tone',
+    title: 'How should the agent sound?',
+    subtitle: 'Pick up to 2',
     type: 'multi',
     max: 2,
     options: [
       { value: 'warm',         label: 'Warm',         icon: '☀️' },
-      { value: 'professional', label: 'Professional',  icon: '👔' },
-      { value: 'direct',       label: 'Direct',        icon: '🎯' },
-      { value: 'friendly',     label: 'Friendly',      icon: '😊' },
-      { value: 'casual',       label: 'Casual',        icon: '😎' },
+      { value: 'professional', label: 'Professional', icon: '👔' },
+      { value: 'direct',       label: 'Direct',       icon: '🎯' },
+      { value: 'friendly',     label: 'Friendly',     icon: '😊' },
+      { value: 'casual',       label: 'Casual',       icon: '😎' },
     ],
   },
-  answer_length: {
-    question: 'Preferred reply length?',
+  {
+    key: 'response_length',
+    title: 'Preferred reply length?',
     type: 'single',
     options: [
-      { value: 'short',    label: 'Very short',  desc: '1–2 sentences', icon: '⚡' },
-      { value: 'medium',   label: 'Medium',      desc: '2–3 sentences', icon: '📝' },
-      { value: 'detailed', label: 'Detailed',    desc: '3–5 sentences', icon: '📄' },
+      { value: 'short',    label: 'Short',    desc: '1–2 sentences', icon: '⚡' },
+      { value: 'medium',   label: 'Medium',   desc: '2–3 sentences', icon: '📝' },
+      { value: 'detailed', label: 'Detailed', desc: '3–5 sentences', icon: '📄' },
     ],
   },
-  emoji_style: {
-    question: 'Emoji usage in responses?',
+  {
+    key: 'emoji_usage',
+    title: 'Emoji usage?',
     type: 'single',
     options: [
-      { value: 'none',    label: 'None',    desc: 'No emojis',             icon: '🚫' },
-      { value: 'light',   label: 'Light',   desc: 'Occasional use',        icon: '✨' },
-      { value: 'natural', label: 'Natural', desc: 'When it feels right',   icon: '😊' },
-      { value: 'free',    label: 'Free',    desc: 'Emojis everywhere',     icon: '🎉' },
+      { value: 'none',    label: 'None',    desc: 'Clean text only', icon: '🚫' },
+      { value: 'light',   label: 'Light',   desc: 'Occasional',      icon: '✨' },
+      { value: 'natural', label: 'Natural', desc: 'When it fits',    icon: '😊' },
+      { value: 'free',    label: 'Free',    desc: 'Emoji-friendly',  icon: '🎉' },
     ],
   },
-  escalation_rules: {
-    question: 'When should the agent hand off to a human? (pick up to 2)',
+  {
+    key: 'escalation',
+    title: 'When should the agent hand off to a human?',
+    subtitle: 'Pick up to 2',
     type: 'multi',
     max: 2,
     options: [
-      { value: 'high_value',        label: 'High-value lead',       icon: '💎' },
-      { value: 'complex_question',  label: 'Complex question',      icon: '🧩' },
-      { value: 'user_asks',         label: 'User asks for human',   icon: '🙋' },
-      { value: 'repeated_objection',label: 'Repeated objection',    icon: '🔄' },
+      { value: 'high_value',         label: 'High-value lead',     icon: '💎' },
+      { value: 'complex_question',   label: 'Complex question',    icon: '🧩' },
+      { value: 'user_asks',          label: 'User asks for human', icon: '🙋' },
+      { value: 'repeated_objection', label: 'Repeated objection',  icon: '🔄' },
     ],
   },
-}
-
-// Free-text stages — shown as textarea
-const FREE_TEXT_STAGES = {
-  branch_type_1:    { question: null, placeholder: 'Describe your main services / offerings...' },
-  branch_type_2:    { question: null, placeholder: 'What do you need to know before moving forward with a lead?' },
-  branch_type_3:    { question: null, placeholder: 'What\'s the first question you usually ask a new lead?' },
-  faq:              { question: 'Common questions customers ask (2–3 examples)', placeholder: 'Q: How much does it cost?\nA: Pricing starts from ₪150...' },
-  objections:       { question: 'Common objections and how you handle them', placeholder: '"Too expensive" → We offer flexible payment options...' },
-  forbidden_claims: { question: 'What should the agent NEVER say or promise?', placeholder: 'Never promise same-day availability...' },
-  final_note:       { question: 'One thing the agent must never miss about how you talk to customers', placeholder: 'Always end with a specific next step...' },
-}
-
-// Stage display labels for progress bar
-const PROGRESS_STAGES = [
-  'collect_business_model', 'collect_agent_mode', 'collect_cta_goal',
-  'primary_goal', 'conversation_priority',
-  'branch_type_1', 'branch_type_2', 'branch_type_3',
-  'persona_tone', 'answer_length', 'emoji_style',
-  'faq', 'objections', 'forbidden_claims', 'escalation_rules', 'final_note',
-  'confirm_and_commit',
+  {
+    key: 'faq_examples',
+    title: 'Common questions customers ask',
+    subtitle: 'Optional — add 2–3 examples with your typical answers',
+    type: 'text',
+    placeholder: 'Q: How much does it cost?\nA: Pricing starts from ₪150 depending on size.\n\nQ: Do you work on weekends?\nA: Yes, Friday and Saturday available.',
+  },
+  {
+    key: 'objections',
+    title: 'Common objections and how you handle them',
+    subtitle: 'Optional',
+    type: 'text',
+    placeholder: '"Too expensive" → We offer flexible payment options and the quality speaks for itself.\n\n"I need to think about it" → Of course! Can I send you our portfolio to help?',
+  },
+  {
+    key: 'forbidden_claims',
+    title: 'What should the agent NEVER say or promise?',
+    subtitle: 'Optional',
+    type: 'text',
+    placeholder: 'Never promise same-day availability.\nNever quote exact prices without seeing the job.',
+  },
+  {
+    key: 'final_note',
+    title: 'One thing the agent must never miss',
+    subtitle: 'Optional — your most important instruction',
+    type: 'text',
+    placeholder: 'Always end with a specific next step, never leave the conversation open-ended.',
+  },
+  {
+    key: 'confirm_and_commit',
+    title: 'Ready to activate your agent?',
+    type: 'confirm',
+  },
 ]
+
+const PROGRESS_KEYS = STAGES.map(s => s.key)
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function SetupWizard({ session, draft, sending, onSend }) {
+export default function SetupWizard({ session, draft, sending, onSend, onRefreshDB }) {
   const [selections, setSelections] = useState([])
   const [textValue, setTextValue]   = useState('')
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState(null)
 
-  const currentStage = session?.current_setup_stage ?? session?.current_stage ?? 'collect_business_model'
-  const agentMode    = draft?.agent_mode
+  const currentStage = session?.current_setup_stage ?? session?.current_stage ?? 'business_type'
 
-  // Resolve stage config (some are functions of draft)
-  const rawConfig = STAGE_CONFIG[currentStage]
-  const config    = typeof rawConfig === 'function' ? rawConfig(draft) : rawConfig
-  const freeText  = FREE_TEXT_STAGES[currentStage]
+  // Find current stage config
+  const stageConfig = STAGES.find(s => s.key === currentStage)
 
-  const progressIndex = PROGRESS_STAGES.indexOf(currentStage)
-  const progress      = progressIndex >= 0 ? Math.round((progressIndex / (PROGRESS_STAGES.length - 1)) * 100) : 0
+  // Resolve dynamic options
+  const options = stageConfig?.dynamic
+    ? stageConfig.dynamic(draft)
+    : stageConfig?.options ?? []
 
-  // Filter out CTA goal stage for support mode
-  const skipStage = currentStage === 'collect_cta_goal' && agentMode === 'support'
+  // Auto-skip logic
+  const shouldSkip = stageConfig?.skip?.(draft)
+
+  const progressIdx = PROGRESS_KEYS.indexOf(currentStage)
+  const progress    = progressIdx >= 0 ? Math.round((progressIdx / (PROGRESS_KEYS.length - 1)) * 100) : 0
 
   function toggleOption(value) {
-    if (config?.type === 'multi') {
-      const max = config.max ?? 2
+    if (stageConfig?.type === 'multi') {
+      const max = stageConfig.max ?? 8
       setSelections(prev =>
         prev.includes(value)
           ? prev.filter(v => v !== value)
@@ -168,77 +204,111 @@ export default function SetupWizard({ session, draft, sending, onSend }) {
     }
   }
 
-  function handleContinue() {
-    if (sending) return
-    const msg = config
-      ? selections.join(', ')
-      : textValue.trim()
-    if (!msg) return
-    onSend(msg)
-    setSelections([])
-    setTextValue('')
+  async function handleSave(valueOverride) {
+    const value = valueOverride ?? (stageConfig?.type === 'text' ? (textValue.trim() || null) : selections)
+    if (!value && stageConfig?.type !== 'text') return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(API('/setup/save'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: session.session_id, stage: currentStage, value }),
+      })
+      const data = await res.json()
+      if (data.status !== 'success') throw new Error(data.message)
+      setSelections([])
+      setTextValue('')
+      onRefreshDB?.()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  function handleSkip() {
-    onSend('skip')
-    setSelections([])
-    setTextValue('')
+  async function handleCommit() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(API('/setup/commit'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: session.session_id }),
+      })
+      const data = await res.json()
+      if (data.status !== 'success') throw new Error(data.message)
+      onRefreshDB?.()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const canContinue = config ? selections.length > 0 : textValue.trim().length > 0
+  const canContinue = stageConfig?.type === 'text'
+    ? true  // text is always optional
+    : selections.length > 0
 
   return (
     <div className="panel panel-chat" style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
 
-      {/* Header */}
+      {/* Header + progress */}
       <div className="panel-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, padding: '12px 16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 700, fontSize: 13 }}>Business Setup</span>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{progress}%</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {progressIdx + 1} / {PROGRESS_KEYS.length}
+          </span>
         </div>
-        {/* Progress bar */}
         <div style={{ height: 3, background: 'var(--surface-3)', borderRadius: 2 }}>
-          <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 0.3s' }} />
-        </div>
-        {/* Stage pills */}
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {PROGRESS_STAGES.map((s, i) => (
-            <div key={s} style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: i < progressIndex ? 'var(--accent)' : i === progressIndex ? 'var(--accent)' : 'var(--surface-3)',
-              opacity: i <= progressIndex ? 1 : 0.4,
-            }} />
-          ))}
+          <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 0.4s ease' }} />
         </div>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {skipStage ? (
-          <SkipCard onSkip={handleSkip} sending={sending} />
-        ) : config ? (
-          <OptionStage config={config} selections={selections} onToggle={toggleOption} />
-        ) : freeText ? (
-          <TextStage config={freeText} value={textValue} onChange={setTextValue} currentStage={currentStage} draft={draft} />
-        ) : (
-          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading next step...</div>
+        {error && (
+          <div style={{ padding: 10, borderRadius: 6, background: 'var(--error-bg)', color: 'var(--error-text)', fontSize: 12 }}>
+            {error}
+          </div>
         )}
 
+        {shouldSkip ? (
+          <SkipNotice label={stageConfig?.title} onSkip={() => handleSave(null)} saving={saving} />
+        ) : stageConfig?.type === 'confirm' ? (
+          <ConfirmStage draft={draft} onCommit={handleCommit} saving={saving} />
+        ) : stageConfig?.type === 'text' ? (
+          <TextStage config={stageConfig} value={textValue} onChange={setTextValue} />
+        ) : (
+          <OptionStage
+            config={stageConfig}
+            options={options}
+            selections={selections}
+            onToggle={toggleOption}
+          />
+        )}
       </div>
 
       {/* Footer */}
-      {!skipStage && (
+      {!shouldSkip && stageConfig?.type !== 'confirm' && (
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-          {freeText && (
-            <button onClick={handleSkip} disabled={sending}
-              style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>
+          {stageConfig?.type === 'text' && (
+            <button
+              onClick={() => handleSave(null)}
+              disabled={saving}
+              style={btnStyle('ghost')}
+            >
               Skip
             </button>
           )}
-          <button onClick={handleContinue} disabled={!canContinue || sending}
-            style={{ flex: 1, padding: '10px', borderRadius: 6, border: 'none', background: canContinue && !sending ? 'var(--accent)' : 'var(--surface-3)', color: canContinue && !sending ? '#fff' : 'var(--text-muted)', cursor: canContinue && !sending ? 'pointer' : 'default', fontWeight: 600, fontSize: 13, transition: 'background 0.2s' }}>
-            {sending ? 'Saving...' : 'Continue →'}
+          <button
+            onClick={() => handleSave()}
+            disabled={(!canContinue && stageConfig?.type !== 'text') || saving}
+            style={btnStyle(canContinue || stageConfig?.type === 'text' ? 'primary' : 'disabled')}
+          >
+            {saving ? 'Saving...' : 'Continue →'}
           </button>
         </div>
       )}
@@ -248,33 +318,45 @@ export default function SetupWizard({ session, draft, sending, onSend }) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function OptionStage({ config, selections, onToggle }) {
+function OptionStage({ config, options, selections, onToggle }) {
   return (
     <>
       <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{config.question}</div>
-        {config.type === 'multi' && (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Choose up to {config.max}</div>
-        )}
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{config.title}</div>
+        {config.subtitle && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{config.subtitle}</div>}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {config.options.map(opt => {
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(options ?? []).map(opt => {
           const selected = selections.includes(opt.value)
           return (
-            <div key={opt.value} onClick={() => onToggle(opt.value)}
+            <div
+              key={opt.value}
+              onClick={() => onToggle(opt.value)}
               style={{
-                padding: '12px 16px', borderRadius: 10, cursor: 'pointer',
+                padding: '11px 14px',
+                borderRadius: 10,
+                cursor: 'pointer',
                 border: `2px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
                 background: selected ? 'var(--accent-dim)' : 'var(--surface)',
-                display: 'flex', alignItems: 'center', gap: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
                 transition: 'all 0.15s',
-              }}>
-              <span style={{ fontSize: 22 }}>{opt.icon}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: selected ? 'var(--accent)' : 'var(--text)' }}>{opt.label}</div>
-                {opt.desc && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{opt.desc}</div>}
+                userSelect: 'none',
+              }}
+            >
+              <span style={{ fontSize: 20, flexShrink: 0 }}>{opt.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: selected ? 'var(--accent)' : 'var(--text)' }}>
+                  {opt.label}
+                </div>
+                {opt.desc && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {opt.desc}
+                  </div>
+                )}
               </div>
-              {selected && <span style={{ color: 'var(--accent)', fontSize: 16 }}>✓</span>}
+              {selected && <span style={{ color: 'var(--accent)', fontSize: 14, flexShrink: 0 }}>✓</span>}
             </div>
           )
         })}
@@ -283,54 +365,75 @@ function OptionStage({ config, selections, onToggle }) {
   )
 }
 
-function TextStage({ config, value, onChange, currentStage, draft }) {
-  const branch = draft?.archetype ?? 'service'
-
-  // Dynamic question labels for branch stages
-  const branchQuestions = {
-    service: ['What main services do you provide?', 'What info do you need before moving forward with a lead?', 'What\'s the first question you usually ask?'],
-    product: ['What\'s on your menu or catalog? What do people ask about most?', 'How do you understand which product fits the customer?', 'What do customers usually ask before buying?'],
-    booking: ['What types of appointments or sessions can be booked?', 'What do you need to know before confirming a booking?', 'Are there cases where you shouldn\'t book immediately?'],
-  }
-
-  let question = config.question
-  let placeholder = config.placeholder
-
-  if (currentStage === 'branch_type_1') question = branchQuestions[branch]?.[0] ?? question
-  if (currentStage === 'branch_type_2') question = branchQuestions[branch]?.[1] ?? question
-  if (currentStage === 'branch_type_3') question = branchQuestions[branch]?.[2] ?? question
-
+function TextStage({ config, value, onChange }) {
   return (
     <>
-      {question && (
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{question}</div>
-      )}
+      <div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{config.title}</div>
+        {config.subtitle && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{config.subtitle}</div>}
+      </div>
       <textarea
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={6}
+        placeholder={config.placeholder}
+        rows={7}
         style={{
           width: '100%', padding: 12, borderRadius: 8,
           border: '1px solid var(--border)', background: 'var(--surface)',
           color: 'var(--text)', fontSize: 13, resize: 'vertical',
-          fontFamily: 'var(--font-sans)', lineHeight: 1.6,
+          fontFamily: 'var(--font-sans)', lineHeight: 1.6, outline: 'none',
         }}
       />
     </>
   )
 }
 
-function SkipCard({ onSkip, sending }) {
+function ConfirmStage({ draft, onCommit, saving }) {
+  const lines = [
+    draft?.archetype       && `Business type: ${draft.archetype}`,
+    draft?.agent_mode      && `Agent mode: ${draft.agent_mode}`,
+    draft?.cta_goal        && `CTA goal: ${draft.cta_goal.replace(/_/g, ' ')}`,
+    draft?.push_speed      && `Push speed: ${draft.push_speed}`,
+    draft?.persona?.tone   && `Tone: ${[].concat(draft.persona.tone).join(', ')}`,
+    draft?.faq_topics?.length && `FAQ topics: ${draft.faq_topics.length} selected`,
+  ].filter(Boolean)
+
   return (
-    <div style={{ textAlign: 'center', paddingTop: 40 }}>
-      <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>
-        This step is not required for Support mode.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Ready to activate your agent?</div>
+      <div style={{ background: 'var(--surface)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {lines.map((l, i) => (
+          <div key={i} style={{ fontSize: 13, color: 'var(--text-dim)', display: 'flex', gap: 8 }}>
+            <span style={{ color: 'var(--accent)' }}>✓</span> {l}
+          </div>
+        ))}
       </div>
-      <button onClick={onSkip} disabled={sending}
-        style={{ padding: '10px 24px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+      <button
+        onClick={onCommit}
+        disabled={saving}
+        style={{ ...btnStyle('primary'), padding: '14px', fontSize: 14 }}
+      >
+        {saving ? 'Activating...' : '🚀 Activate Agent'}
+      </button>
+    </div>
+  )
+}
+
+function SkipNotice({ label, onSkip, saving }) {
+  return (
+    <div style={{ textAlign: 'center', paddingTop: 32, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+      <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>This step is not needed for your setup.</div>
+      <button onClick={onSkip} disabled={saving} style={btnStyle('primary')}>
         Continue →
       </button>
     </div>
   )
+}
+
+function btnStyle(variant) {
+  const base = { padding: '10px 20px', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none', transition: 'background 0.2s', flex: 1 }
+  if (variant === 'primary')  return { ...base, background: 'var(--accent)', color: '#fff' }
+  if (variant === 'ghost')    return { ...base, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', flex: 'none', padding: '10px 16px' }
+  if (variant === 'disabled') return { ...base, background: 'var(--surface-3)', color: 'var(--text-muted)', cursor: 'default' }
+  return base
 }
