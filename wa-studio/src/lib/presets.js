@@ -75,32 +75,29 @@ export const PRESETS = [
   }
 ]
 
-// All possible stages — bar shows current position regardless of archetype path
+// Shared stage sequence for all archetypes
 export const SETUP_STAGES = [
-  { key: 'collect_business_model',   label: 'Business' },
-  // service / professional path
-  { key: 'service_collect_offerings', label: 'Services' },
-  { key: 'service_collect_target',    label: 'Customers' },
-  { key: 'service_collect_urgency',   label: 'Availability' },
-  // studio path
-  { key: 'studio_collect_classes',   label: 'Classes' },
-  { key: 'studio_collect_pricing',   label: 'Pricing' },
-  { key: 'studio_collect_booking',   label: 'Booking' },
-  // generic path
-  { key: 'generic_collect_services', label: 'Services' },
-  // shared tail
-  { key: 'collect_sales_goal',       label: 'Goal' },
-  { key: 'collect_persona',          label: 'Persona' },
-  { key: 'collect_guardrails',       label: 'Guardrails' },
-  { key: 'confirm_and_commit',       label: 'Confirm' },
+  { key: 'collect_business_model', label: 'Business' },
+  { key: 'collect_agent_mode',     label: 'Purpose' },
+  { key: 'collect_cta_goal',       label: 'CTA Goal' },
+  { key: 'primary_goal',           label: 'Goal' },
+  { key: 'conversation_priority',  label: 'Priority' },
+  { key: 'branch_type_1',          label: 'Details 1' },
+  { key: 'branch_type_2',          label: 'Details 2' },
+  { key: 'branch_type_3',          label: 'Details 3' },
+  { key: 'persona_tone',           label: 'Tone' },
+  { key: 'answer_length',          label: 'Length' },
+  { key: 'emoji_style',            label: 'Emoji' },
+  { key: 'faq',                    label: 'FAQ' },
+  { key: 'objections',             label: 'Objections' },
+  { key: 'forbidden_claims',       label: 'Guardrails' },
+  { key: 'escalation_rules',       label: 'Escalation' },
+  { key: 'final_note',             label: 'Final Note' },
+  { key: 'confirm_and_commit',     label: 'Confirm' },
 ]
 
-// Stage paths per archetype — used to filter the progress bar to show only relevant stages
 export const ARCHETYPE_STAGE_PATHS = {
-  service:        ['collect_business_model', 'service_collect_offerings', 'service_collect_target', 'service_collect_urgency', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
-  professional:   ['collect_business_model', 'service_collect_offerings', 'service_collect_target', 'service_collect_urgency', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
-  studio:         ['collect_business_model', 'studio_collect_classes', 'studio_collect_pricing', 'studio_collect_booking', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
-  physical_store: ['collect_business_model', 'generic_collect_services', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
-  ecommerce:      ['collect_business_model', 'generic_collect_services', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
-  custom_quote:   ['collect_business_model', 'generic_collect_services', 'collect_sales_goal', 'collect_persona', 'collect_guardrails', 'confirm_and_commit'],
+  service: ['collect_business_model', 'collect_agent_mode', 'collect_cta_goal', 'primary_goal', 'conversation_priority', 'branch_type_1', 'branch_type_2', 'branch_type_3', 'persona_tone', 'answer_length', 'emoji_style', 'faq', 'objections', 'forbidden_claims', 'escalation_rules', 'final_note', 'confirm_and_commit'],
+  product: ['collect_business_model', 'collect_agent_mode', 'collect_cta_goal', 'primary_goal', 'conversation_priority', 'branch_type_1', 'branch_type_2', 'branch_type_3', 'persona_tone', 'answer_length', 'emoji_style', 'faq', 'objections', 'forbidden_claims', 'escalation_rules', 'final_note', 'confirm_and_commit'],
+  booking: ['collect_business_model', 'collect_agent_mode', 'collect_cta_goal', 'primary_goal', 'conversation_priority', 'branch_type_1', 'branch_type_2', 'branch_type_3', 'persona_tone', 'answer_length', 'emoji_style', 'faq', 'objections', 'forbidden_claims', 'escalation_rules', 'final_note', 'confirm_and_commit'],
 }

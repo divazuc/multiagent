@@ -10,9 +10,9 @@ export const CATEGORIES = {
 }
 
 export const ARCHETYPES = {
-  studio:  'סטודיו',
+  booking: 'הזמנות',
   service: 'שירות',
-  other:   'אחר',
+  product: 'מוצר',
 }
 
 export const ARCHETYPE_KEYS = Object.keys(ARCHETYPES)
