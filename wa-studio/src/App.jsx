@@ -45,17 +45,14 @@ export default function App() {
     const name = session.business_name || session.session_id
     const mode = session.session_mode
     const stage = session.current_setup_stage || session.current_stage
-    const stageAdvanced = stage && stage !== 'collect_business_model' && stage !== 'setup_start' && stage !== 'start'
+    const stageAdvanced = stage && stage !== 'collect_business_model' && stage !== 'business_type' && stage !== 'setup_start' && stage !== 'start'
     const hasHistory = dbState.messages?.length > 0 || stageAdvanced
 
     if (hasHistory) {
       const count = dbState.messages?.length || 0
       const lines = [
-        `↩️ Resuming session for ${name}`,
-        `Mode: ${mode}${stage ? ` · Stage: ${stage}` : ''}${session.setup_completed ? ' · Setup complete ✓' : ''}`,
-        count > 0
-          ? `${count} message${count !== 1 ? 's' : ''} in history — send a message to continue.`
-          : `Send a message to continue from the current stage.`,
+        `↩️ ממשיכים מאיפה שעצרנו — ${name}`,
+        count > 0 ? `${count} הודעות בהיסטוריה — שלח הודעה להמשיך.` : `שלח הודעה להמשיך מהשלב הנוכחי.`,
       ]
       return { role: 'welcome', content: lines.join('\n'), ts: Date.now() }
     }
@@ -63,7 +60,7 @@ export default function App() {
     if (mode === 'setup') {
       return {
         role: 'welcome',
-        content: `👋 Welcome! Let's set up ${name}.\n\nI'll walk you through a few questions to configure the AI sales agent:\n  • Business type & services\n  • Target audience\n  • Sales goals & guardrails\n\nSend any message to begin.`,
+        content: `👋 ברוכים הבאים! בואו נגדיר את הסוכן עבור ${name}.\n\nנעבור יחד על כמה שאלות קצרות:\n  • סוג העסק\n  • נושאי FAQ\n  • מטרת הסוכן\n  • סגנון ואישיות\n\nהתחל בלחיצה על הבחירה הראשונה.`,
         ts: Date.now(),
       }
     }
@@ -71,14 +68,14 @@ export default function App() {
     if (mode === 'live') {
       return {
         role: 'welcome',
-        content: `🤖 Live test session started for ${name}.\n\nThe conversation engine is active. Send a message as if you're a customer and the agent will respond.\n\nTip: use "Seed Profile" in the sidebar to inject a business profile if setup isn't complete yet.`,
+        content: `🤖 סשן בדיקה חי עבור ${name}.\n\nהסוכן פעיל. שלח הודעה כאילו אתה לקוח פוטנציאלי והסוכן יענה.`,
         ts: Date.now(),
       }
     }
 
     return {
       role: 'welcome',
-      content: `🎓 Demo session started for ${name}.\n\nThe agent is in learning mode. Send messages to explore the conversation flow.`,
+      content: `🎓 שלב הדמו עבור ${name}.\n\nהסוכן בשלב למידה. שלח הודעות כדי לאמן את הסוכן על סגנון הדיבור שלך.`,
       ts: Date.now(),
     }
   }
