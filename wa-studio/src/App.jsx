@@ -19,6 +19,8 @@ export default function App() {
   const [error, setError] = useState(null)
   const [faqOpen, setFaqOpen] = useState(false)
   const [rightPanel, setRightPanel] = useState('db') // 'db' | 'runs'
+  const [showSessions, setShowSessions] = useState(false)
+  const [showRight, setShowRight] = useState(false)
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -244,10 +246,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
+        {/* Mobile: hamburger to open sessions */}
+        <button className="mobile-toggle" onClick={() => setShowSessions(v => !v)} title="Sessions">☰</button>
+
         <span className="logo">💬 WA Studio</span>
         <span className="header-sub">סביבת בדיקה לסוכן עסקי</span>
         {error && <span className="header-error">{error}</span>}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
           <button
             onClick={() => setRightPanel('db')}
             style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: rightPanel === 'db' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
@@ -256,17 +262,26 @@ export default function App() {
             onClick={() => setRightPanel('runs')}
             style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: rightPanel === 'runs' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
           >Runs</button>
+          {/* Mobile: toggle right panel */}
+          <button className="mobile-toggle" onClick={() => setShowRight(v => !v)} title="Inspector">🔍</button>
         </div>
       </header>
       <div className="app-body">
+        {/* Overlay for mobile drawers */}
+        <div
+          className={`drawer-overlay ${showSessions || showRight ? 'open' : ''}`}
+          onClick={() => { setShowSessions(false); setShowRight(false) }}
+        />
+
         <SessionPanel
           sessions={sessions}
           activeSession={activeSession}
-          onSelect={selectSession}
+          onSelect={(s) => { selectSession(s); setShowSessions(false) }}
           onCreate={handleCreateSession}
           onRestart={handleRestartSession}
           onSeed={handleSeedPreset}
           onRefresh={refreshSessions}
+          className={showSessions ? 'open' : ''}
         />
         {faqOpen && activeSession?.business_id
           ? (
@@ -297,10 +312,12 @@ export default function App() {
             />
           )
         }
-        {rightPanel === 'runs'
-          ? <RunsPanel activeSession={activeSession} />
-          : <DBInspector dbState={dbState} onRefresh={() => refreshDB(activeSession?.session_id)} />
-        }
+        <div className={`panel panel-right ${showRight ? 'open' : ''}`}>
+          {rightPanel === 'runs'
+            ? <RunsPanel activeSession={activeSession} />
+            : <DBInspector dbState={dbState} onRefresh={() => refreshDB(activeSession?.session_id)} />
+          }
+        </div>
       </div>
     </div>
   )

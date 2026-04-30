@@ -5,7 +5,7 @@ import { listBusinesses, createBusiness } from '../lib/supabase.js'
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 const MODE_COLORS = { setup: '#f59e0b', live: '#22c55e', learning: '#818cf8' }
 
-export default function SessionPanel({ sessions, activeSession, onSelect, onCreate, onRestart, onSeed, onRefresh }) {
+export default function SessionPanel({ sessions, activeSession, onSelect, onCreate, onRestart, onSeed, onRefresh, className = '' }) {
   const [mode, setMode] = useState('setup')
   const [creating, setCreating] = useState(false)
   const [showSeed, setShowSeed] = useState(false)
@@ -116,7 +116,7 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
   const selectedBiz = businesses.find(b => b.id === selectedBizId)
 
   return (
-    <aside className="panel panel-sessions">
+    <aside className={`panel panel-sessions ${className}`}>
       <div className="panel-header">
         <span>Sessions</span>
         <button className="btn-icon" onClick={() => { onRefresh(); loadBusinesses() }} title="Refresh">↻</button>

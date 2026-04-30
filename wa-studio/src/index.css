@@ -464,3 +464,76 @@ html, body, #root {
 .fq-arc-service   { background: rgba(255,170,0,0.15);  color: #ffb000; }
 .fq-arc-other     { background: rgba(180,120,255,0.15); color: #b478ff; }
 
+/* ── Mobile responsive ── */
+.drawer-overlay {
+  display: none;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 40; animation: fadeIn 0.15s ease;
+}
+.drawer-overlay.open { display: block; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+@media (max-width: 768px) {
+  .app-body {
+    grid-template-columns: 1fr !important;
+    position: relative;
+  }
+
+  /* Sessions — slide-in drawer from left */
+  .panel.panel-sessions {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: 80vw; max-width: 300px;
+    z-index: 50; transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    border-right: 1px solid var(--border-bright);
+  }
+  .panel.panel-sessions.open {
+    transform: translateX(0);
+  }
+
+  /* Right panel — slide-in drawer from right */
+  .panel.panel-right {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 85vw; max-width: 320px;
+    z-index: 50; transform: translateX(100%);
+    transition: transform 0.25s ease;
+    border-left: 1px solid var(--border-bright);
+    border-right: none;
+  }
+  .panel.panel-right.open {
+    transform: translateX(0);
+  }
+
+  /* Chat takes full width */
+  .panel.panel-chat {
+    grid-column: 1;
+  }
+
+  /* Larger touch targets */
+  .session-item { padding: 14px 12px; }
+  .message-bubble { max-width: 88%; }
+  .chat-input { font-size: 16px; } /* prevents iOS zoom */
+  .btn-send { width: 44px; height: 44px; }
+
+  /* Header mobile buttons */
+  .mobile-toggle {
+    display: flex !important;
+    align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 8px;
+    border: none; background: var(--surface-3);
+    color: var(--text-muted); cursor: pointer;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .mobile-toggle:hover { background: var(--border-bright); color: var(--text); }
+
+  .header-sub { display: none; }
+}
+
+@media (min-width: 769px) {
+  .mobile-toggle { display: none !important; }
+  .drawer-overlay { display: none !important; }
+  .panel.panel-sessions { transform: none !important; position: relative !important; }
+  .panel.panel-right { transform: none !important; position: relative !important; border-left: none; border-right: none; }
+  .app-body { grid-template-columns: 240px 1fr 270px; }
+}
+
