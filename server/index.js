@@ -154,7 +154,7 @@ app.post('/wa-inbound', async (req, res) => {
 const SETUP_STAGE_FLOW = {
   business_type:    'faq_topics',
   faq_topics:       'cta_goal',
-  cta_goal:         null,           // resolved dynamically (support→tone, else→push_speed)
+  cta_goal:         'push_speed',   // support_only overrides to 'tone' below
   push_speed:       'tone',
   tone:             'response_length',
   response_length:  'emoji_usage',
