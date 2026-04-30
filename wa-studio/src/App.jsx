@@ -3,6 +3,7 @@ import SessionPanel from './components/SessionPanel.jsx'
 import ChatInterface from './components/ChatInterface.jsx'
 import DBInspector from './components/DBInspector.jsx'
 import RunsPanel from './components/RunsPanel.jsx'
+import SetupWizard from './components/SetupWizard.jsx'
 import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
 
@@ -276,6 +277,14 @@ export default function App() {
               businessId={activeSession.business_id}
               businessName={activeSession.business_name || activeSession.session_id}
               onClose={() => setFaqOpen(false)}
+            />
+          ) : activeSession?.session_mode === 'setup' && !activeSession?.setup_completed
+          ? (
+            <SetupWizard
+              session={activeSession}
+              draft={dbState.draft?.draft_setup_data ?? null}
+              sending={sending}
+              onSend={handleSendMessage}
             />
           ) : (
             <ChatInterface
