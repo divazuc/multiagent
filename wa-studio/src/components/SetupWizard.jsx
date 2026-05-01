@@ -121,22 +121,31 @@ const STAGES = [
   {
     key: 'escalation',
     title: 'מתי להעביר לבן אדם? / When to hand off to a human?',
-    subtitle: 'עד 2 בחירות / Pick up to 2',
+    subtitle: 'בחר הכל שרלוונטי / Pick all that apply',
     type: 'multi',
-    max: 2,
+    max: 99,
     options: [
-      { value: 'high_value',         label: 'High-value lead / לקוח גדול',       icon: '💎' },
-      { value: 'complex_question',   label: 'Complex question / שאלה מורכבת',    icon: '🧩' },
-      { value: 'user_asks',          label: 'User asks / הלקוח מבקש אדם',        icon: '🙋' },
-      { value: 'repeated_objection', label: 'Repeated objection / התנגדות חוזרת', icon: '🔄' },
+      { value: 'high_value',         label: 'High-value lead / לקוח גדול',             icon: '💎' },
+      { value: 'complex_question',   label: 'Complex question / שאלה מורכבת',          icon: '🧩' },
+      { value: 'user_asks',          label: 'User asks for human / הלקוח מבקש אדם',    icon: '🙋' },
+      { value: 'repeated_objection', label: 'Repeated objection / התנגדות חוזרת',      icon: '🔄' },
+      { value: 'book_appointment',   label: 'Book a call/appointment / קביעת פגישה',   icon: '📞' },
+      { value: 'other',              label: 'Other / אחר — specify below',              icon: '✏️' },
     ],
+  },
+  {
+    key: 'escalation_other',
+    title: 'פרט מתי עוד יש להעביר לבן אדם / Specify other escalation cases',
+    subtitle: 'אופציונלי — רק אם בחרת "אחר" / Only if you selected "Other"',
+    type: 'text',
+    placeholder: 'לדוגמה: כשהלקוח שואל על מחיר מעל ₪10,000',
+    skip: (draft) => !([].concat(draft?.escalation ?? [])).includes('other'),
   },
   {
     key: 'faq_examples',
     title: 'שאלות נפוצות / Common questions',
-    subtitle: 'אופציונלי — הוסף 2–3 שאלות ותשובות אופייניות',
-    type: 'text',
-    placeholder: 'ש: כמה עולה ניקיון?\nת: תלוי בגודל הדירה, החל מ-₪200\n\nש: אתם עובדים בסופ"ש?\nת: כן, שישי ושבת בתיאום מראש',
+    subtitle: 'אופציונלי — ניתן להוסיף עוד שאלות בהמשך בלשונית FAQ',
+    type: 'faq_pairs',
   },
   {
     key: 'objections',
@@ -158,6 +167,12 @@ const STAGES = [
     subtitle: 'אופציונלי — הדבר החשוב ביותר שהסוכן לא יפספס',
     type: 'text',
     placeholder: 'תמיד לסיים עם צעד הבא ספציפי, אף פעם לא להשאיר את השיחה פתוחה',
+  },
+  {
+    key: 'working_hours',
+    title: 'שעות פעילות / Business hours',
+    subtitle: 'סמן ✓ לימים שאתה עובד בהם / Check the days you work',
+    type: 'working_hours',
   },
   {
     key: 'confirm_and_commit',
@@ -216,8 +231,10 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
 
   async function handleSave(valueOverride) {
     const value = valueOverride ?? (
-      stageConfig?.type === 'text'   ? (textValue.trim() || null) :
-      stageConfig?.type === 'single' ? (selections[0] ?? null) :
+      stageConfig?.type === 'text'          ? (textValue.trim() || null) :
+      stageConfig?.type === 'faq_pairs'     ? faqPairs.filter(p => p.q.trim()) :
+      stageConfig?.type === 'working_hours' ? { days: hours, jewish_holidays: jewishHolidays } :
+      stageConfig?.type === 'single'        ? (selections[0] ?? null) :
       selections  // multi stays as array
     )
     if (!value && stageConfig?.type !== 'text') return
@@ -263,8 +280,18 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
     }
   }
 
-  const canContinue = stageConfig?.type === 'text'
-    ? true  // text is always optional
+  // FAQ pairs state
+  const [faqPairs, setFaqPairs] = useState([{ q: '', a: '' }])
+
+  // Working hours state
+  const DAYS = ['ראשון / Sun', 'שני / Mon', 'שלישי / Tue', 'רביעי / Wed', 'חמישי / Thu', 'שישי / Fri', 'שבת / Sat']
+  const [hours, setHours] = useState(() =>
+    DAYS.map((_, i) => ({ active: i < 5, from: '09:00', to: '18:00' }))
+  )
+  const [jewishHolidays, setJewishHolidays] = useState(true)
+
+  const canContinue = stageConfig?.type === 'text' || stageConfig?.type === 'faq_pairs' || stageConfig?.type === 'working_hours'
+    ? true  // optional stages always allow continue
     : selections.length > 0
 
   return (
@@ -296,6 +323,10 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
           <SkipNotice label={stageConfig?.title} onSkip={() => handleSave(null)} saving={saving} />
         ) : stageConfig?.type === 'confirm' ? (
           <ConfirmStage draft={draft} onCommit={handleCommit} saving={saving} />
+        ) : stageConfig?.type === 'faq_pairs' ? (
+          <FaqPairsStage config={stageConfig} pairs={faqPairs} onChange={setFaqPairs} />
+        ) : stageConfig?.type === 'working_hours' ? (
+          <WorkingHoursStage days={DAYS} hours={hours} onChange={setHours} jewishHolidays={jewishHolidays} onJewishHolidays={setJewishHolidays} />
         ) : stageConfig?.type === 'text' ? (
           <TextStage config={stageConfig} value={textValue} onChange={setTextValue} />
         ) : (
@@ -311,7 +342,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       {/* Footer */}
       {!shouldSkip && stageConfig?.type !== 'confirm' && (
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
-          {stageConfig?.type === 'text' && (
+          {(stageConfig?.type === 'text' || stageConfig?.type === 'faq_pairs') && (
             <button
               onClick={() => handleSave(null)}
               disabled={saving}
@@ -443,6 +474,120 @@ function SkipNotice({ label, onSkip, saving }) {
       <button onClick={onSkip} disabled={saving} style={btnStyle('primary')}>
         המשך ← / Continue →
       </button>
+    </div>
+  )
+}
+
+// ── FAQ Pairs stage ───────────────────────────────────────────────────────────
+function FaqPairsStage({ config, pairs, onChange }) {
+  function update(i, field, val) {
+    const next = pairs.map((p, idx) => idx === i ? { ...p, [field]: val } : p)
+    onChange(next)
+  }
+  function addPair() { onChange([...pairs, { q: '', a: '' }]) }
+  function removePair(i) { onChange(pairs.filter((_, idx) => idx !== i)) }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{config.title}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{config.subtitle}</div>
+        <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 6 }}>
+          💡 ניתן להוסיף עוד שאלות אחרי ההגדרה בלשונית FAQ / You can add more later in the FAQ tab
+        </div>
+      </div>
+      {pairs.map((pair, i) => (
+        <div key={i} style={{ background: 'var(--surface)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>שאלה {i + 1} / Q{i + 1}</span>
+            {pairs.length > 1 && (
+              <button onClick={() => removePair(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+            )}
+          </div>
+          <input
+            value={pair.q}
+            onChange={e => update(i, 'q', e.target.value)}
+            placeholder="השאלה / Question"
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, outline: 'none' }}
+          />
+          <textarea
+            value={pair.a}
+            onChange={e => update(i, 'a', e.target.value)}
+            placeholder="התשובה שלך / Your answer"
+            rows={2}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'var(--font-sans)' }}
+          />
+        </div>
+      ))}
+      <button onClick={addPair} style={{ padding: '8px', borderRadius: 8, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>
+        + הוסף שאלה / Add question
+      </button>
+    </div>
+  )
+}
+
+// ── Working Hours stage ───────────────────────────────────────────────────────
+function WorkingHoursStage({ days, hours, onChange, jewishHolidays, onJewishHolidays }) {
+  function update(i, field, val) {
+    onChange(hours.map((h, idx) => idx === i ? { ...h, [field]: val } : h))
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>שעות פעילות / Business hours</div>
+
+      {days.map((day, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: 'var(--surface)', border: `1px solid ${hours[i].active ? 'var(--accent)' : 'var(--border)'}` }}>
+          {/* Active toggle */}
+          <input
+            type="checkbox"
+            checked={hours[i].active}
+            onChange={e => update(i, 'active', e.target.checked)}
+            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          {/* Day name */}
+          <span style={{ fontSize: 12, fontWeight: 600, color: hours[i].active ? 'var(--text)' : 'var(--text-muted)', minWidth: 80 }}>{day}</span>
+          {/* Hours */}
+          {hours[i].active ? (
+            <>
+              <input
+                type="time"
+                value={hours[i].from}
+                onChange={e => update(i, 'from', e.target.value)}
+                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, flex: 1 }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+              <input
+                type="time"
+                value={hours[i].to}
+                onChange={e => update(i, 'to', e.target.value)}
+                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, flex: 1 }}
+              />
+            </>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>סגור / Closed</span>
+          )}
+        </div>
+      ))}
+
+      {/* Jewish holidays */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', marginTop: 4 }}>
+        <input
+          type="checkbox"
+          checked={jewishHolidays}
+          onChange={e => onJewishHolidays(e.target.checked)}
+          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+        />
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>✡️ שמור על חגים יהודיים / Observe Jewish holidays</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            בחגים — הסוכן ימשיך לענות אך אסקלציות יועברו ביום העבודה הבא
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            On holidays — agent keeps replying but escalations wait for next business day
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

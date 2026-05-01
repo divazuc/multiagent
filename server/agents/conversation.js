@@ -63,6 +63,10 @@ export async function runConversation({ message, session_id, context }) {
 
     const { next_stage, action, cta_triggered } = mapCtaDecision(intent.cta_decision, agent_mode);
 
+    // Human-like delay before responding
+    const answerLength = business_profile?.answer_length ?? persona?.answer_length ?? 'short';
+    await humanDelay(validated.text, answerLength);
+
     return ok({
       response: validated.text,
       next_stage, action, cta_triggered,
@@ -265,6 +269,18 @@ async function callClaude(system, history, message) {
     model: MODEL, max_tokens: 512, system, messages,
   });
   return response.content[0].text.trim();
+}
+
+// ── Human-like reply delay ────────────────────────────────────────────────────
+// Mimics real typing time so the conversation feels natural, not instant-bot
+
+async function humanDelay(text, answerLength) {
+  const words  = (text ?? '').split(/\s+/).length;
+  let ms;
+  if (answerLength === 'detailed' || words > 40) ms = 8000 + Math.random() * 4000;   // 8–12s
+  else if (answerLength === 'medium' || words > 20) ms = 5000 + Math.random() * 3000; // 5–8s
+  else ms = 3000 + Math.random() * 2000;                                               // 3–5s
+  await new Promise(r => setTimeout(r, ms));
 }
 
 function ok(result) { return { status: 'success', result, error: null }; }

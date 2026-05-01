@@ -180,11 +180,13 @@ const SETUP_STAGE_FLOW = {
   tone:             'response_length',
   response_length:  'emoji_usage',
   emoji_usage:      'escalation',
-  escalation:       'faq_examples',
+  escalation:       'escalation_other',
+  escalation_other: 'faq_examples',
   faq_examples:     'objections',
   objections:       'forbidden_claims',
   forbidden_claims: 'final_note',
-  final_note:       'confirm_and_commit',
+  final_note:       'working_hours',
+  working_hours:    'confirm_and_commit',
 };
 
 app.post('/setup/save', async (req, res) => {
@@ -269,7 +271,9 @@ app.post('/setup/commit', async (req, res) => {
       services:              d.faq_topics ?? [],
       persona:               d.persona ?? {},
       guardrails:            d.guardrails ?? {},
-      knowledge:             { faq: d.faq_examples ?? '', objection_handling: d.objections ?? '' },
+      knowledge:             { faq: d.faq_pairs ?? d.faq_examples ?? '', objection_handling: d.objections ?? '' },
+      working_hours:         d.working_hours ?? null,
+      escalation_other:      d.escalation_other ?? null,
       setup_completed:       true,
       committed_at:          new Date().toISOString(),
     }, { onConflict: 'business_id' });

@@ -13,7 +13,8 @@ const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const WEBHOOK_PATH = AGENT_BASE ? `${AGENT_BASE}/wa-inbound` : '/api/agent/wa-inbound'
 
 export default function App() {
-  const [authed, setAuthed] = useState(() => localStorage.getItem('wa_studio_auth') === '1')
+  const isDev = import.meta.env.DEV
+  const [authed, setAuthed] = useState(() => isDev || localStorage.getItem('wa_studio_auth') === '1')
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [messages, setMessages] = useState([])
