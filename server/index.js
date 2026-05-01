@@ -288,6 +288,66 @@ app.post('/setup/commit', async (req, res) => {
   }
 });
 
+// ── Business preferences update ──────────────────────────────────────────────
+app.post('/business/update', async (req, res) => {
+  const { business_id, updates } = req.body ?? {};
+  if (!business_id || !updates) return res.status(400).json({ status: 'error', message: 'business_id and updates required' });
+
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const { error } = await supabase
+      .from('business_profiles')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('business_id', business_id);
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+    return res.json({ status: 'success' });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// ── Knowledge sync — rebuild knowledge field from active FAQ items ─────────────
+app.post('/knowledge/sync', async (req, res) => {
+  const { business_id } = req.body ?? {};
+  if (!business_id) return res.status(400).json({ status: 'error', message: 'business_id required' });
+
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+
+    const { data: items } = await supabase
+      .from('knowledge_items')
+      .select('question, answer, category')
+      .eq('business_id', business_id)
+      .eq('is_active', true)
+      .order('category');
+
+    if (!items?.length) return res.json({ status: 'success', synced: 0 });
+
+    // Build structured knowledge summary the agent can read
+    const grouped = items.reduce((acc, item) => {
+      if (!acc[item.category]) acc[item.category] = [];
+      if (item.answer) acc[item.category].push(`Q: ${item.question}\nA: ${item.answer}`);
+      return acc;
+    }, {});
+
+    const knowledge_summary = Object.entries(grouped)
+      .map(([cat, qs]) => `[${cat}]\n${qs.join('\n\n')}`)
+      .join('\n\n---\n\n');
+
+    await supabase
+      .from('business_profiles')
+      .update({
+        knowledge: { ...{}, faq_summary: knowledge_summary, synced_at: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('business_id', business_id);
+
+    return res.json({ status: 'success', synced: items.length });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT ?? 8080;
 loadAgents().then(() => {

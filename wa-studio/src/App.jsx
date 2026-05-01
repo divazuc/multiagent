@@ -6,6 +6,7 @@ import ChatInterface from './components/ChatInterface.jsx'
 import DBInspector from './components/DBInspector.jsx'
 import RunsPanel from './components/RunsPanel.jsx'
 import SetupWizard from './components/SetupWizard.jsx'
+import BusinessPreferences from './components/BusinessPreferences.jsx'
 import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
 
@@ -21,7 +22,8 @@ export default function App() {
   const [dbState, setDbState] = useState({ session: null, draft: null, profile: null, messages: [] })
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
-  const [faqOpen, setFaqOpen] = useState(false)
+  const [faqOpen, setFaqOpen]   = useState(false)
+  const [prefsOpen, setPrefsOpen] = useState(false)
   const [rightPanel, setRightPanel] = useState('db') // 'db' | 'runs'
   const [showSessions, setShowSessions] = useState(false)
   const [showRight, setShowRight] = useState(false)
@@ -289,7 +291,15 @@ export default function App() {
           onRefresh={refreshSessions}
           className={showSessions ? 'open' : ''}
         />
-        {faqOpen && activeSession?.business_id
+        {prefsOpen && activeSession?.business_id && dbState.profile
+          ? (
+            <BusinessPreferences
+              session={activeSession}
+              profile={dbState.profile}
+              onClose={() => setPrefsOpen(false)}
+              onSaved={() => refreshDB(activeSession?.session_id)}
+            />
+          ) : faqOpen && activeSession?.business_id
           ? (
             <FaqPanel
               businessId={activeSession.business_id}
@@ -315,6 +325,7 @@ export default function App() {
               onStartOnboarding={() => activeSession && handleRestartSession(activeSession, 'learning', activeSession.business_id)}
               onActivateLive={handleActivateLive}
               onOpenFaq={() => setFaqOpen(true)}
+              onOpenPrefs={() => setPrefsOpen(true)}
             />
           )
         }

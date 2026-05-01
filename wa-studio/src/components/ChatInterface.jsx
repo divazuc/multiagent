@@ -3,7 +3,7 @@ import { SETUP_STAGES, ARCHETYPE_STAGE_PATHS } from '../lib/presets.js'
 
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 
-export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq }) {
+export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq, onOpenPrefs }) {
   const [input, setInput] = useState('')
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -60,7 +60,12 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
         </div>
         <div className="chat-header-right">
           {session?.business_id && (
-            <button className="btn-faq" onClick={onOpenFaq} title="Manage FAQ">FAQ ✎</button>
+            <>
+              <button className="btn-faq" onClick={onOpenFaq} title="Manage FAQ">FAQ ✎</button>
+              {session?.setup_completed && onOpenPrefs && (
+                <button className="btn-faq" onClick={onOpenPrefs} title="Business Preferences">⚙️</button>
+              )}
+            </>
           )}
           {messages.length > 0 && (
             <button className="btn-icon" onClick={onClear} title="Clear chat">✕</button>

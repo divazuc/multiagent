@@ -18,6 +18,14 @@ function sortItems(items) {
   return [...items].sort((a, b) => order[itemStatus(a)] - order[itemStatus(b)])
 }
 
+const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
+const syncKnowledge = (businessId) => {
+  fetch(AGENT_BASE ? `${AGENT_BASE}/knowledge/sync` : '/api/agent/knowledge/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ business_id: businessId }),
+  }).catch(() => {})
+}
+
 export default function FaqPanel({ businessId, businessName, onClose }) {
   const [items, setItems]           = useState([])
   const [loading, setLoading]       = useState(true)
@@ -71,6 +79,7 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
       })
       cancelEdit(item.id)
       await load()
+      syncKnowledge(businessId)
     } catch (e) { setError(e.message) }
     finally { setSaving(false) }
   }
@@ -79,6 +88,7 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
     try {
       await updateFaqItem(item.id, { is_active: !item.is_active })
       await load()
+      syncKnowledge(businessId)
     } catch (e) { setError(e.message) }
   }
 
@@ -88,6 +98,7 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
       await deleteFaqItem(id)
       if (expandedId === id) setExpandedId(null)
       await load()
+      syncKnowledge(businessId)
     } catch (e) { setError(e.message) }
   }
 
@@ -99,6 +110,7 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
       setNewItem({ category: 'general', question: '', answer: '' })
       setAddOpen(false)
       await load()
+      syncKnowledge(businessId)
     } catch (e) { setError(e.message) }
     finally { setSaving(false) }
   }
