@@ -215,7 +215,11 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
   }
 
   async function handleSave(valueOverride) {
-    const value = valueOverride ?? (stageConfig?.type === 'text' ? (textValue.trim() || null) : selections)
+    const value = valueOverride ?? (
+      stageConfig?.type === 'text'   ? (textValue.trim() || null) :
+      stageConfig?.type === 'single' ? (selections[0] ?? null) :
+      selections  // multi stays as array
+    )
     if (!value && stageConfig?.type !== 'text') return
     setSaving(true)
     setError(null)
@@ -405,7 +409,7 @@ function ConfirmStage({ draft, onCommit, saving }) {
   const lines = [
     draft?.archetype       && `Business type: ${draft.archetype}`,
     draft?.agent_mode      && `Agent mode: ${draft.agent_mode}`,
-    draft?.cta_goal        && `CTA goal: ${draft.cta_goal.replace(/_/g, ' ')}`,
+    draft?.cta_goal        && `CTA goal: ${[].concat(draft.cta_goal)[0]?.replace?.(/_/g, ' ') ?? draft.cta_goal}`,
     draft?.push_speed      && `Push speed: ${draft.push_speed}`,
     draft?.persona?.tone   && `Tone: ${[].concat(draft.persona.tone).join(', ')}`,
     draft?.faq_topics?.length && `FAQ topics: ${draft.faq_topics.length} selected`,
