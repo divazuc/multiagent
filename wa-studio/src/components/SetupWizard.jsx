@@ -175,10 +175,18 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState(null)
 
-  const currentStage = session?.current_setup_stage ?? session?.current_stage ?? 'business_type'
+  // Normalise legacy stage names → new wizard stages
+  const rawStage = session?.current_setup_stage ?? session?.current_stage ?? 'business_type'
+  const LEGACY_MAP = {
+    'collect_business_model': 'business_type',
+    'setup_start': 'business_type',
+    'start': 'business_type',
+    'collect_agent_mode': 'business_type',
+  }
+  const currentStage = LEGACY_MAP[rawStage] ?? rawStage
 
-  // Find current stage config
-  const stageConfig = STAGES.find(s => s.key === currentStage)
+  // Find current stage config — fall back to business_type if unknown
+  const stageConfig = STAGES.find(s => s.key === currentStage) ?? STAGES[0]
 
   // Resolve dynamic options
   const options = stageConfig?.dynamic

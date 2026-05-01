@@ -18,14 +18,14 @@ export async function loadContext({ message, session_id }) {
     // Brand-new session — no DB row exists at all
     if (!session) {
       await supabase.from('sessions').upsert(
-        { session_id, session_mode: 'setup', current_stage: 'collect_business_model', setup_completed: false },
+        { session_id, session_mode: 'setup', current_stage: 'business_type', current_setup_stage: 'business_type', setup_completed: false },
         { onConflict: 'session_id', ignoreDuplicates: true }
       );
       return ok({
         business_id: null,
         session_mode: 'setup',
         setup_completed: false,
-        current_stage: 'collect_business_model',
+        current_stage: 'business_type',
         draft_setup_data: {},
         business_profile: {},
         persona: {},
