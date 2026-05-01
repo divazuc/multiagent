@@ -5,7 +5,7 @@ import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
-  .split(',').map(s => s.trim().replace(/^["']|["']$/g, '')); // strip accidental quotes
+  .split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '')); // strip quotes + trailing slash
 console.log('[cors] allowed origins:', ALLOWED_ORIGINS);
 
 // Agents — imported lazily so missing files don't crash startup
