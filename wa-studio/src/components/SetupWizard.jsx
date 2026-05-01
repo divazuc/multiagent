@@ -175,9 +175,10 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
   const [textValue, setTextValue]   = useState('')
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState(null)
+  const [localStage, setLocalStage] = useState(null) // tracks stage locally after each save
 
   // Normalise legacy stage names → new wizard stages
-  const rawStage = session?.current_setup_stage ?? session?.current_stage ?? 'business_type'
+  const rawStage = localStage ?? session?.current_setup_stage ?? session?.current_stage ?? 'business_type'
   const LEGACY_MAP = {
     'collect_business_model': 'business_type',
     'setup_start': 'business_type',
@@ -228,6 +229,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       if (data.status !== 'success') throw new Error(data.message)
       setSelections([])
       setTextValue('')
+      if (data.next_stage) setLocalStage(data.next_stage)
       onRefreshDB?.()
     } catch (e) {
       logError(e.message, 'setup/save', e.stack)
