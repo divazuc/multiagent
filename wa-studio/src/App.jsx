@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Login from './components/Login.jsx'
+import { logError } from './components/ErrorBoundary.jsx'
 import SessionPanel from './components/SessionPanel.jsx'
 import ChatInterface from './components/ChatInterface.jsx'
 import DBInspector from './components/DBInspector.jsx'
