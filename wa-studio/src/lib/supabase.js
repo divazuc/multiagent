@@ -31,7 +31,7 @@ export async function createBusiness({ name, slug, archetype, planType = 'basic'
       is_test: isTest,
     })
     .select()
-    .single()
+    .maybeSingle()
   if (error) throw error
   return data
 }
@@ -66,7 +66,7 @@ export async function createSession(sessionId, mode, businessId = null) {
       current_setup_stage: mode === 'setup' ? 'business_type' : null,
     }, { onConflict: 'session_id' })
     .select()
-    .single()
+    .maybeSingle()
   if (error) throw error
   return data
 }
@@ -85,12 +85,12 @@ export async function listSessions() {
 
 export async function loadDBState(sessionId) {
   const [sessionRes, draftRes, profileRes, messagesRes] = await Promise.all([
-    supabase.from('sessions').select('*').eq('session_id', sessionId).single(),
+    supabase.from('sessions').select('*').eq('session_id', sessionId).maybeSingle(),
     supabase.from('setup_drafts').select('*').eq('session_id', sessionId).maybeSingle(),
-    supabase.from('sessions').select('business_id').eq('session_id', sessionId).single()
+    supabase.from('sessions').select('business_id').eq('session_id', sessionId).maybeSingle()
       .then(async r => {
         if (!r.data?.business_id) return { data: null }
-        return supabase.from('business_profiles').select('*').eq('business_id', r.data.business_id).single()
+        return supabase.from('business_profiles').select('*').eq('business_id', r.data.business_id).maybeSingle()
       }),
     supabase.from('conversation_messages')
       .select('*').eq('session_id', sessionId)
@@ -177,7 +177,7 @@ export async function addFaqItem(businessId, { category, question, answer = '', 
       language: 'he',
       is_active: false,
     })
-    .select().single()
+    .select().maybeSingle()
   if (error) throw error
   return data
 }

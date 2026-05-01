@@ -90,7 +90,7 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
           <div className="empty-chat">
             <div className="empty-icon">💬</div>
             <div>Select a session to begin</div>
-            <div className="muted">Messages flow through n8n ← Claude ← DB</div>
+            <div className="muted">הודעות זורמות דרך הסוכן ← Claude ← DB</div>
           </div>
         )}
         {messages.map((m, i) => {
