@@ -3,7 +3,7 @@ import { SETUP_STAGES, ARCHETYPE_STAGE_PATHS } from '../lib/presets.js'
 
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 
-export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq, onOpenPrefs }) {
+export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq, onOpenPrefs, agentActive, onToggleActive }) {
   const [input, setInput] = useState('')
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -64,6 +64,16 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
               <button className="btn-faq" onClick={onOpenFaq} title="Manage FAQ">FAQ ✎</button>
               {session?.setup_completed && onOpenPrefs && (
                 <button className="btn-faq" onClick={onOpenPrefs} title="Business Preferences">⚙️</button>
+              )}
+              {session?.session_mode === 'live' && onToggleActive && (
+                <button
+                  className="btn-faq"
+                  onClick={() => onToggleActive(!(agentActive ?? true))}
+                  title={agentActive !== false ? 'Pause agent' : 'Resume agent'}
+                  style={{ color: agentActive !== false ? 'var(--accent)' : '#f87171' }}
+                >
+                  {agentActive !== false ? '⏸' : '▶'}
+                </button>
               )}
             </>
           )}

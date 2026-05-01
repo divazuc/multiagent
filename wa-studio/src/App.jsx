@@ -53,7 +53,7 @@ export default function App() {
     const name = session.business_name || session.session_id
     const mode = session.session_mode
     const stage = session.current_setup_stage || session.current_stage
-    const stageAdvanced = stage && stage !== 'collect_business_model' && stage !== 'business_type' && stage !== 'setup_start' && stage !== 'start'
+    const stageAdvanced = stage && !['collect_business_model', 'business_details', 'business_type', 'setup_start', 'start'].includes(stage)
     const hasHistory = dbState.messages?.length > 0 || stageAdvanced
 
     if (hasHistory) {
@@ -158,6 +158,20 @@ export default function App() {
     } catch (e) {
       console.error('DB refresh failed', e)
       setMessages([buildWelcomeMessage(session, { messages: [] })])
+    }
+  }
+
+  async function handleToggleActive(active) {
+    if (!activeSession?.business_id) return
+    try {
+      await fetch(`${AGENT_BASE ? AGENT_BASE : '/api/agent'}/business/toggle-active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: activeSession.business_id, active }),
+      })
+      await refreshDB(activeSession.session_id)
+    } catch (e) {
+      setError('Toggle failed: ' + e.message)
     }
   }
 
@@ -314,6 +328,11 @@ export default function App() {
               sending={sending}
               onSend={handleSendMessage}
               onRefreshDB={() => refreshDB(activeSession?.session_id)}
+              onCommitted={async () => {
+                await refreshSessions()
+                const updated = await refreshDB(activeSession?.session_id)
+                setActiveSession(prev => prev ? { ...prev, setup_completed: true, session_mode: 'live' } : prev)
+              }}
             />
           ) : (
             <ChatInterface
@@ -326,6 +345,8 @@ export default function App() {
               onActivateLive={handleActivateLive}
               onOpenFaq={() => setFaqOpen(true)}
               onOpenPrefs={() => setPrefsOpen(true)}
+              agentActive={dbState.profile?.agent_active ?? true}
+              onToggleActive={handleToggleActive}
             />
           )
         }

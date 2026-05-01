@@ -91,6 +91,56 @@ app.post('/wa-inbound', async (req, res) => {
     const { session_mode, business_id } = context;
     run.business_id = business_id;
 
+    // Step 2b — Agent activation pre-checks (live mode only)
+    if (session_mode === 'live' && business_id) {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: profile } = await supabase
+        .from('business_profiles')
+        .select('agent_active, answer_after_hours, after_hours_message, new_contacts_only, skip_initiated_conversations, working_hours')
+        .eq('business_id', business_id)
+        .maybeSingle();
+
+      if (profile) {
+        if (profile.agent_active === false) {
+          await completeRun(run, { skipped: 'agent_inactive' });
+          return res.json({ status: 'success', message: '', skipped: true, skip_reason: 'agent_inactive' });
+        }
+
+        if (profile.answer_after_hours === false && !isWithinWorkingHours(profile.working_hours)) {
+          const msg = profile.after_hours_message || '';
+          await completeRun(run, { skipped: 'after_hours' });
+          return res.json({ status: 'success', message: msg, skipped: true, skip_reason: 'after_hours' });
+        }
+
+        if (profile.new_contacts_only === true) {
+          const { count } = await supabase
+            .from('conversation_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('session_id', session_id)
+            .eq('business_id', business_id);
+          if (count > 0) {
+            await completeRun(run, { skipped: 'known_contact' });
+            return res.json({ status: 'success', message: '', skipped: true, skip_reason: 'known_contact' });
+          }
+        }
+
+        if (profile.skip_initiated_conversations === true) {
+          const { data: firstMsg } = await supabase
+            .from('conversation_messages')
+            .select('user_message')
+            .eq('session_id', session_id)
+            .eq('business_id', business_id)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (firstMsg && !firstMsg.user_message) {
+            await completeRun(run, { skipped: 'business_initiated' });
+            return res.json({ status: 'success', message: '', skipped: true, skip_reason: 'business_initiated' });
+          }
+        }
+      }
+    }
+
     // Step 3 — Route by session mode
     let agentResult;
 
@@ -172,21 +222,35 @@ app.post('/wa-inbound', async (req, res) => {
 // ── Setup: direct structured save (no LLM) ───────────────────────────────────
 // Used by the wizard for clickable stages — fast, no Claude call needed
 
+function isWithinWorkingHours(working_hours) {
+  if (!working_hours?.days) return true;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const dayIdx = now.getDay();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const day = working_hours.days[dayIdx];
+  if (!day?.active) return false;
+  const [fH, fM] = (day.from || '09:00').split(':').map(Number);
+  const [tH, tM] = (day.to   || '18:00').split(':').map(Number);
+  return cur >= fH * 60 + fM && cur <= tH * 60 + tM;
+}
+
 const SETUP_STAGE_FLOW = {
-  business_type:    'faq_topics',
-  faq_topics:       'cta_goal',
-  cta_goal:         'push_speed',   // support_only overrides to 'tone' below
-  push_speed:       'tone',
-  tone:             'response_length',
-  response_length:  'emoji_usage',
-  emoji_usage:      'escalation',
-  escalation:       'escalation_other',
-  escalation_other: 'faq_examples',
-  faq_examples:     'objections',
-  objections:       'forbidden_claims',
-  forbidden_claims: 'final_note',
-  final_note:       'working_hours',
-  working_hours:    'confirm_and_commit',
+  business_details:    'business_type',
+  business_type:       'faq_topics',
+  faq_topics:          'cta_goal',
+  cta_goal:            'push_speed',   // support_only overrides to 'tone' below
+  push_speed:          'tone',
+  tone:                'response_length',
+  response_length:     'emoji_usage',
+  emoji_usage:         'escalation',
+  escalation:          'escalation_other',
+  escalation_other:    'faq_examples',
+  faq_examples:        'objections',
+  objections:          'forbidden_claims',
+  forbidden_claims:    'final_note',
+  final_note:          'working_hours',
+  working_hours:       'agent_availability',
+  agent_availability:  'confirm_and_commit',
 };
 
 app.post('/setup/save', async (req, res) => {
@@ -198,12 +262,13 @@ app.post('/setup/save', async (req, res) => {
   try {
     const { supabase } = await import('./lib/supabase.js');
 
-    // Load current draft
-    const { data: draftRow } = await supabase
-      .from('setup_drafts')
-      .select('draft_setup_data, current_setup_stage')
-      .eq('session_id', session_id)
-      .maybeSingle();
+    // Load current draft + business_id from session
+    const [draftRes, sessionRes] = await Promise.all([
+      supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage, business_id').eq('session_id', session_id).maybeSingle(),
+      supabase.from('sessions').select('business_id').eq('session_id', session_id).maybeSingle(),
+    ]);
+    const draftRow   = draftRes.data;
+    const business_id = draftRow?.business_id ?? sessionRes.data?.business_id ?? null;
 
     const draft = draftRow?.draft_setup_data ?? {};
 
@@ -222,9 +287,9 @@ app.post('/setup/save', async (req, res) => {
     let next = SETUP_STAGE_FLOW[stage] ?? 'confirm_and_commit';
     if (stage === 'cta_goal' && value === 'support_only') next = 'tone'; // skip push_speed
 
-    // Upsert draft
+    // Upsert draft (always persist business_id)
     await supabase.from('setup_drafts').upsert(
-      { session_id, current_setup_stage: next, draft_setup_data: updated, updated_at: new Date().toISOString() },
+      { session_id, business_id, current_setup_stage: next, draft_setup_data: updated, updated_at: new Date().toISOString() },
       { onConflict: 'session_id' }
     );
 
@@ -244,43 +309,70 @@ app.post('/setup/save', async (req, res) => {
 
 // ── Setup: commit finalized profile ──────────────────────────────────────────
 app.post('/setup/commit', async (req, res) => {
-  const { session_id } = req.body;
+  const { session_id, business_id: req_business_id } = req.body;
   if (!session_id) return res.status(400).json({ status: 'error', message: 'session_id required' });
 
   try {
     const { supabase } = await import('./lib/supabase.js');
 
-    const { data: draftRow } = await supabase
-      .from('setup_drafts')
-      .select('draft_setup_data, business_id')
-      .eq('session_id', session_id)
-      .maybeSingle();
+    const [draftRes, sessionRes] = await Promise.all([
+      supabase.from('setup_drafts').select('draft_setup_data').eq('session_id', session_id).maybeSingle(),
+      supabase.from('sessions').select('business_id').eq('session_id', session_id).maybeSingle(),
+    ]);
 
-    if (!draftRow) return res.status(404).json({ status: 'error', message: 'No draft found' });
+    if (!draftRes.data) return res.status(404).json({ status: 'error', message: 'No draft found' });
 
-    const d = draftRow.draft_setup_data ?? {};
-    const business_id = draftRow.business_id;
+    const d = draftRes.data.draft_setup_data ?? {};
+    const business_id = req_business_id || sessionRes.data?.business_id || null;
+
+    if (!business_id) return res.status(400).json({ status: 'error', message: 'business_id not found for this session' });
+
+    const det = d.business_details ?? {};
+    const avail = d.agent_availability ?? {};
 
     const { error } = await supabase.from('business_profiles').upsert({
-      business_id, session_id,
-      business_model:        d.archetype ?? null,
-      agent_mode:            d.agent_mode ?? 'hybrid',
-      cta_goal:              d.cta_goal ?? null,
-      push_speed:            d.push_speed ?? 'balanced',
-      faq_topics:            d.faq_topics ?? [],
-      services:              d.faq_topics ?? [],
-      persona:               d.persona ?? {},
-      guardrails:            d.guardrails ?? {},
-      knowledge:             { faq: d.faq_pairs ?? d.faq_examples ?? '', objection_handling: d.objections ?? '' },
-      working_hours:         d.working_hours ?? null,
-      escalation_other:      d.escalation_other ?? null,
-      setup_completed:       true,
-      committed_at:          new Date().toISOString(),
+      business_id,
+      session_id,
+      business_model:               d.archetype ?? null,
+      agent_mode:                   d.agent_mode ?? 'hybrid',
+      cta_goal:                     d.cta_goal ?? null,
+      push_speed:                   d.push_speed ?? 'balanced',
+      faq_topics:                   d.faq_topics ?? [],
+      services:                     d.faq_topics ?? [],
+      key_questions:                [],
+      objection_handling:           [],
+      persona:                      d.persona ?? {},
+      guardrails:                   d.guardrails ?? {},
+      hebrew_patterns:              {},
+      draft_setup_data:             d,
+      knowledge:                    { faq: Array.isArray(d.faq_pairs) ? d.faq_pairs.map(p => `Q: ${p.q}\nA: ${p.a}`).join('\n\n') : '', objection_handling: d.objections ?? '' },
+      working_hours:                d.working_hours ?? null,
+      escalation_other:             d.escalation_other ?? null,
+      contact_name:                 det.contact_name ?? null,
+      contact_phone:                det.contact_phone ?? null,
+      contact_email:                det.contact_email ?? null,
+      agent_active:                 avail.agent_active ?? true,
+      answer_after_hours:           avail.answer_after_hours ?? true,
+      after_hours_message:          avail.after_hours_message ?? null,
+      new_contacts_only:            avail.new_contacts_only ?? false,
+      skip_initiated_conversations: avail.skip_initiated_conversations ?? true,
+      setup_completed:              true,
+      committed_at:                 new Date().toISOString(),
     }, { onConflict: 'business_id' });
 
     if (error) return res.status(500).json({ status: 'error', message: error.message });
 
-    await supabase.from('sessions').update({ setup_completed: true }).eq('session_id', session_id);
+    // Sync contact details back to businesses table
+    const bizUpdate = {};
+    if (det.business_name)  bizUpdate.name = det.business_name;
+    if (det.contact_name)   bizUpdate.contact_name = det.contact_name;
+    if (det.contact_email)  bizUpdate.contact_email = det.contact_email;
+    if (det.contact_phone)  bizUpdate.whatsapp_number = det.contact_phone;
+    if (Object.keys(bizUpdate).length) {
+      await supabase.from('businesses').update(bizUpdate).eq('id', business_id);
+    }
+
+    await supabase.from('sessions').update({ setup_completed: true, session_mode: 'live' }).eq('session_id', session_id);
 
     return res.json({ status: 'success', message: 'Setup complete' });
   } catch (e) {
@@ -301,6 +393,24 @@ app.post('/business/update', async (req, res) => {
       .eq('business_id', business_id);
     if (error) return res.status(500).json({ status: 'error', message: error.message });
     return res.json({ status: 'success' });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// ── Business: toggle agent active ────────────────────────────────────────────
+app.post('/business/toggle-active', async (req, res) => {
+  const { business_id, active } = req.body ?? {};
+  if (!business_id || typeof active !== 'boolean')
+    return res.status(400).json({ status: 'error', message: 'business_id and active (boolean) required' });
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const { error } = await supabase
+      .from('business_profiles')
+      .update({ agent_active: active })
+      .eq('business_id', business_id);
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+    return res.json({ status: 'success', agent_active: active });
   } catch (e) {
     return res.status(500).json({ status: 'error', message: e.message });
   }

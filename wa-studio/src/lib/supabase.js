@@ -62,8 +62,8 @@ export async function createSession(sessionId, mode, businessId = null) {
       session_mode: mode,
       business_id: businessId,
       setup_completed: mode !== 'setup',
-      current_stage: mode === 'setup' ? 'business_type' : 'start',
-      current_setup_stage: mode === 'setup' ? 'business_type' : null,
+      current_stage: mode === 'setup' ? 'business_details' : 'start',
+      current_setup_stage: mode === 'setup' ? 'business_details' : null,
     }, { onConflict: 'session_id' })
     .select()
     .maybeSingle()

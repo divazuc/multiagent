@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { loadFaqItems, updateFaqItem, deleteFaqItem, addFaqItem } from '../lib/supabase.js'
-import { CATEGORIES, ARCHETYPES, ARCHETYPE_KEYS } from '../lib/faq-starters.js'
+import { CATEGORIES, ARCHETYPES, ARCHETYPE_KEYS, FAQ_STARTERS_BY_CATEGORY } from '../lib/faq-starters.js'
 
 const STATUS = {
   pending:  { label: 'ממתין',   cls: 'fq-status-pending'  },
@@ -27,14 +27,16 @@ const syncKnowledge = (businessId) => {
 }
 
 export default function FaqPanel({ businessId, businessName, onClose }) {
-  const [items, setItems]           = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
-  const [expandedId, setExpandedId] = useState(null)
-  const [editState, setEditState]   = useState({})
-  const [addOpen, setAddOpen]       = useState(false)
-  const [newItem, setNewItem]       = useState({ category: 'general', question: '', answer: '' })
-  const [saving, setSaving]         = useState(false)
+  const [items, setItems]               = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState(null)
+  const [expandedId, setExpandedId]     = useState(null)
+  const [editState, setEditState]       = useState({})
+  const [addOpen, setAddOpen]           = useState(false)
+  const [newItem, setNewItem]           = useState({ category: 'general', question: '', answer: '' })
+  const [saving, setSaving]             = useState(false)
+  const [suggestOpen, setSuggestOpen]   = useState(false)
+  const [expandedCat, setExpandedCat]   = useState(null)
 
   useEffect(() => { load() }, [businessId])
 
@@ -115,6 +117,22 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
     finally { setSaving(false) }
   }
 
+  function useSuggestion(suggestion) {
+    setNewItem({ category: suggestion.category, question: suggestion.question, answer: suggestion.answer })
+    setAddOpen(true)
+    setSuggestOpen(false)
+    // scroll to top so form is visible
+    document.querySelector('.fq-list')?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Build suggestions list — exclude questions already in the FAQ
+  const existingQuestions = new Set(items.map(i => i.question.trim().toLowerCase()))
+  const suggestions = Object.entries(FAQ_STARTERS_BY_CATEGORY).map(([cat, starters]) => ({
+    cat,
+    label: CATEGORIES[cat] || cat,
+    items: starters.filter(s => !existingQuestions.has(s.question.trim().toLowerCase())),
+  })).filter(g => g.items.length > 0)
+
   const pending  = items.filter(i => itemStatus(i) === 'pending')
   const answered = items.filter(i => itemStatus(i) !== 'pending')
 
@@ -126,9 +144,19 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
           <span className="fq-title">Knowledge Base</span>
           <span className="fq-subtitle" lang="he">{businessName}</span>
         </div>
-        <button className="fq-add-btn" onClick={() => setAddOpen(o => !o)}>
-          {addOpen ? '✕' : '+ שאלה חדשה'}
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            className="fq-add-btn"
+            onClick={() => { setSuggestOpen(o => !o); setAddOpen(false) }}
+            style={{ background: suggestOpen ? 'var(--accent)' : undefined }}
+            title="הצעות שאלות"
+          >
+            💡 הצעות
+          </button>
+          <button className="fq-add-btn" onClick={() => { setAddOpen(o => !o); setSuggestOpen(false) }}>
+            {addOpen ? '✕' : '+ חדש'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="fq-error">{error}</div>}
@@ -165,6 +193,46 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
               <button className="fq-btn-save" onClick={handleAdd} disabled={saving || !newItem.question.trim()}>שמור</button>
               <button className="fq-btn-cancel" onClick={() => { setAddOpen(false); setNewItem({ category: 'general', question: '', answer: '' }) }}>ביטול</button>
             </div>
+          </div>
+        )}
+
+        {suggestOpen && (
+          <div className="fq-suggest-panel" lang="he">
+            <div className="fq-suggest-header">
+              💡 שאלות מוצעות — לחץ <strong>+</strong> להוספה ועריכה לפני שמירה
+            </div>
+            {suggestions.length === 0 && (
+              <div className="fq-state-msg">כל ההצעות כבר נוספו 🎉</div>
+            )}
+            {suggestions.map(group => (
+              <div key={group.cat} className="fq-suggest-group">
+                <div
+                  className="fq-suggest-group-hd"
+                  onClick={() => setExpandedCat(expandedCat === group.cat ? null : group.cat)}
+                >
+                  <span>{group.label}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="fq-count">{group.items.length}</span>
+                    <span>{expandedCat === group.cat ? '▾' : '▸'}</span>
+                  </span>
+                </div>
+                {expandedCat === group.cat && group.items.map((s, i) => (
+                  <div key={i} className="fq-suggest-row">
+                    <div className="fq-suggest-content">
+                      <div className="fq-suggest-q" dir="rtl">{s.question}</div>
+                      <div className="fq-suggest-a" dir="rtl">{s.answer}</div>
+                    </div>
+                    <button
+                      className="fq-suggest-add-btn"
+                      onClick={() => useSuggestion(s)}
+                      title="הוסף וערוך"
+                    >
+                      +
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         )}
 

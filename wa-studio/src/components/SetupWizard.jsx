@@ -41,6 +41,12 @@ const FAQ_TOPICS = {
 // ── Stage definitions ─────────────────────────────────────────────────────────
 const STAGES = [
   {
+    key: 'business_details',
+    title: 'קצת פרטים עליך / A bit about you',
+    subtitle: 'כדי שהסוכן ידע מי אתה ואיך ליצור איתך קשר',
+    type: 'details',
+  },
+  {
     key: 'business_type',
     title: 'סוג העסק / Business type',
     type: 'single',
@@ -175,6 +181,12 @@ const STAGES = [
     type: 'working_hours',
   },
   {
+    key: 'agent_availability',
+    title: 'מתי הסוכן יענה? / When should the agent respond?',
+    subtitle: 'הגדר את תנאי הפעלת הסוכן / Set activation conditions',
+    type: 'availability',
+  },
+  {
     key: 'confirm_and_commit',
     title: '🚀 מוכן להפעיל את הסוכן? / Ready to activate?',
     type: 'confirm',
@@ -185,7 +197,7 @@ const PROGRESS_KEYS = STAGES.map(s => s.key)
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function SetupWizard({ session, draft, sending, onSend, onRefreshDB }) {
+export default function SetupWizard({ session, draft, sending, onSend, onRefreshDB, onCommitted }) {
   const [selections, setSelections] = useState([])
   const [textValue, setTextValue]   = useState('')
   const [saving, setSaving]         = useState(false)
@@ -195,10 +207,11 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
   // Normalise legacy stage names → new wizard stages
   const rawStage = localStage ?? session?.current_setup_stage ?? session?.current_stage ?? 'business_type'
   const LEGACY_MAP = {
-    'collect_business_model': 'business_type',
-    'setup_start': 'business_type',
-    'start': 'business_type',
-    'collect_agent_mode': 'business_type',
+    'collect_business_model': 'business_details',
+    'setup_start':            'business_details',
+    'start':                  'business_details',
+    'collect_agent_mode':     'business_details',
+    'business_type':          'business_type', // keep valid — existing sessions mid-flow
   }
   const currentStage = LEGACY_MAP[rawStage] ?? rawStage
 
@@ -234,6 +247,8 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       stageConfig?.type === 'text'          ? (textValue.trim() || null) :
       stageConfig?.type === 'faq_pairs'     ? faqPairs.filter(p => p.q.trim()) :
       stageConfig?.type === 'working_hours' ? { days: hours, jewish_holidays: jewishHolidays } :
+      stageConfig?.type === 'details'       ? details :
+      stageConfig?.type === 'availability'  ? availability :
       stageConfig?.type === 'single'        ? (selections[0] ?? null) :
       selections  // multi stays as array
     )
@@ -267,11 +282,12 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       const res = await fetch(API('/setup/commit'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: session.session_id }),
+        body: JSON.stringify({ session_id: session.session_id, business_id: session.business_id }),
       })
       const data = await res.json()
       if (data.status !== 'success') throw new Error(data.message)
       onRefreshDB?.()
+      onCommitted?.()  // triggers session list refresh in App so setup_completed flips
     } catch (e) {
       logError(e.message, 'setup/commit', e.stack)
       setError(e.message)
@@ -279,6 +295,23 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       setSaving(false)
     }
   }
+
+  // Business details state
+  const [details, setDetails] = useState(() => ({
+    business_name: draft?.business_details?.business_name ?? '',
+    contact_name:  draft?.business_details?.contact_name  ?? '',
+    contact_phone: draft?.business_details?.contact_phone ?? '',
+    contact_email: draft?.business_details?.contact_email ?? '',
+  }))
+
+  // Agent availability state
+  const [availability, setAvailability] = useState(() => ({
+    agent_active:                 draft?.agent_availability?.agent_active                 ?? true,
+    answer_after_hours:           draft?.agent_availability?.answer_after_hours           ?? true,
+    after_hours_message:          draft?.agent_availability?.after_hours_message          ?? 'תודה שפנית! 😊 אנחנו לא זמינים כרגע. נחזור אליך בהקדם בשעות הפעילות שלנו.',
+    new_contacts_only:            draft?.agent_availability?.new_contacts_only            ?? false,
+    skip_initiated_conversations: draft?.agent_availability?.skip_initiated_conversations ?? true,
+  }))
 
   // FAQ pairs state
   const [faqPairs, setFaqPairs] = useState([{ q: '', a: '' }])
@@ -290,8 +323,10 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
   )
   const [jewishHolidays, setJewishHolidays] = useState(true)
 
-  const canContinue = stageConfig?.type === 'text' || stageConfig?.type === 'faq_pairs' || stageConfig?.type === 'working_hours'
-    ? true  // optional stages always allow continue
+  const canContinue = ['text', 'faq_pairs', 'working_hours', 'availability'].includes(stageConfig?.type)
+    ? true
+    : stageConfig?.type === 'details'
+    ? details.contact_name.trim().length > 0
     : selections.length > 0
 
   return (
@@ -323,6 +358,10 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
           <SkipNotice label={stageConfig?.title} onSkip={() => handleSave(null)} saving={saving} />
         ) : stageConfig?.type === 'confirm' ? (
           <ConfirmStage draft={draft} onCommit={handleCommit} saving={saving} />
+        ) : stageConfig?.type === 'details' ? (
+          <DetailsStage config={stageConfig} value={details} onChange={setDetails} />
+        ) : stageConfig?.type === 'availability' ? (
+          <AvailabilityStage config={stageConfig} value={availability} onChange={setAvailability} />
         ) : stageConfig?.type === 'faq_pairs' ? (
           <FaqPairsStage config={stageConfig} pairs={faqPairs} onChange={setFaqPairs} />
         ) : stageConfig?.type === 'working_hours' ? (
@@ -343,11 +382,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       {!shouldSkip && stageConfig?.type !== 'confirm' && (
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
           {(stageConfig?.type === 'text' || stageConfig?.type === 'faq_pairs') && (
-            <button
-              onClick={() => handleSave(null)}
-              disabled={saving}
-              style={btnStyle('ghost')}
-            >
+            <button onClick={() => handleSave(null)} disabled={saving} style={btnStyle('ghost')}>
               דלג / Skip
             </button>
           )}
@@ -588,6 +623,99 @@ function WorkingHoursStage({ days, hours, onChange, jewishHolidays, onJewishHoli
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Business Details stage ────────────────────────────────────────────────────
+function DetailsStage({ config, value, onChange }) {
+  const field = (key, label, placeholder, type = 'text') => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</label>
+      <input
+        type={type}
+        value={value[key]}
+        onChange={e => onChange(prev => ({ ...prev, [key]: e.target.value }))}
+        placeholder={placeholder}
+        style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, outline: 'none' }}
+      />
+    </div>
+  )
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{config.title}</div>
+        {config.subtitle && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{config.subtitle}</div>}
+      </div>
+      {field('business_name', 'שם העסק / Business name', 'TechPro IT')}
+      {field('contact_name',  'השם שלך (פרטי בלבד) / Your first name', 'דנה / Dana')}
+      {field('contact_phone', 'מספר וואטסאפ עסקי / WhatsApp number', '+972501234567', 'tel')}
+      {field('contact_email', 'אימייל עסקי / Business email', 'hello@mybusiness.com', 'email')}
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: -4 }}>
+        * האימייל לשימוש פנימי בלבד — דוחות ועדכונים עתידיים
+      </div>
+    </div>
+  )
+}
+
+// ── Agent Availability stage ──────────────────────────────────────────────────
+function AvailabilityStage({ config, value, onChange }) {
+  const set = (key, val) => onChange(prev => ({ ...prev, [key]: val }))
+
+  const ToggleRow = ({ field, label, desc, icon }) => (
+    <div
+      onClick={() => set(field, !value[field])}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+        borderRadius: 10, cursor: 'pointer',
+        border: `2px solid ${value[field] ? 'var(--accent)' : 'var(--border)'}`,
+        background: value[field] ? 'var(--accent-dim)' : 'var(--surface)',
+        transition: 'all 0.15s', userSelect: 'none',
+      }}
+    >
+      <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, color: value[field] ? 'var(--accent)' : 'var(--text)' }}>{label}</div>
+        {desc && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{desc}</div>}
+      </div>
+      <div style={{
+        width: 36, height: 20, borderRadius: 10, flexShrink: 0,
+        background: value[field] ? 'var(--accent)' : 'var(--surface-3)',
+        position: 'relative', transition: 'background 0.2s',
+      }}>
+        <div style={{
+          width: 14, height: 14, borderRadius: '50%', background: '#fff',
+          position: 'absolute', top: 3, transition: 'left 0.2s',
+          left: value[field] ? 18 : 3,
+        }} />
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1.4 }}>{config.title}</div>
+        {config.subtitle && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{config.subtitle}</div>}
+      </div>
+
+      <ToggleRow field="agent_active"                 icon="🟢" label="סוכן פעיל / Agent is active"              desc="ניתן לשנות בכל עת מממשק הניהול / Changeable anytime from studio" />
+      <ToggleRow field="answer_after_hours"           icon="🌙" label="ענה גם מחוץ לשעות פעילות / Answer after hours" desc="כבוי = שלח הודעת היעדרות בלבד / Off = send out-of-hours reply only" />
+
+      {!value.answer_after_hours && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 8, borderRight: '3px solid var(--accent)' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>הודעת היעדרות / After-hours message</label>
+          <textarea
+            value={value.after_hours_message}
+            onChange={e => set('after_hours_message', e.target.value)}
+            rows={3}
+            style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, resize: 'vertical', fontFamily: 'var(--font-sans)', outline: 'none' }}
+          />
+        </div>
+      )}
+
+      <ToggleRow field="new_contacts_only"            icon="👤" label="ענה רק לאנשי קשר חדשים / New contacts only"  desc="מספרים שאין להם היסטוריית שיחה / Numbers with no prior conversation" />
+      <ToggleRow field="skip_initiated_conversations" icon="↩️" label="דלג על שיחות שאני התחלתי / Skip conversations I started" desc="לא יענה אם העסק שלח הודעה ראשון / Won't reply if business sent first" />
     </div>
   )
 }
