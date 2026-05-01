@@ -38,6 +38,24 @@ app.use((req, res, next) => {
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+// ── Client error logger ───────────────────────────────────────────────────────
+app.post('/log/error', async (req, res) => {
+  const { message, source, stack, url, ts } = req.body ?? {};
+  console.error(`[client-error] ${ts} | ${source} | ${message}\n${stack ?? ''}`);
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    await supabase.from('agent_runs').insert({
+      session_id: 'client-error',
+      inbound_message: message ?? '(no message)',
+      status: 'error',
+      error: `[${source}] ${message}`,
+      steps: [{ step: 'client_error', status: 'error', source, stack, url, ts }],
+      completed_at: new Date().toISOString(),
+    });
+  } catch {}
+  res.json({ ok: true });
+});
+
 // ── Inbound WhatsApp webhook ──────────────────────────────────────────────────
 app.post('/wa-inbound', async (req, res) => {
   const run = await startRun({ session_id: 'unknown', inbound_message: '[pending]' });
