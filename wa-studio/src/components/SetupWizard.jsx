@@ -6,34 +6,34 @@ const API = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
 // ── FAQ topic options by archetype ────────────────────────────────────────────
 const FAQ_TOPICS = {
   service: [
-    { value: 'pricing',       label: 'Pricing & quotes',        icon: '💰' },
-    { value: 'availability',  label: 'Availability & timeline', icon: '📅' },
-    { value: 'how_it_works',  label: 'How it works',            icon: '⚙️' },
-    { value: 'experience',    label: 'Experience & credentials', icon: '🏆' },
-    { value: 'service_area',  label: 'Service area',            icon: '📍' },
-    { value: 'cancellation',  label: 'Cancellation policy',     icon: '↩️' },
-    { value: 'after_service', label: 'After-service support',   icon: '🔧' },
-    { value: 'contact',       label: 'Contact & support',       icon: '💬' },
+    { value: 'pricing',       label: 'Pricing / תמחור',           icon: '💰' },
+    { value: 'availability',  label: 'Availability / זמינות',      icon: '📅' },
+    { value: 'how_it_works',  label: 'How it works / איך זה עובד', icon: '⚙️' },
+    { value: 'experience',    label: 'Experience / ניסיון',        icon: '🏆' },
+    { value: 'service_area',  label: 'Service area / אזור שירות',  icon: '📍' },
+    { value: 'cancellation',  label: 'Cancellation / ביטול',       icon: '↩️' },
+    { value: 'after_service', label: 'After service / תמיכה',      icon: '🔧' },
+    { value: 'contact',       label: 'Contact / יצירת קשר',        icon: '💬' },
   ],
   product: [
-    { value: 'menu',          label: 'Menu / catalog',          icon: '📋' },
-    { value: 'pricing',       label: 'Pricing',                 icon: '💰' },
-    { value: 'allergies',     label: 'Allergies & dietary',     icon: '🥗' },
-    { value: 'hours',         label: 'Opening hours',           icon: '🕐' },
-    { value: 'location',      label: 'Location & delivery',     icon: '📍' },
-    { value: 'returns',       label: 'Returns & refunds',       icon: '↩️' },
-    { value: 'offers',        label: 'Special offers',          icon: '🎁' },
-    { value: 'contact',       label: 'Contact & support',       icon: '💬' },
+    { value: 'menu',      label: 'Menu / תפריט',              icon: '📋' },
+    { value: 'pricing',   label: 'Pricing / מחירים',           icon: '💰' },
+    { value: 'allergies', label: 'Allergies / אלרגיות',        icon: '🥗' },
+    { value: 'hours',     label: 'Opening hours / שעות פתיחה', icon: '🕐' },
+    { value: 'location',  label: 'Location / מיקום',           icon: '📍' },
+    { value: 'returns',   label: 'Returns / החזרות',           icon: '↩️' },
+    { value: 'offers',    label: 'Offers / מבצעים',            icon: '🎁' },
+    { value: 'contact',   label: 'Contact / יצירת קשר',        icon: '💬' },
   ],
   booking: [
-    { value: 'availability',  label: 'Availability & schedule', icon: '📅' },
-    { value: 'pricing',       label: 'Pricing & packages',      icon: '💰' },
-    { value: 'preparation',   label: 'What to bring / prepare', icon: '🎒' },
-    { value: 'group',         label: 'Group bookings',          icon: '👥' },
-    { value: 'cancellation',  label: 'Cancellation policy',     icon: '↩️' },
-    { value: 'trial',         label: 'Trial sessions',          icon: '✨' },
-    { value: 'membership',    label: 'Membership options',      icon: '🏷️' },
-    { value: 'contact',       label: 'Contact & support',       icon: '💬' },
+    { value: 'availability', label: 'Availability / זמינות',       icon: '📅' },
+    { value: 'pricing',      label: 'Pricing / מחירים',             icon: '💰' },
+    { value: 'preparation',  label: 'Preparation / הכנה',           icon: '🎒' },
+    { value: 'group',        label: 'Group bookings / הזמנות קבוצה', icon: '👥' },
+    { value: 'cancellation', label: 'Cancellation / ביטול',         icon: '↩️' },
+    { value: 'trial',        label: 'Trial / ניסיון',               icon: '✨' },
+    { value: 'membership',   label: 'Membership / מנוי',            icon: '🏷️' },
+    { value: 'contact',      label: 'Contact / יצירת קשר',          icon: '💬' },
   ],
 }
 
@@ -41,126 +41,126 @@ const FAQ_TOPICS = {
 const STAGES = [
   {
     key: 'business_type',
-    title: 'What type of business do you run?',
+    title: 'סוג העסק / Business type',
     type: 'single',
     options: [
-      { value: 'service', label: 'Service',  desc: 'Cleaning, repairs, consulting, legal, construction', icon: '🔧' },
-      { value: 'product', label: 'Product',  desc: 'Restaurant, café, online store, retail',             icon: '🛍️' },
-      { value: 'booking', label: 'Booking',  desc: 'Gym, nail salon, hair salon, physio, clinic',        icon: '📅' },
+      { value: 'service', label: 'Service / שירות', desc: 'ניקיון, תיקונים, ייעוץ, משפטי, בנייה', icon: '🔧' },
+      { value: 'product', label: 'Product / מוצר',  desc: 'מסעדה, קפה, חנות אינטרנטית, קמעונאות', icon: '🛍️' },
+      { value: 'booking', label: 'Booking / הזמנה', desc: 'חדר כושר, ציפורניים, מספרה, קליניקה',   icon: '📅' },
     ],
   },
   {
     key: 'faq_topics',
-    title: 'What do leads usually ask about?',
-    subtitle: 'Pick all that apply',
+    title: 'על מה לקוחות בדרך כלל שואלים? / What do leads ask about?',
+    subtitle: 'בחר הכל שרלוונטי / Pick all that apply',
     type: 'multi',
     max: 8,
     dynamic: (draft) => FAQ_TOPICS[draft?.archetype ?? 'service'],
   },
   {
     key: 'cta_goal',
-    title: 'What action do you want leads to take?',
+    title: 'מה הפעולה שאתה רוצה שהלקוח יעשה? / What action should leads take?',
     type: 'single',
     options: [
-      { value: 'book_appointment', label: 'Book an appointment', icon: '📅' },
-      { value: 'book_call',        label: 'Book a call',         icon: '📞' },
-      { value: 'get_quote',        label: 'Get a quote',         icon: '📋' },
-      { value: 'make_purchase',    label: 'Make a purchase',     icon: '🛒' },
-      { value: 'book_table',       label: 'Book a table',        icon: '🍽️' },
-      { value: 'leave_details',    label: 'Leave details',       icon: '📝' },
-      { value: 'support_only',     label: 'No CTA — info & support only', icon: '💬' },
+      { value: 'book_appointment', label: 'Book appointment / קביעת תור', icon: '📅' },
+      { value: 'book_call',        label: 'Book a call / שיחת היכרות',    icon: '📞' },
+      { value: 'get_quote',        label: 'Get a quote / קבלת הצעת מחיר', icon: '📋' },
+      { value: 'make_purchase',    label: 'Purchase / רכישה',             icon: '🛒' },
+      { value: 'book_table',       label: 'Book a table / הזמנת מקום',    icon: '🍽️' },
+      { value: 'leave_details',    label: 'Leave details / השארת פרטים',  icon: '📝' },
+      { value: 'support_only',     label: 'Support only / תמיכה בלבד',    icon: '💬' },
     ],
   },
   {
     key: 'push_speed',
-    title: 'How quickly should the agent push toward the goal?',
+    title: 'באיזה קצב הסוכן ידחף לעבר המטרה? / How fast should the agent push?',
     type: 'single',
     skip: (draft) => draft?.cta_goal === 'support_only',
     options: [
-      { value: 'fast',     label: 'Fast',     desc: 'Push to CTA in 2–3 turns',   icon: '⚡' },
-      { value: 'balanced', label: 'Balanced', desc: 'Qualify first, then push',    icon: '⚖️' },
-      { value: 'slow',     label: 'Slow',     desc: 'Build rapport, no rush',      icon: '🌱' },
+      { value: 'fast',     label: 'Fast / מהיר',       desc: 'CTA תוך 2–3 הודעות',        icon: '⚡' },
+      { value: 'balanced', label: 'Balanced / מאוזן',   desc: 'כשירות קודם, אז דחיפה',     icon: '⚖️' },
+      { value: 'slow',     label: 'Slow / איטי',        desc: 'בניית אמון ללא לחץ',        icon: '🌱' },
     ],
   },
   {
     key: 'tone',
-    title: 'How should the agent sound?',
-    subtitle: 'Pick up to 2',
+    title: 'איך הסוכן צריך להישמע? / How should the agent sound?',
+    subtitle: 'עד 2 בחירות / Pick up to 2',
     type: 'multi',
     max: 2,
     options: [
-      { value: 'warm',         label: 'Warm',         icon: '☀️' },
-      { value: 'professional', label: 'Professional', icon: '👔' },
-      { value: 'direct',       label: 'Direct',       icon: '🎯' },
-      { value: 'friendly',     label: 'Friendly',     icon: '😊' },
-      { value: 'casual',       label: 'Casual',       icon: '😎' },
+      { value: 'warm',         label: 'Warm / חמים',           icon: '☀️' },
+      { value: 'professional', label: 'Professional / מקצועי',  icon: '👔' },
+      { value: 'direct',       label: 'Direct / ישיר',          icon: '🎯' },
+      { value: 'friendly',     label: 'Friendly / ידידותי',     icon: '😊' },
+      { value: 'casual',       label: 'Casual / קז\'ואל',       icon: '😎' },
     ],
   },
   {
     key: 'response_length',
-    title: 'Preferred reply length?',
+    title: 'אורך תשובות מועדף / Preferred reply length',
     type: 'single',
     options: [
-      { value: 'short',    label: 'Short',    desc: '1–2 sentences', icon: '⚡' },
-      { value: 'medium',   label: 'Medium',   desc: '2–3 sentences', icon: '📝' },
-      { value: 'detailed', label: 'Detailed', desc: '3–5 sentences', icon: '📄' },
+      { value: 'short',    label: 'Short / קצר',     desc: '1–2 משפטים',  icon: '⚡' },
+      { value: 'medium',   label: 'Medium / בינוני', desc: '2–3 משפטים',  icon: '📝' },
+      { value: 'detailed', label: 'Detailed / מפורט', desc: '3–5 משפטים', icon: '📄' },
     ],
   },
   {
     key: 'emoji_usage',
-    title: 'Emoji usage?',
+    title: 'שימוש באימוג\'י / Emoji usage',
     type: 'single',
     options: [
-      { value: 'none',    label: 'None',    desc: 'Clean text only', icon: '🚫' },
-      { value: 'light',   label: 'Light',   desc: 'Occasional',      icon: '✨' },
-      { value: 'natural', label: 'Natural', desc: 'When it fits',    icon: '😊' },
-      { value: 'free',    label: 'Free',    desc: 'Emoji-friendly',  icon: '🎉' },
+      { value: 'none',    label: 'None / ללא',       desc: 'טקסט נקי',          icon: '🚫' },
+      { value: 'light',   label: 'Light / מועט',     desc: 'מדי פעם',            icon: '✨' },
+      { value: 'natural', label: 'Natural / טבעי',   desc: 'כשזה מתאים',         icon: '😊' },
+      { value: 'free',    label: 'Free / חופשי',     desc: 'הרבה אימוג\'י',      icon: '🎉' },
     ],
   },
   {
     key: 'escalation',
-    title: 'When should the agent hand off to a human?',
-    subtitle: 'Pick up to 2',
+    title: 'מתי להעביר לבן אדם? / When to hand off to a human?',
+    subtitle: 'עד 2 בחירות / Pick up to 2',
     type: 'multi',
     max: 2,
     options: [
-      { value: 'high_value',         label: 'High-value lead',     icon: '💎' },
-      { value: 'complex_question',   label: 'Complex question',    icon: '🧩' },
-      { value: 'user_asks',          label: 'User asks for human', icon: '🙋' },
-      { value: 'repeated_objection', label: 'Repeated objection',  icon: '🔄' },
+      { value: 'high_value',         label: 'High-value lead / לקוח גדול',       icon: '💎' },
+      { value: 'complex_question',   label: 'Complex question / שאלה מורכבת',    icon: '🧩' },
+      { value: 'user_asks',          label: 'User asks / הלקוח מבקש אדם',        icon: '🙋' },
+      { value: 'repeated_objection', label: 'Repeated objection / התנגדות חוזרת', icon: '🔄' },
     ],
   },
   {
     key: 'faq_examples',
-    title: 'Common questions customers ask',
-    subtitle: 'Optional — add 2–3 examples with your typical answers',
+    title: 'שאלות נפוצות / Common questions',
+    subtitle: 'אופציונלי — הוסף 2–3 שאלות ותשובות אופייניות',
     type: 'text',
-    placeholder: 'Q: How much does it cost?\nA: Pricing starts from ₪150 depending on size.\n\nQ: Do you work on weekends?\nA: Yes, Friday and Saturday available.',
+    placeholder: 'ש: כמה עולה ניקיון?\nת: תלוי בגודל הדירה, החל מ-₪200\n\nש: אתם עובדים בסופ"ש?\nת: כן, שישי ושבת בתיאום מראש',
   },
   {
     key: 'objections',
-    title: 'Common objections and how you handle them',
-    subtitle: 'Optional',
+    title: 'התנגדויות נפוצות / Common objections',
+    subtitle: 'אופציונלי — איך אתה מגיב',
     type: 'text',
-    placeholder: '"Too expensive" → We offer flexible payment options and the quality speaks for itself.\n\n"I need to think about it" → Of course! Can I send you our portfolio to help?',
+    placeholder: '"יקר מדי" → האיכות מדברת בעד עצמה, יש לנו ניסיון חינם\n\n"אחזור אליך" → כמובן! אשלח לך כמה עבודות קודמות בינתיים',
   },
   {
     key: 'forbidden_claims',
-    title: 'What should the agent NEVER say or promise?',
-    subtitle: 'Optional',
+    title: 'מה הסוכן לא יגיד? / What should the agent never say?',
+    subtitle: 'אופציונלי',
     type: 'text',
-    placeholder: 'Never promise same-day availability.\nNever quote exact prices without seeing the job.',
+    placeholder: 'אל תבטיח זמינות ביום אותו יום ללא בדיקה\nאל תצטט מחירים מדויקים ללא ראיית העבודה',
   },
   {
     key: 'final_note',
-    title: 'One thing the agent must never miss',
-    subtitle: 'Optional — your most important instruction',
+    title: 'הוראה אחרונה חשובה / One final instruction',
+    subtitle: 'אופציונלי — הדבר החשוב ביותר שהסוכן לא יפספס',
     type: 'text',
-    placeholder: 'Always end with a specific next step, never leave the conversation open-ended.',
+    placeholder: 'תמיד לסיים עם צעד הבא ספציפי, אף פעם לא להשאיר את השיחה פתוחה',
   },
   {
     key: 'confirm_and_commit',
-    title: 'Ready to activate your agent?',
+    title: '🚀 מוכן להפעיל את הסוכן? / Ready to activate?',
     type: 'confirm',
   },
 ]
@@ -300,7 +300,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
               disabled={saving}
               style={btnStyle('ghost')}
             >
-              Skip
+              דלג / Skip
             </button>
           )}
           <button
@@ -308,7 +308,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
             disabled={(!canContinue && stageConfig?.type !== 'text') || saving}
             style={btnStyle(canContinue || stageConfig?.type === 'text' ? 'primary' : 'disabled')}
           >
-            {saving ? 'Saving...' : 'Continue →'}
+            {saving ? '...שומר' : 'המשך ←'}
           </button>
         </div>
       )}
@@ -413,7 +413,7 @@ function ConfirmStage({ draft, onCommit, saving }) {
         disabled={saving}
         style={{ ...btnStyle('primary'), padding: '14px', fontSize: 14 }}
       >
-        {saving ? 'Activating...' : '🚀 Activate Agent'}
+        {saving ? '...מפעיל' : '🚀 הפעל סוכן / Activate Agent'}
       </button>
     </div>
   )
@@ -422,9 +422,9 @@ function ConfirmStage({ draft, onCommit, saving }) {
 function SkipNotice({ label, onSkip, saving }) {
   return (
     <div style={{ textAlign: 'center', paddingTop: 32, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-      <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>This step is not needed for your setup.</div>
+      <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>שלב זה לא נדרש עבור הגדרה זו / This step is not needed.</div>
       <button onClick={onSkip} disabled={saving} style={btnStyle('primary')}>
-        Continue →
+        המשך ← / Continue →
       </button>
     </div>
   )
