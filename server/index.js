@@ -5,7 +5,8 @@ import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
-  .split(',').map(s => s.trim());
+  .split(',').map(s => s.trim().replace(/^["']|["']$/g, '')); // strip accidental quotes
+console.log('[cors] allowed origins:', ALLOWED_ORIGINS);
 
 // Agents — imported lazily so missing files don't crash startup
 let runConversation = null, runSetup = null, runLearning = null;
@@ -26,11 +27,13 @@ app.use(express.json());
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-    if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  }
+  const allowed = !origin || ALLOWED_ORIGINS.includes(origin);
+
+  // Always set CORS headers — preflight must include them or browser blocks the actual request
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  if (origin && allowed) res.setHeader('Access-Control-Allow-Origin', origin);
+
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
