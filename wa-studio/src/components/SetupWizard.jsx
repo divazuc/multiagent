@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { logError } from './ErrorBoundary.jsx'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const API = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
@@ -229,6 +230,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       setTextValue('')
       onRefreshDB?.()
     } catch (e) {
+      logError(e.message, 'setup/save', e.stack)
       setError(e.message)
     } finally {
       setSaving(false)
@@ -248,6 +250,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
       if (data.status !== 'success') throw new Error(data.message)
       onRefreshDB?.()
     } catch (e) {
+      logError(e.message, 'setup/commit', e.stack)
       setError(e.message)
     } finally {
       setSaving(false)
