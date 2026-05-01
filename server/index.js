@@ -356,6 +356,9 @@ app.post('/setup/commit', async (req, res) => {
       after_hours_message:          avail.after_hours_message ?? null,
       new_contacts_only:            avail.new_contacts_only ?? false,
       skip_initiated_conversations: avail.skip_initiated_conversations ?? true,
+      followup_enabled:             avail.followup_enabled ?? false,
+      followup_delay_days:          avail.followup_delay_days ?? 2,
+      followup_message:             avail.followup_message ?? null,
       setup_completed:              true,
       committed_at:                 new Date().toISOString(),
     }, { onConflict: 'business_id' });
@@ -453,6 +456,103 @@ app.post('/knowledge/sync', async (req, res) => {
       .eq('business_id', business_id);
 
     return res.json({ status: 'success', synced: items.length });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// ── Follow-up processor ───────────────────────────────────────────────────────
+// Called by external cron (e.g. cron-job.org hitting POST /follow-up/process)
+// Finds eligible stale leads and logs a follow-up (WA send = stub until real API)
+app.post('/follow-up/process', async (req, res) => {
+  const { business_id: target } = req.body ?? {};
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const now = new Date();
+
+    // Load businesses with follow-ups enabled
+    let q = supabase
+      .from('business_profiles')
+      .select('business_id, followup_delay_days, followup_message')
+      .eq('followup_enabled', true)
+      .eq('agent_active', true);
+    if (target) q = q.eq('business_id', target);
+    const { data: businesses } = await q;
+    if (!businesses?.length) return res.json({ status: 'success', processed: 0, results: [] });
+
+    const results = [];
+
+    for (const biz of businesses) {
+      const delayDays = biz.followup_delay_days ?? 2;
+      const cutoff = new Date(now);
+      cutoff.setDate(cutoff.getDate() - delayDays);
+
+      // Get live sessions for this business
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select('session_id')
+        .eq('business_id', biz.business_id)
+        .eq('session_mode', 'live')
+        .eq('setup_completed', true);
+
+      for (const { session_id } of sessions ?? []) {
+        // Skip if follow-up already recorded
+        const { data: existing } = await supabase
+          .from('lead_followups')
+          .select('id')
+          .eq('business_id', biz.business_id)
+          .eq('session_id', session_id)
+          .maybeSingle();
+        if (existing) { results.push({ session_id, skipped: 'already_processed' }); continue; }
+
+        // Get last user message
+        const { data: lastMsg } = await supabase
+          .from('conversation_messages')
+          .select('created_at')
+          .eq('session_id', session_id)
+          .eq('business_id', biz.business_id)
+          .not('user_message', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!lastMsg) { results.push({ session_id, skipped: 'no_user_messages' }); continue; }
+
+        // Skip if CTA already triggered
+        const { count: ctaCount } = await supabase
+          .from('conversation_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session_id)
+          .eq('business_id', biz.business_id)
+          .eq('cta_triggered', true);
+        if (ctaCount > 0) { results.push({ session_id, skipped: 'cta_triggered' }); continue; }
+
+        // Skip if last message is too recent
+        if (new Date(lastMsg.created_at) > cutoff) {
+          results.push({ session_id, skipped: 'too_recent' }); continue;
+        }
+
+        // Eligible — log follow-up
+        const message = biz.followup_message?.trim() || 'היי! רק רציתי לבדוק אם יש לך שאלות נוספות 😊';
+        const scheduledFor = new Date(lastMsg.created_at);
+        scheduledFor.setDate(scheduledFor.getDate() + delayDays);
+
+        await supabase.from('lead_followups').upsert({
+          business_id:   biz.business_id,
+          session_id,
+          status:        'sent', // future: 'pending' → send via WA API → update to 'sent'
+          message,
+          scheduled_for: scheduledFor.toISOString(),
+          sent_at:       now.toISOString(),
+          // TODO: replace with real WA Business API send when integration is live
+        }, { onConflict: 'business_id,session_id' });
+
+        results.push({ session_id, status: 'sent', message });
+      }
+    }
+
+    const sent    = results.filter(r => r.status === 'sent').length;
+    const skipped = results.filter(r => r.skipped).length;
+    return res.json({ status: 'success', processed: results.length, sent, skipped, results });
   } catch (e) {
     return res.status(500).json({ status: 'error', message: e.message });
   }

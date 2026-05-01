@@ -311,6 +311,9 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
     after_hours_message:          draft?.agent_availability?.after_hours_message          ?? 'תודה שפנית! 😊 אנחנו לא זמינים כרגע. נחזור אליך בהקדם בשעות הפעילות שלנו.',
     new_contacts_only:            draft?.agent_availability?.new_contacts_only            ?? false,
     skip_initiated_conversations: draft?.agent_availability?.skip_initiated_conversations ?? true,
+    followup_enabled:             draft?.agent_availability?.followup_enabled             ?? false,
+    followup_delay_days:          draft?.agent_availability?.followup_delay_days          ?? 2,
+    followup_message:             draft?.agent_availability?.followup_message             ?? 'היי! רק רציתי לבדוק אם יש לך שאלות נוספות 😊',
   }))
 
   // FAQ pairs state
@@ -716,6 +719,31 @@ function AvailabilityStage({ config, value, onChange }) {
 
       <ToggleRow field="new_contacts_only"            icon="👤" label="ענה רק לאנשי קשר חדשים / New contacts only"  desc="מספרים שאין להם היסטוריית שיחה / Numbers with no prior conversation" />
       <ToggleRow field="skip_initiated_conversations" icon="↩️" label="דלג על שיחות שאני התחלתי / Skip conversations I started" desc="לא יענה אם העסק שלח הודעה ראשון / Won't reply if business sent first" />
+      <ToggleRow field="followup_enabled"             icon="🔁" label="שלח מעקב ללידים שלא הגיבו / Follow-up silent leads" desc="הודעה אחת בלבד אחרי X ימי שתיקה ללא CTA" />
+
+      {value.followup_enabled && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingRight: 8, borderRight: '3px solid var(--accent)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>שלח אחרי / Send after</label>
+            <input
+              type="number" min={1} max={30}
+              value={value.followup_delay_days}
+              onChange={e => set('followup_delay_days', Number(e.target.value) || 2)}
+              style={{ width: 56, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, textAlign: 'center', outline: 'none' }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>ימים / days</span>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>הודעת המעקב / Follow-up message</label>
+            <textarea
+              value={value.followup_message}
+              onChange={e => set('followup_message', e.target.value)}
+              rows={2} dir="rtl"
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, resize: 'vertical', fontFamily: 'var(--font-sans)', outline: 'none' }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

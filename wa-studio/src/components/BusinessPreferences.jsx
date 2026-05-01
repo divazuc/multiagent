@@ -110,6 +110,9 @@ export default function BusinessPreferences({ session, profile, onClose, onSaved
   const [finalNote, setFinalNote]     = useState(profile?.persona?.must_not_miss ?? '')
   const [hours, setHours]             = useState(() => profile?.working_hours?.days ?? DEFAULT_HOURS)
   const [jewishHolidays, setJewish]   = useState(profile?.working_hours?.jewish_holidays ?? true)
+  const [followupEnabled, setFollowupEnabled]   = useState(profile?.followup_enabled ?? false)
+  const [followupDays, setFollowupDays]         = useState(profile?.followup_delay_days ?? 2)
+  const [followupMessage, setFollowupMessage]   = useState(profile?.followup_message ?? 'היי! רק רציתי לבדוק אם יש לך שאלות נוספות 😊')
 
   async function handleSave() {
     setSaving(true)
@@ -122,7 +125,10 @@ export default function BusinessPreferences({ session, profile, onClose, onSaved
         push_speed:  pushSpeed,
         persona:     { ...(profile?.persona ?? {}), tone, answer_length: answerLength, emoji_style: emojiStyle, must_not_miss: finalNote },
         guardrails:  { ...(profile?.guardrails ?? {}), escalation_rules: escalation, forbidden_claims: forbiddenClaims },
-        working_hours: { days: hours, jewish_holidays: jewishHolidays },
+        working_hours:     { days: hours, jewish_holidays: jewishHolidays },
+        followup_enabled:  followupEnabled,
+        followup_delay_days: Number(followupDays) || 2,
+        followup_message:  followupMessage,
       }
       const res = await fetch(API('/business/update'), {
         method: 'POST',
@@ -230,6 +236,70 @@ export default function BusinessPreferences({ session, profile, onClose, onSaved
 
         <Section title="שעות פעילות / Working hours">
           <HoursEditor hours={hours} onChange={setHours} jewishHolidays={jewishHolidays} onJewishHolidays={setJewish} />
+        </Section>
+
+        <Section title="מעקב אחר לידים / Lead follow-up">
+          {/* Master toggle */}
+          <div
+            onClick={() => setFollowupEnabled(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px', borderRadius: 10, cursor: 'pointer', marginBottom: 12,
+              border: `2px solid ${followupEnabled ? 'var(--accent)' : 'var(--border)'}`,
+              background: followupEnabled ? 'var(--accent-dim)' : 'var(--surface)',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: followupEnabled ? 'var(--accent)' : 'var(--text)' }}>
+                🔁 שלח הודעת מעקב ללידים שלא הגיבו / Send follow-up to silent leads
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                גם אם לא בוצע CTA / Also triggers when no CTA was completed
+              </div>
+            </div>
+            <div style={{ width: 36, height: 20, borderRadius: 10, background: followupEnabled ? 'var(--accent)' : 'var(--surface-3)', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
+              <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: followupEnabled ? 18 : 3, transition: 'left 0.2s' }} />
+            </div>
+          </div>
+
+          {followupEnabled && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 8, borderRight: '3px solid var(--accent)' }}>
+              {/* Delay */}
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                  שלח לאחר / Send after
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={followupDays}
+                    onChange={e => setFollowupDays(e.target.value)}
+                    style={{ width: 64, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 14, textAlign: 'center', outline: 'none' }}
+                  />
+                  <span style={{ fontSize: 13, color: 'var(--text)' }}>ימים של שתיקה / days of silence</span>
+                </div>
+              </div>
+
+              {/* Message */}
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                  הודעת המעקב / Follow-up message
+                </div>
+                <textarea
+                  value={followupMessage}
+                  onChange={e => setFollowupMessage(e.target.value)}
+                  rows={3}
+                  dir="rtl"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, resize: 'vertical', fontFamily: 'var(--font-sans)', outline: 'none' }}
+                />
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                  הודעה אחת בלבד — אם אין תגובה, לא נשלחת הודעה נוספת
+                </div>
+              </div>
+            </div>
+          )}
         </Section>
 
         <div style={{ height: 80 }} />
