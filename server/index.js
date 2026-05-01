@@ -222,9 +222,32 @@ app.post('/wa-inbound', async (req, res) => {
 // ── Setup: direct structured save (no LLM) ───────────────────────────────────
 // Used by the wizard for clickable stages — fast, no Claude call needed
 
+// Israeli Yom Tov dates — businesses closed (5785–5786 / 2024–2026)
+const JEWISH_HOLIDAYS = new Set([
+  '2024-10-02','2024-10-03',                         // Rosh Hashana
+  '2024-10-11','2024-10-12',                         // Yom Kippur eve + day
+  '2024-10-16','2024-10-17',                         // Sukkot I–II
+  '2024-10-23','2024-10-24',                         // Shmini Atzeret + Simchat Torah
+  '2025-04-12','2025-04-13','2025-04-18','2025-04-19', // Passover
+  '2025-06-01','2025-06-02',                         // Shavuot
+  '2025-09-22','2025-09-23',                         // Rosh Hashana
+  '2025-10-01','2025-10-02',                         // Yom Kippur eve + day
+  '2025-10-06','2025-10-07',                         // Sukkot I–II
+  '2025-10-13','2025-10-14',                         // Shmini Atzeret + Simchat Torah
+  '2026-04-01','2026-04-02','2026-04-07','2026-04-08', // Passover
+  '2026-05-21','2026-05-22',                         // Shavuot
+]);
+
 function isWithinWorkingHours(working_hours) {
   if (!working_hours?.days) return true;
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+
+  // Jewish holiday check — treat as closed day
+  if (working_hours.jewish_holidays) {
+    const dateStr = now.toISOString().slice(0, 10);
+    if (JEWISH_HOLIDAYS.has(dateStr)) return false;
+  }
+
   const dayIdx = now.getDay();
   const cur = now.getHours() * 60 + now.getMinutes();
   const day = working_hours.days[dayIdx];

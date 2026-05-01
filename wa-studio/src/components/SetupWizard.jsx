@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { logError } from './ErrorBoundary.jsx'
+import { upcomingHolidays } from '../lib/jewish-holidays.js'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const API = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
@@ -609,21 +610,27 @@ function WorkingHoursStage({ days, hours, onChange, jewishHolidays, onJewishHoli
       ))}
 
       {/* Jewish holidays */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', marginTop: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--surface)', border: `1px solid ${jewishHolidays ? 'var(--accent)' : 'var(--border)'}`, marginTop: 4 }}>
         <input
           type="checkbox"
           checked={jewishHolidays}
           onChange={e => onJewishHolidays(e.target.checked)}
           style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
         />
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>✡️ שמור על חגים יהודיים / Observe Jewish holidays</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>✡️ סגור בחגים יהודיים / Closed on Jewish holidays</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-            בחגים — הסוכן ימשיך לענות אך אסקלציות יועברו ביום העבודה הבא
+            הסוכן ישלח הודעת היעדרות בימי יום-טוב / Agent sends out-of-hours reply on Yom Tov
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            On holidays — agent keeps replying but escalations wait for next business day
-          </div>
+          {jewishHolidays && upcomingHolidays(3).length > 0 && (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {upcomingHolidays(3).map(h => (
+                <div key={h.date} style={{ fontSize: 11, color: 'var(--accent)' }}>
+                  📅 {h.date} — {h.name}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { logError } from './ErrorBoundary.jsx'
+import { upcomingHolidays } from '../lib/jewish-holidays.js'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const API = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
@@ -83,10 +84,22 @@ function HoursEditor({ hours, onChange, jewishHolidays, onJewishHolidays }) {
           )}
         </div>
       ))}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', marginTop: 4 }}>
-        <input type="checkbox" checked={jewishHolidays} onChange={e => onJewishHolidays(e.target.checked)}
-          style={{ cursor: 'pointer', accentColor: 'var(--accent)' }} />
-        <span style={{ fontSize: 12, color: 'var(--text)' }}>✡️ שמור על חגים יהודיים / Observe Jewish holidays</span>
+      <div style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--surface)', border: `1px solid ${jewishHolidays ? 'var(--accent)' : 'var(--border)'}`, marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={jewishHolidays} onChange={e => onJewishHolidays(e.target.checked)}
+            style={{ cursor: 'pointer', accentColor: 'var(--accent)' }} />
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>✡️ סגור בחגים יהודיים / Closed on Jewish holidays</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>הסוכן ישלח הודעת היעדרות בימי יום-טוב</div>
+          </div>
+        </div>
+        {jewishHolidays && upcomingHolidays(3).length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3, paddingRight: 24 }}>
+            {upcomingHolidays(3).map(h => (
+              <div key={h.date} style={{ fontSize: 11, color: 'var(--accent)' }}>📅 {h.date} — {h.name}</div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
