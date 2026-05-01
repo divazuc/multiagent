@@ -13,9 +13,6 @@ const WEBHOOK_PATH = AGENT_BASE ? `${AGENT_BASE}/wa-inbound` : '/api/agent/wa-in
 
 export default function App() {
   const [authed, setAuthed] = useState(() => localStorage.getItem('wa_studio_auth') === '1')
-
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />
-
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [messages, setMessages] = useState([])
@@ -247,6 +244,8 @@ export default function App() {
       setSending(false)
     }
   }
+
+  if (!authed) return <Login onLogin={() => setAuthed(true)} />
 
   return (
     <div className="app">
