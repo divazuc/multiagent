@@ -89,13 +89,100 @@ export default function CRM({ businessId }) {
         ))}
       </div>
 
+      {/* Mobile card list */}
+      <div className="crm-cards">
+        {loading ? (
+          <div className="loading">טוען...</div>
+        ) : contacts.length === 0 ? (
+          <div className="empty">אין לידים עדיין</div>
+        ) : contacts.map(c => (
+          <div key={c.id}>
+            <div
+              className={`crm-card ${expanded === c.id ? 'open' : ''}`}
+              onClick={() => toggleExpand(c)}
+            >
+              <div className="crm-card-top">
+                <div>
+                  <div className="crm-card-name">{c.name || c.phone}</div>
+                  {c.name && <div className="crm-card-phone">{c.phone}</div>}
+                </div>
+                <span className={`status-badge status-${c.status}`}>
+                  {STATUS_LABELS[c.status] || c.status}
+                </span>
+              </div>
+              {c.ai_summary && (
+                <div className="crm-card-summary">{c.ai_summary}</div>
+              )}
+              <div className="crm-card-meta">
+                <span>{c.message_count} הודעות</span>
+                <span>·</span>
+                <span>{timeAgo(c.last_activity_at)}</span>
+                {c.notes && <><span>·</span><span>📝</span></>}
+              </div>
+            </div>
+
+            {expanded === c.id && (
+              <div className="expand-panel-mobile">
+                <div className="section-hd">שיחה</div>
+                <div className="conv-log">
+                  {messages.length === 0
+                    ? <div className="empty" style={{ padding: 12 }}>אין הודעות</div>
+                    : messages.map((m, i) => (
+                      <div key={i}>
+                        {m.user_message && (
+                          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start' }}>
+                            <div className="bubble user" dir="rtl">{m.user_message}</div>
+                          </div>
+                        )}
+                        {m.agent_response && (
+                          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end' }}>
+                            <div className="bubble agent" dir="rtl">{m.agent_response}</div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  }
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>הערה</div>
+                  <textarea
+                    className="textarea"
+                    value={editing.notes ?? c.notes ?? ''}
+                    onChange={e => setEditing(p => ({ ...p, notes: e.target.value }))}
+                    placeholder="הוסף הערה..."
+                    rows={2} dir="rtl"
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>סטטוס</div>
+                  <select
+                    className="select"
+                    value={editing.status ?? c.status}
+                    onChange={e => setEditing(p => ({ ...p, status: e.target.value }))}
+                  >
+                    {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button className="btn btn-primary" style={{ flex:1 }} onClick={() => handleSave(c.id)} disabled={saving}>
+                    {saving ? 'שומר...' : 'שמור'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => setExpanded(null)}>ביטול</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <div className="loading">טוען לידים...</div>
         ) : contacts.length === 0 ? (
           <div className="empty">אין לידים עדיין בקטגוריה זו</div>
         ) : (
-          <table className="crm-table">
+          <div className="crm-table-wrap"><table className="crm-table">
             <thead>
               <tr>
                 <th>טלפון / שם</th>
@@ -219,7 +306,7 @@ export default function CRM({ businessId }) {
                 </>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>

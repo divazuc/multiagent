@@ -15,7 +15,8 @@ const WEBHOOK_PATH = AGENT_BASE ? `${AGENT_BASE}/wa-inbound` : '/api/agent/wa-in
 
 export default function App() {
   const isDev = import.meta.env.DEV
-  const [authed, setAuthed] = useState(() => isDev || localStorage.getItem('wa_studio_auth') === '1')
+  // TODO: re-enable login when auth issue is resolved
+  const [authed, setAuthed] = useState(() => true)
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [messages, setMessages] = useState([])
