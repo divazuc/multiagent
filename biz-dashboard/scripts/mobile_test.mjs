@@ -1,6 +1,6 @@
 import { chromium } from 'playwright'
 
-const BASE = 'http://localhost:5173'
+const BASE = 'http://localhost:5173/biz/'
 const passes = [], fails = []
 const pass = (m) => { passes.push(m); console.log(`  ✅ ${m}`) }
 const fail = (m) => { fails.push(m);  console.log(`  ❌ ${m}`) }

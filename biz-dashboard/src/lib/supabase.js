@@ -66,3 +66,39 @@ export async function fetchConversationHistory(businessId) {
     .limit(200)
   return data ?? []
 }
+
+export async function fetchBusinessProfile(businessId) {
+  const { data } = await supabase.from('business_profiles').select('*').eq('business_id', businessId).maybeSingle()
+  return data
+}
+
+export async function saveBusinessProfile(businessId, updates) {
+  const AGENT_URL = import.meta.env.VITE_AGENT_URL ?? ''
+  await fetch(`${AGENT_URL}/business/update`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ business_id: businessId, updates })
+  })
+}
+
+export async function fetchKnowledgeItems(businessId) {
+  const { data } = await supabase.from('knowledge_items')
+    .select('id, category, question, answer, is_active, created_at')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: true })
+  return data || []
+}
+
+export async function saveKnowledgeItem(id, updates) {
+  await supabase.from('knowledge_items').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id)
+}
+
+export async function addKnowledgeItem(businessId, { category, question, answer }) {
+  const { data } = await supabase.from('knowledge_items')
+    .insert({ business_id: businessId, category, question, answer: answer || '', is_active: false, language: 'he', archetypes: [] })
+    .select().maybeSingle()
+  return data
+}
+
+export async function deleteKnowledgeItem(id) {
+  await supabase.from('knowledge_items').delete().eq('id', id)
+}
