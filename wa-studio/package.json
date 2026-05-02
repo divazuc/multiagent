@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "cd ../biz-dashboard && npm install && npm run build && cp -r dist ../wa-studio/public/biz && cd ../wa-studio && vite build",
     "preview": "vite preview",
     "test": "node tests/run.js",
     "test:unit": "node --test \"tests/unit/**/*.test.js\"",
