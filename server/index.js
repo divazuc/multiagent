@@ -30,7 +30,7 @@ app.use((req, res, next) => {
   const allowed = !origin || ALLOWED_ORIGINS.includes(origin);
 
   // Always set CORS headers — preflight must include them or browser blocks the actual request
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   if (origin && allowed) res.setHeader('Access-Control-Allow-Origin', origin);
 
@@ -193,6 +193,10 @@ app.post('/wa-inbound', async (req, res) => {
         checkAndSuggestFaq({ business_id, question: message, answer: final_response }).catch(() => {});
       }
 
+      // Non-blocking contact upsert
+      const _contactStatus = r?.cta_triggered ? 'cta_triggered' : 'in_conversation';
+      upsertContact({ business_id, phone: session_id, status: _contactStatus, incrementMessage: true }).catch(() => {});
+
     } else if (session_mode === 'setup' && r.action && r.action !== 'none') {
       h = stepStart(run, 'save_setup_state', {});
       const saved = await saveSetupState({
@@ -228,6 +232,42 @@ app.post('/wa-inbound', async (req, res) => {
 // Used by the wizard for clickable stages — fast, no Claude call needed
 
 // Israeli Yom Tov dates — businesses closed (5785–5786 / 2024–2026)
+async function upsertContact({ business_id, phone, status, incrementMessage = false }) {
+  if (!business_id || !phone) return;
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const now = new Date().toISOString();
+
+    // Check if contact exists
+    const { data: existing } = await supabase
+      .from('contacts')
+      .select('id, message_count, status')
+      .eq('business_id', business_id)
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (existing) {
+      const updates = { last_activity_at: now, updated_at: now };
+      if (incrementMessage) updates.message_count = (existing.message_count || 0) + 1;
+      // Only upgrade status, never downgrade (new_lead → in_conversation → cta_triggered etc.)
+      const statusOrder = ['new_lead','in_conversation','cta_triggered','followup_sent','converted','cold','not_relevant'];
+      const currentIdx = statusOrder.indexOf(existing.status);
+      const newIdx = statusOrder.indexOf(status);
+      if (status && newIdx > currentIdx) updates.status = status;
+      await supabase.from('contacts').update(updates).eq('id', existing.id);
+    } else {
+      await supabase.from('contacts').insert({
+        business_id, phone,
+        status: status || 'new_lead',
+        message_count: incrementMessage ? 1 : 0,
+        last_activity_at: now,
+      });
+    }
+  } catch (e) {
+    console.error('[upsertContact]', e.message);
+  }
+}
+
 const JEWISH_HOLIDAYS = new Set([
   '2024-10-02','2024-10-03',                         // Rosh Hashana
   '2024-10-11','2024-10-12',                         // Yom Kippur eve + day
@@ -626,6 +666,8 @@ app.post('/follow-up/process', async (req, res) => {
           // TODO: replace with real WA Business API send when integration is live
         }, { onConflict: 'business_id,session_id' });
 
+        upsertContact({ business_id: biz.business_id, phone: session_id, status: 'followup_sent' }).catch(() => {});
+
         results.push({ session_id, status: 'sent', message });
       }
     }
@@ -633,6 +675,44 @@ app.post('/follow-up/process', async (req, res) => {
     const sent    = results.filter(r => r.status === 'sent').length;
     const skipped = results.filter(r => r.skipped).length;
     return res.json({ status: 'success', processed: results.length, sent, skipped, results });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+app.get('/contacts/:business_id', async (req, res) => {
+  const { business_id } = req.params;
+  const { status, limit = 50, offset = 0 } = req.query;
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    let q = supabase
+      .from('contacts')
+      .select('id, phone, name, status, notes, ai_summary, message_count, last_activity_at, created_at')
+      .eq('business_id', business_id)
+      .order('last_activity_at', { ascending: false })
+      .range(Number(offset), Number(offset) + Number(limit) - 1);
+    if (status) q = q.eq('status', status);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+    return res.json({ status: 'success', contacts: data || [] });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+app.patch('/contacts/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, notes, status } = req.body ?? {};
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const updates = { updated_at: new Date().toISOString() };
+    if (name !== undefined) updates.name = name;
+    if (notes !== undefined) updates.notes = notes;
+    if (status !== undefined) updates.status = status;
+    const { error } = await supabase.from('contacts').update(updates).eq('id', id);
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+    return res.json({ status: 'success' });
   } catch (e) {
     return res.status(500).json({ status: 'error', message: e.message });
   }
