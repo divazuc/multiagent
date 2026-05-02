@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import Overview from './pages/Overview'
 import CRM from './pages/CRM'
+import Settings from './pages/Settings'
+import Knowledge from './pages/Knowledge'
 
 const NAV = [
-  { key: 'overview', label: 'סקירה',  icon: '📊' },
-  { key: 'crm',      label: 'לידים',  icon: '👥' },
+  { key: 'overview',  label: 'סקירה',   icon: '📊' },
+  { key: 'crm',       label: 'לידים',   icon: '👥' },
+  { key: 'settings',  label: 'הגדרות',  icon: '⚙️' },
+  { key: 'knowledge', label: 'FAQ',      icon: '📚' },
 ]
 
 async function getDevBusiness() {
@@ -90,9 +94,13 @@ export default function App() {
             <div className="empty">לא נמצא עסק — ודא שהשלמת את ההגדרות ב-WA Studio</div>
           ) : page === 'overview' ? (
             <Overview businessId={business.id} businessName={business.name} />
-          ) : (
+          ) : page === 'crm' ? (
             <CRM businessId={business.id} />
-          )}
+          ) : page === 'settings' ? (
+            <Settings businessId={business.id} />
+          ) : page === 'knowledge' ? (
+            <Knowledge businessId={business.id} />
+          ) : null}
         </main>
       </div>
 
