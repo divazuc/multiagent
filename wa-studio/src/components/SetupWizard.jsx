@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { logError } from './ErrorBoundary.jsx'
 import { upcomingHolidays } from '../lib/jewish-holidays.js'
+import { BUSINESS_TYPES } from '../lib/faq-by-business-type.js'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const API = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
@@ -299,10 +300,11 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
 
   // Business details state
   const [details, setDetails] = useState(() => ({
-    business_name: draft?.business_details?.business_name ?? '',
-    contact_name:  draft?.business_details?.contact_name  ?? '',
-    contact_phone: draft?.business_details?.contact_phone ?? '',
-    contact_email: draft?.business_details?.contact_email ?? '',
+    business_name:     draft?.business_details?.business_name     ?? '',
+    contact_name:      draft?.business_details?.contact_name      ?? '',
+    contact_phone:     draft?.business_details?.contact_phone     ?? '',
+    contact_email:     draft?.business_details?.contact_email     ?? '',
+    business_category: draft?.business_details?.business_category ?? '',
   }))
 
   // Agent availability state
@@ -658,6 +660,19 @@ function DetailsStage({ config, value, onChange }) {
         {config.subtitle && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{config.subtitle}</div>}
       </div>
       {field('business_name', 'שם העסק / Business name', 'TechPro IT')}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>קטגוריה / Business type</label>
+        <select
+          value={value.business_category}
+          onChange={e => onChange(prev => ({ ...prev, business_category: e.target.value }))}
+          style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, outline: 'none' }}
+        >
+          <option value="">— בחר קטגוריה / Select category —</option>
+          {Object.entries(BUSINESS_TYPES).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+      </div>
       {field('contact_name',  'השם שלך (פרטי בלבד) / Your first name', 'דנה / Dana')}
       {field('contact_phone', 'מספר וואטסאפ עסקי / WhatsApp number', '+972501234567', 'tel')}
       {field('contact_email', 'אימייל עסקי / Business email', 'hello@mybusiness.com', 'email')}

@@ -7,7 +7,7 @@ import DBInspector from './components/DBInspector.jsx'
 import RunsPanel from './components/RunsPanel.jsx'
 import SetupWizard from './components/SetupWizard.jsx'
 import BusinessPreferences from './components/BusinessPreferences.jsx'
-import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode } from './lib/supabase.js'
+import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode, loadSuggestedFaqCount } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
@@ -23,6 +23,7 @@ export default function App() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
   const [faqOpen, setFaqOpen]   = useState(false)
+  const [suggestedCount, setSuggestedCount] = useState(0)
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [rightPanel, setRightPanel] = useState('db') // 'db' | 'runs'
   const [showSessions, setShowSessions] = useState(false)
@@ -35,6 +36,14 @@ export default function App() {
     } catch (e) {
       setError('Failed to load sessions: ' + e.message)
     }
+  }, [])
+
+  const refreshSuggestedCount = useCallback(async (businessId) => {
+    if (!businessId) { setSuggestedCount(0); return }
+    try {
+      const count = await loadSuggestedFaqCount(businessId)
+      setSuggestedCount(count)
+    } catch { setSuggestedCount(0) }
   }, [])
 
   const refreshDB = useCallback(async (sessionId) => {
@@ -140,6 +149,7 @@ export default function App() {
   async function selectSession(session) {
     setActiveSession(session)
     setMessages([])
+    refreshSuggestedCount(session.business_id)
     try {
       const state = await loadDBState(session.session_id)
       setDbState(state)
@@ -318,7 +328,8 @@ export default function App() {
             <FaqPanel
               businessId={activeSession.business_id}
               businessName={activeSession.business_name || activeSession.session_id}
-              onClose={() => setFaqOpen(false)}
+              businessCategory={dbState.profile?.business_category ?? ''}
+              onClose={() => { setFaqOpen(false); refreshSuggestedCount(activeSession.business_id) }}
             />
           ) : activeSession?.session_mode === 'setup' && !activeSession?.setup_completed
           ? (
@@ -347,6 +358,7 @@ export default function App() {
               onOpenPrefs={() => setPrefsOpen(true)}
               agentActive={dbState.profile?.agent_active ?? true}
               onToggleActive={handleToggleActive}
+              suggestedCount={suggestedCount}
             />
           )
         }

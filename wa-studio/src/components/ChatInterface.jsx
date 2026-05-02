@@ -3,7 +3,7 @@ import { SETUP_STAGES, ARCHETYPE_STAGE_PATHS } from '../lib/presets.js'
 
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 
-export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq, onOpenPrefs, agentActive, onToggleActive }) {
+export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq, onOpenPrefs, agentActive, onToggleActive, suggestedCount }) {
   const [input, setInput] = useState('')
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -61,7 +61,14 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
         <div className="chat-header-right">
           {session?.business_id && (
             <>
-              <button className="btn-faq" onClick={onOpenFaq} title="Manage FAQ">FAQ ✎</button>
+              <button className="btn-faq" onClick={onOpenFaq} title="Manage FAQ" style={{ position: 'relative' }}>
+                FAQ ✎
+                {suggestedCount > 0 && (
+                  <span style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', color: '#fff', borderRadius: '50%', fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, lineHeight: '16px', textAlign: 'center', padding: '0 3px' }}>
+                    {suggestedCount}
+                  </span>
+                )}
+              </button>
               {session?.setup_completed && onOpenPrefs && (
                 <button className="btn-faq" onClick={onOpenPrefs} title="Business Preferences">⚙️</button>
               )}

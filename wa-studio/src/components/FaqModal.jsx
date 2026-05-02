@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { loadFaqItems, updateFaqItem, deleteFaqItem, addFaqItem } from '../lib/supabase.js'
+import { loadFaqItems, updateFaqItem, deleteFaqItem, addFaqItem, approveSuggestedFaqItem, dismissSuggestedFaqItem } from '../lib/supabase.js'
 import { CATEGORIES, ARCHETYPES, ARCHETYPE_KEYS, FAQ_STARTERS_BY_CATEGORY } from '../lib/faq-starters.js'
+import { getFaqForBusinessType, BUSINESS_TYPES } from '../lib/faq-by-business-type.js'
 
 const STATUS = {
   pending:  { label: 'ממתין',   cls: 'fq-status-pending'  },
@@ -26,7 +27,7 @@ const syncKnowledge = (businessId) => {
   }).catch(() => {})
 }
 
-export default function FaqPanel({ businessId, businessName, onClose }) {
+export default function FaqPanel({ businessId, businessName, businessCategory, onClose }) {
   const [items, setItems]               = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
@@ -133,8 +134,24 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
     items: starters.filter(s => !existingQuestions.has(s.question.trim().toLowerCase())),
   })).filter(g => g.items.length > 0)
 
-  const pending  = items.filter(i => itemStatus(i) === 'pending')
-  const answered = items.filter(i => itemStatus(i) !== 'pending')
+  const suggested = items.filter(i => i.suggested && !i.is_active)
+  const pending  = items.filter(i => !i.suggested && itemStatus(i) === 'pending')
+  const answered = items.filter(i => !i.suggested && itemStatus(i) !== 'pending')
+
+  async function approveSuggestion(item) {
+    try {
+      await approveSuggestedFaqItem(item.id)
+      await load()
+      syncKnowledge(businessId)
+    } catch (e) { setError(e.message) }
+  }
+
+  async function dismissSuggestion(item) {
+    try {
+      await dismissSuggestedFaqItem(item.id)
+      await load()
+    } catch (e) { setError(e.message) }
+  }
 
   return (
     <div className="fq-panel">
@@ -201,7 +218,45 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
             <div className="fq-suggest-header">
               💡 שאלות מוצעות — לחץ <strong>+</strong> להוספה ועריכה לפני שמירה
             </div>
-            {suggestions.length === 0 && (
+            {businessCategory && (() => {
+              const bizTypeSuggestions = getFaqForBusinessType(businessCategory)
+                .filter(s => !existingQuestions.has(s.question.trim().toLowerCase()))
+              return bizTypeSuggestions.length > 0 ? (
+                <div className="fq-suggest-group">
+                  <div
+                    className="fq-suggest-group-hd"
+                    onClick={() => setExpandedCat(expandedCat === '__biz_type__' ? null : '__biz_type__')}
+                  >
+                    <span>✨ מותאם לעסק שלך / For your business type — {BUSINESS_TYPES[businessCategory] ?? businessCategory}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="fq-count">{bizTypeSuggestions.length}</span>
+                      <span>{expandedCat === '__biz_type__' ? '▾' : '▸'}</span>
+                    </span>
+                  </div>
+                  {expandedCat === '__biz_type__' && bizTypeSuggestions.map((s, i) => (
+                    <div key={i} className="fq-suggest-row">
+                      <div className="fq-suggest-content">
+                        <div className="fq-suggest-q" dir="rtl">{s.question}</div>
+                        <div className="fq-suggest-a" dir="rtl">{s.answer}</div>
+                      </div>
+                      <button
+                        className="fq-suggest-add-btn"
+                        onClick={() => useSuggestion(s)}
+                        title="הוסף וערוך"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            })()}
+            {businessCategory && suggestions.length > 0 && (
+              <div className="fq-suggest-group-hd" style={{ cursor: 'default', opacity: 0.6, fontSize: 11 }}>
+                שאלות כלליות / General
+              </div>
+            )}
+            {suggestions.length === 0 && !businessCategory && (
               <div className="fq-state-msg">כל ההצעות כבר נוספו 🎉</div>
             )}
             {suggestions.map(group => (
@@ -234,6 +289,32 @@ export default function FaqPanel({ businessId, businessName, onClose }) {
               </div>
             ))}
           </div>
+        )}
+
+        {!loading && suggested.length > 0 && (
+          <section className="fq-section">
+            <div className="fq-section-hd" lang="he">
+              <span>💡 הוצע משיחות</span>
+              <span className="fq-count">{suggested.length}</span>
+            </div>
+            {suggested.map(item => (
+              <div key={item.id} className="fq-row fq-row-suggested" lang="he">
+                <div className="fq-row-hd" style={{ cursor: 'default' }}>
+                  <span className="fq-cat-badge">{CATEGORIES[item.category] || item.category}</span>
+                  <span className="fq-q-text" dir="rtl">{item.question || '(שאלה ריקה)'}</span>
+                  <span className="fq-row-btns" onClick={e => e.stopPropagation()}>
+                    <button className="fq-icon-btn" onClick={() => approveSuggestion(item)} title="אשר">✅</button>
+                    <button className="fq-icon-btn" onClick={() => dismissSuggestion(item)} title="דחה">❌</button>
+                  </span>
+                </div>
+                {item.answer && (
+                  <div className="fq-row-body">
+                    <div className="fq-answer-text" dir="rtl">{item.answer}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </section>
         )}
 
         {loading && <div className="fq-state-msg">טוען...</div>}

@@ -188,6 +188,11 @@ app.post('/wa-inbound', async (req, res) => {
       });
       await stepDone(h, saved);
 
+      // Fire FAQ suggest check asynchronously — non-blocking
+      if (business_id && message && final_response) {
+        checkAndSuggestFaq({ business_id, question: message, answer: final_response }).catch(() => {});
+      }
+
     } else if (session_mode === 'setup' && r.action && r.action !== 'none') {
       h = stepStart(run, 'save_setup_state', {});
       const saved = await saveSetupState({
@@ -374,6 +379,7 @@ app.post('/setup/commit', async (req, res) => {
       contact_name:                 det.contact_name ?? null,
       contact_phone:                det.contact_phone ?? null,
       contact_email:                det.contact_email ?? null,
+      business_category:            det.business_category ?? null,
       agent_active:                 avail.agent_active ?? true,
       answer_after_hours:           avail.answer_after_hours ?? true,
       after_hours_message:          avail.after_hours_message ?? null,
@@ -390,10 +396,11 @@ app.post('/setup/commit', async (req, res) => {
 
     // Sync contact details back to businesses table
     const bizUpdate = {};
-    if (det.business_name)  bizUpdate.name = det.business_name;
-    if (det.contact_name)   bizUpdate.contact_name = det.contact_name;
-    if (det.contact_email)  bizUpdate.contact_email = det.contact_email;
-    if (det.contact_phone)  bizUpdate.whatsapp_number = det.contact_phone;
+    if (det.business_name)     bizUpdate.name = det.business_name;
+    if (det.contact_name)      bizUpdate.contact_name = det.contact_name;
+    if (det.contact_email)     bizUpdate.contact_email = det.contact_email;
+    if (det.contact_phone)     bizUpdate.whatsapp_number = det.contact_phone;
+    if (det.business_category) bizUpdate.business_category = det.business_category;
     if (Object.keys(bizUpdate).length) {
       await supabase.from('businesses').update(bizUpdate).eq('id', business_id);
     }
@@ -440,6 +447,56 @@ app.post('/business/toggle-active', async (req, res) => {
   } catch (e) {
     return res.status(500).json({ status: 'error', message: e.message });
   }
+});
+
+// ── FAQ suggest — check similarity and insert candidate ──────────────────────
+async function checkAndSuggestFaq({ business_id, question, answer }) {
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const { data: existing } = await supabase
+      .from('knowledge_items')
+      .select('question')
+      .eq('business_id', business_id);
+
+    if (existing?.length) {
+      const inWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+      const threshold = Math.ceil(inWords.length * 0.4);
+      const match = existing.some(row => {
+        const rowQ = row.question.toLowerCase();
+        const overlap = inWords.filter(w => rowQ.includes(w)).length;
+        return overlap >= threshold;
+      });
+      if (match) return { suggested: false };
+    }
+
+    const { data: inserted } = await supabase
+      .from('knowledge_items')
+      .insert({
+        business_id,
+        category: 'general',
+        question,
+        answer,
+        is_active: false,
+        suggested: true,
+        language: 'he',
+      })
+      .select('id')
+      .maybeSingle();
+
+    return { suggested: true, item_id: inserted?.id ?? null };
+  } catch (e) {
+    console.error('[faq/suggest] error:', e.message);
+    return { suggested: false };
+  }
+}
+
+app.post('/faq/suggest', async (req, res) => {
+  const { business_id, session_id, question, answer } = req.body ?? {};
+  if (!business_id || !question) {
+    return res.status(400).json({ status: 'error', message: 'business_id and question required' });
+  }
+  const result = await checkAndSuggestFaq({ business_id, question, answer: answer ?? '' });
+  return res.json({ status: 'success', ...result });
 });
 
 // ── Knowledge sync — rebuild knowledge field from active FAQ items ─────────────

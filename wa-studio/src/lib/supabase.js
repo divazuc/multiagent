@@ -136,11 +136,35 @@ export async function setSessionMode(sessionId, mode) {
 export async function loadFaqItems(businessId) {
   const { data, error } = await supabase
     .from('knowledge_items')
-    .select('id, category, question, answer, archetypes, is_active, created_at')
+    .select('id, category, question, answer, archetypes, is_active, suggested, created_at')
     .eq('business_id', businessId)
     .order('created_at', { ascending: true })
   if (error) throw error
   return data || []
+}
+
+export async function loadSuggestedFaqCount(businessId) {
+  const { count, error } = await supabase
+    .from('knowledge_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_id', businessId)
+    .eq('suggested', true)
+    .eq('is_active', false)
+  if (error) return 0
+  return count || 0
+}
+
+export async function approveSuggestedFaqItem(id) {
+  const { error } = await supabase
+    .from('knowledge_items')
+    .update({ is_active: true, suggested: false, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function dismissSuggestedFaqItem(id) {
+  const { error } = await supabase.from('knowledge_items').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function updateFaqItem(id, updates) {
