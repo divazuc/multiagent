@@ -197,6 +197,7 @@ app.post('/wa-inbound', async (req, res) => {
       const _contactStatus = r?.cta_triggered ? 'cta_triggered' : 'in_conversation';
       upsertContact({ business_id, phone: session_id, status: _contactStatus, incrementMessage: true }).catch(() => {});
       generateContactSummary({ business_id, phone: session_id, session_id }).catch(() => {});
+      logBillingEvent({ business_id, session_id, type: 'user_initiated' }).catch(() => {});
 
     } else if (session_mode === 'setup' && r.action && r.action !== 'none') {
       h = stepStart(run, 'save_setup_state', {});
@@ -228,6 +229,21 @@ app.post('/wa-inbound', async (req, res) => {
     return res.status(500).json({ status: 'error', message: 'Internal server error' });
   }
 });
+
+// ── Billing event logger ──────────────────────────────────────────────────────
+async function logBillingEvent({ business_id, session_id, type = 'user_initiated' }) {
+  if (!business_id || !session_id) return;
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const windowDate = new Date().toISOString().slice(0, 10);
+    await supabase.from('wa_billing_events').upsert(
+      { business_id, session_id, type, window_date: windowDate },
+      { onConflict: 'business_id,session_id,window_date', ignoreDuplicates: true }
+    );
+  } catch (e) {
+    console.error('[logBillingEvent]', e.message);
+  }
+}
 
 // ── Contact AI summary — runs async after each live exchange ─────────────────
 async function generateContactSummary({ business_id, phone, session_id }) {
@@ -722,6 +738,7 @@ app.post('/follow-up/process', async (req, res) => {
         }, { onConflict: 'business_id,session_id' });
 
         upsertContact({ business_id: biz.business_id, phone: session_id, status: 'followup_sent' }).catch(() => {});
+        logBillingEvent({ business_id: biz.business_id, session_id, type: 'business_initiated' }).catch(() => {});
 
         results.push({ session_id, status: 'sent', message });
       }
@@ -768,6 +785,54 @@ app.patch('/contacts/:id', async (req, res) => {
     const { error } = await supabase.from('contacts').update(updates).eq('id', id);
     if (error) return res.status(500).json({ status: 'error', message: error.message });
     return res.json({ status: 'success' });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// ── Billing summary ───────────────────────────────────────────────────────────
+// Meta WA API estimated rates (USD) — update when real API connects
+const WA_RATES = { user_initiated: 0.015, business_initiated: 0.055 };
+const FREE_TIER_UI = 1000; // first 1000 user-initiated per month are free
+const USD_TO_ILS = 3.7;
+
+app.get('/billing/:business_id', async (req, res) => {
+  const { business_id } = req.params;
+  const { month } = req.query; // format: YYYY-MM, defaults to current month
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const targetMonth = month || new Date().toISOString().slice(0, 7);
+    const monthStart = `${targetMonth}-01`;
+    const monthEnd = `${targetMonth}-31`;
+
+    const { data: events, error } = await supabase
+      .from('wa_billing_events')
+      .select('type, window_date')
+      .eq('business_id', business_id)
+      .gte('window_date', monthStart)
+      .lte('window_date', monthEnd);
+
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+
+    const ui = events?.filter(e => e.type === 'user_initiated').length ?? 0;
+    const bi = events?.filter(e => e.type === 'business_initiated').length ?? 0;
+    const total = ui + bi;
+
+    // Cost: UI free up to FREE_TIER_UI, then charged; BI always charged
+    const uiChargeable = Math.max(0, ui - FREE_TIER_UI);
+    const costUsd = (uiChargeable * WA_RATES.user_initiated) + (bi * WA_RATES.business_initiated);
+    const costIls = Math.ceil(costUsd * USD_TO_ILS * 100) / 100;
+
+    return res.json({
+      status: 'success',
+      month: targetMonth,
+      total_conversations: total,
+      user_initiated: ui,
+      business_initiated: bi,
+      free_tier_remaining: Math.max(0, FREE_TIER_UI - ui),
+      estimated_cost_usd: Math.round(costUsd * 100) / 100,
+      estimated_cost_ils: costIls,
+    });
   } catch (e) {
     return res.status(500).json({ status: 'error', message: e.message });
   }
