@@ -65,7 +65,7 @@ export default function Overview({ businessId, businessName }) {
         <div>
           <div className="hero-title">הסוכן חסך לך ~{hours} שעות החודש</div>
           <div className="hero-sub">
-            {data.total_leads} שיחות טופלו אוטומטית — זמן שחזר אליך
+            {data.total_leads} הודעות טופלו אוטומטית — זמן שחזר אליך
           </div>
         </div>
       </div>
@@ -118,7 +118,7 @@ export default function Overview({ businessId, businessName }) {
         <div className="card">
           <div className="section-hd">עלויות וואטסאפ / WhatsApp usage — {month}</div>
           <div className="billing-row">
-            <span>שיחות נכנסות (user-initiated)</span>
+            <span>הודעות נכנסות (user-initiated)</span>
             <span style={{ fontWeight: 600 }}>{billing.user_initiated}</span>
           </div>
           <div className="billing-row">
@@ -127,7 +127,7 @@ export default function Overview({ businessId, businessName }) {
           </div>
           <div className="billing-row">
             <span>נותר בחינם החודש</span>
-            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{billing.free_tier_remaining} שיחות</span>
+            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{billing.free_tier_remaining} הודעות</span>
           </div>
           <div className="billing-row">
             <span>עלות משוערת</span>

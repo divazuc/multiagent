@@ -111,13 +111,9 @@ async function run() {
 
     const stageActions = [
       // [stage_name, action_fn]
-      ['business_details', async () => {
-        // Fill first name (required), rest optional
-        const nameInput = await page.$('input[placeholder*="Dana"], input[placeholder*="דנה"]');
-        if (nameInput) await nameInput.fill('Dana QA');
-        await clickContinue(page);
-      }],
-      ['business_type',    async () => { await clickOption(page, 'service'); await clickContinue(page); }],
+      ['business_details', async () => { await clickContinue(page); }],
+      ['business_type',     async () => { await clickOption(page, 'service'); await clickContinue(page); }],
+      ['business_category', async () => { await wait(800); await clickOption(page, 'general'); await clickContinue(page); }],
       ['faq_topics',       async () => {
         const cards = await page.$$('div[style*="cursor: pointer"][style*="border-radius: 10px"]');
         if (cards.length >= 2) { await cards[0].click(); await cards[1].click(); }
