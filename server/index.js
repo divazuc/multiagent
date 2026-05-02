@@ -193,9 +193,10 @@ app.post('/wa-inbound', async (req, res) => {
         checkAndSuggestFaq({ business_id, question: message, answer: final_response }).catch(() => {});
       }
 
-      // Non-blocking contact upsert
+      // Non-blocking contact upsert + AI summary
       const _contactStatus = r?.cta_triggered ? 'cta_triggered' : 'in_conversation';
       upsertContact({ business_id, phone: session_id, status: _contactStatus, incrementMessage: true }).catch(() => {});
+      generateContactSummary({ business_id, phone: session_id, session_id }).catch(() => {});
 
     } else if (session_mode === 'setup' && r.action && r.action !== 'none') {
       h = stepStart(run, 'save_setup_state', {});
@@ -227,6 +228,60 @@ app.post('/wa-inbound', async (req, res) => {
     return res.status(500).json({ status: 'error', message: 'Internal server error' });
   }
 });
+
+// ── Contact AI summary — runs async after each live exchange ─────────────────
+async function generateContactSummary({ business_id, phone, session_id }) {
+  if (!business_id || !phone || !session_id) return;
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+
+    // Need at least 2 messages to summarize
+    const { data: messages } = await supabase
+      .from('conversation_messages')
+      .select('user_message, agent_response')
+      .eq('session_id', session_id)
+      .eq('business_id', business_id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (!messages || messages.length < 2) return;
+
+    const convoText = [...messages].reverse().map(m => {
+      const parts = [];
+      if (m.user_message)   parts.push(`לקוח: ${m.user_message}`);
+      if (m.agent_response) parts.push(`סוכן: ${m.agent_response}`);
+      return parts.join('\n');
+    }).join('\n\n');
+
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 120,
+      messages: [{
+        role: 'user',
+        content: `בהתבסס על השיחה הבאה עם ליד, כתוב סיכום של משפט עד שניים בעברית: מה הליד רוצה, איפה הוא עומד, מה קרה עד כה. בגוף שלישי, ישיר ותמציתי. ללא כותרות, ללא markdown — טקסט בלבד.
+
+${convoText}
+
+סיכום (טקסט בלבד):`
+      }]
+    });
+
+    const summary = res.content[0]?.text?.trim();
+    if (!summary) return;
+
+    await supabase
+      .from('contacts')
+      .update({ ai_summary: summary, updated_at: new Date().toISOString() })
+      .eq('business_id', business_id)
+      .eq('phone', phone);
+
+  } catch (e) {
+    console.error('[generateContactSummary]', e.message);
+  }
+}
 
 // ── Setup: direct structured save (no LLM) ───────────────────────────────────
 // Used by the wizard for clickable stages — fast, no Claude call needed
