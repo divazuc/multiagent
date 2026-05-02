@@ -99,7 +99,7 @@ export default function Overview({ businessId, businessName }) {
       {chartData.length > 0 && (
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="section-hd">שיחות לפי יום / Daily conversations</div>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={window.innerWidth < 768 ? 140 : 180}>
             <BarChart data={chartData} margin={{ top: 4, right: 0, left: -20, bottom: 0 }}>
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} />
               <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} allowDecimals={false} />

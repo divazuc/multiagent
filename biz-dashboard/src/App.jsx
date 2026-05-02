@@ -36,6 +36,7 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Desktop sidebar */}
       <aside className="sidebar">
         <div className="sidebar-logo">🤖 WAgent</div>
         {business && (
@@ -56,6 +57,20 @@ export default function App() {
           ))}
         </nav>
       </aside>
+
+      {/* Mobile bottom nav */}
+      <nav className="bottom-nav">
+        {NAV.map(n => (
+          <button
+            key={n.key}
+            className={`bottom-nav-item ${page === n.key ? 'active' : ''}`}
+            onClick={() => setPage(n.key)}
+          >
+            <span className="nav-icon">{n.icon}</span>
+            {n.label}
+          </button>
+        ))}
+      </nav>
 
       <main className="main">
         {!business ? (
