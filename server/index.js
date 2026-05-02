@@ -375,7 +375,8 @@ function isWithinWorkingHours(working_hours) {
 
 const SETUP_STAGE_FLOW = {
   business_details:    'business_type',
-  business_type:       'faq_topics',
+  business_type:       'business_category',
+  business_category:   'faq_topics',
   faq_topics:          'cta_goal',
   cta_goal:            'push_speed',   // support_only overrides to 'tone' below
   push_speed:          'tone',

@@ -40,6 +40,29 @@ const FAQ_TOPICS = {
   ],
 }
 
+// ── Business category options per archetype ───────────────────────────────────
+const ARCHETYPE_CATEGORIES = {
+  service: [
+    { value: 'cleaning',              label: 'ניקיון / Cleaning',              icon: '🧹', desc: 'ניקיון בית, משרד, פוסט-שיפוץ' },
+    { value: 'digital_marketing',     label: 'שיווק דיגיטלי / Digital Marketing', icon: '📱', desc: 'סושיאל, גוגל, קופי, אתרים' },
+    { value: 'professional_services', label: 'שירותים מקצועיים / Professional', icon: '💼', desc: 'עו"ד, רו"ח, יועץ מס' },
+    { value: 'health_therapy',        label: 'בריאות וטיפול / Health',          icon: '🏥', desc: 'רופא, פסיכולוג, פיזיותרפיסט' },
+    { value: 'photography',           label: 'צלם / Photography',               icon: '📷', desc: 'חתונות, משפחות, עסקי' },
+    { value: 'web_design',            label: 'בניית אתרים / Web Design',        icon: '💻', desc: 'אתרים, עיצוב גרפי, לוגו' },
+  ],
+  booking: [
+    { value: 'gym',        label: 'חדר כושר / Gym & Studio', icon: '💪', desc: 'פיטנס, יוגה, פילאטיס' },
+    { value: 'nail_salon', label: 'ציפורניים / Nails',        icon: '💅', desc: 'מניקור, פדיקור, ג\'ל' },
+    { value: 'massage_spa',label: 'עיסוי וספא / Massage',    icon: '💆', desc: 'עיסוי, רפלקסולוגיה, ספא' },
+    { value: 'hair_salon', label: 'מספרה / Hair Salon',       icon: '✂️', desc: 'תספורת, צביעה, החלקה' },
+  ],
+  product: [
+    { value: 'restaurant', label: 'מסעדה / Restaurant',       icon: '🍽️', desc: 'מסעדה, קפה, קייטרינג' },
+  ],
+}
+
+const GENERAL_OPTION = { value: 'general', label: 'כללי / General', icon: '⚡', desc: 'שאלות כלליות לסוג העסק' }
+
 // ── Stage definitions ─────────────────────────────────────────────────────────
 const STAGES = [
   {
@@ -57,6 +80,16 @@ const STAGES = [
       { value: 'product', label: 'Product / מוצר',  desc: 'מסעדה, קפה, חנות אינטרנטית, קמעונאות', icon: '🛍️' },
       { value: 'booking', label: 'Booking / הזמנה', desc: 'חדר כושר, ציפורניים, מספרה, קליניקה',   icon: '📅' },
     ],
+  },
+  {
+    key: 'business_category',
+    title: 'סוג עסק ספציפי / Specific business type',
+    subtitle: 'מסייע להתאים שאלות FAQ רלוונטיות לעסק שלך',
+    type: 'single',
+    dynamic: (draft) => {
+      const cats = ARCHETYPE_CATEGORIES[draft?.archetype ?? 'service'] ?? []
+      return [...cats, GENERAL_OPTION]
+    },
   },
   {
     key: 'faq_topics',
@@ -329,10 +362,8 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
   )
   const [jewishHolidays, setJewishHolidays] = useState(true)
 
-  const canContinue = ['text', 'faq_pairs', 'working_hours', 'availability'].includes(stageConfig?.type)
+  const canContinue = ['text', 'faq_pairs', 'working_hours', 'availability', 'details'].includes(stageConfig?.type)
     ? true
-    : stageConfig?.type === 'details'
-    ? details.contact_name.trim().length > 0
     : selections.length > 0
 
   return (
