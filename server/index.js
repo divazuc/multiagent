@@ -11,15 +11,15 @@ console.log('[cors] allowed origins:', ALLOWED_ORIGINS);
 // Agents — imported lazily so missing files don't crash startup
 let runConversation = null, runSetup = null, runLearning = null;
 async function loadAgents() {
-  const [conv, setup, learning] = await Promise.all([
+  const [conv, setup, demo] = await Promise.all([
     import('./agents/conversation.js').catch(e => { console.error('[loadAgents] conversation:', e.message); return {}; }),
     import('./agents/setup.js').catch(e => { console.error('[loadAgents] setup:', e.message); return {}; }),
-    import('./agents/learning.js').catch(() => ({})),
+    import('./agents/demo.js').catch(e => { console.error('[loadAgents] demo:', e.message); return {}; }),
   ]);
   runConversation = conv.runConversation ?? null;
   runSetup        = setup.runSetup ?? null;
-  runLearning     = learning.runLearning ?? null;
-  console.log('[loadAgents] runConversation:', typeof runConversation, '| runSetup:', typeof runSetup, '| runLearning:', typeof runLearning);
+  runLearning     = demo.runDemo ?? null;
+  console.log('[loadAgents] runConversation:', typeof runConversation, '| runSetup:', typeof runSetup, '| runDemo:', typeof runLearning);
 }
 
 const app = express();

@@ -6,6 +6,7 @@ import ChatInterface from './components/ChatInterface.jsx'
 import DBInspector from './components/DBInspector.jsx'
 import RunsPanel from './components/RunsPanel.jsx'
 import SetupWizard from './components/SetupWizard.jsx'
+import DemoWizard from './components/DemoWizard.jsx'
 import BusinessPreferences from './components/BusinessPreferences.jsx'
 import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode, loadSuggestedFaqCount } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
@@ -331,6 +332,15 @@ export default function App() {
               businessName={activeSession.business_name || activeSession.session_id}
               businessCategory={dbState.profile?.business_category ?? ''}
               onClose={() => { setFaqOpen(false); refreshSuggestedCount(activeSession.business_id) }}
+            />
+          ) : activeSession?.session_mode === 'learning'
+          ? (
+            <DemoWizard
+              session={activeSession}
+              onCompleted={async () => {
+                await refreshSessions()
+                setActiveSession(prev => prev ? { ...prev, session_mode: 'live', setup_completed: true } : prev)
+              }}
             />
           ) : activeSession?.session_mode === 'setup' && !activeSession?.setup_completed
           ? (
