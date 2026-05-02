@@ -1,0 +1,918 @@
+{
+  "name": "WA_00_Supervisor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wa-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "be318793-35f9-4f30-a3dd-a43d192892e0",
+      "typeVersion": 2,
+      "position": [
+        -1008,
+        544
+      ],
+      "name": "Webhook inbound",
+      "type": "n8n-nodes-base.webhook",
+      "webhookId": "caa57835-e15f-44b2-a637-1e72cbf27d64"
+    },
+    {
+      "parameters": {
+        "workflowId": "ZYqrrxq2318Ly7mv",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "9a58e4eb-bc82-46f4-b597-031788ab2cd8",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        544
+      ],
+      "name": "Normalize message",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition_normalize_status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "965afb5d-0bdd-4e3e-838f-54c5108d8fe3",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        544
+      ],
+      "name": "Check normalize status",
+      "type": "n8n-nodes-base.if"
+    },
+    {
+      "parameters": {
+        "workflowId": "QPvVdNYsEoqvOQ2R",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "e42fa68b-54b7-480d-ba1b-80a158f2c90b",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        544
+      ],
+      "name": "Load session and context",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition_session_status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "52af578b-3a71-466e-b3b3-4654c0ff3664",
+      "typeVersion": 2,
+      "position": [
+        192,
+        544
+      ],
+      "name": "Check session status",
+      "type": "n8n-nodes-base.if"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.result.session_mode }}",
+                    "rightValue": "setup",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "setup"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.result.session_mode }}",
+                    "rightValue": "learning",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "learning"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.result.session_mode }}",
+                    "rightValue": "live",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "conversation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26dc2e03-5c8e-43d1-afb4-6ada0a16207d",
+      "typeVersion": 3,
+      "position": [
+        496,
+        544
+      ],
+      "name": "Route session mode",
+      "type": "n8n-nodes-base.switch"
+    },
+    {
+      "parameters": {
+        "workflowId": "6YjROHmmOInYEMdb",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "576f939e-12ef-4ba1-b97c-e078f6dd1171",
+      "typeVersion": 1,
+      "position": [
+        800,
+        544
+      ],
+      "name": "Run conversation engine",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COALESCE(d.draft_setup_data, '{}'::jsonb) AS draft_setup_data, COALESCE(d.current_setup_stage, '') AS current_setup_stage FROM (SELECT 1) t LEFT JOIN setup_drafts d ON d.session_id = '{{ $json.result.session_id }}' LIMIT 1;",
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-234567890123",
+      "typeVersion": 2.5,
+      "position": [
+        720,
+        544
+      ],
+      "name": "Load setup draft",
+      "type": "n8n-nodes-base.postgres",
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const norm = $('Check normalize status').item.json.result || {};\nconst ctx = $('Check session status').item.json.result || {};\n\nconst draftRaw = $input.first().json;\nlet draftData = {};\ntry {\n  draftData = typeof draftRaw.draft_setup_data === 'string'\n    ? JSON.parse(draftRaw.draft_setup_data)\n    : (draftRaw.draft_setup_data || {});\n} catch(e) {}\n\nconst draftStage = draftRaw.current_setup_stage || '';\nconst rawStage = draftStage || ctx.current_stage || 'setup_start';\nconst setupStage = (!rawStage || rawStage === 'setup_start') ? 'collect_business_model' : rawStage;\n\nreturn [{ json: {\n  message: norm.message || '',\n  session_id: norm.session_id || '',\n  business_id: ctx.business_id || null,\n  current_setup_stage: setupStage,\n  draft_setup_data: draftData\n}}];"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "typeVersion": 2,
+      "position": [
+        952,
+        544
+      ],
+      "name": "Prepare setup inputs",
+      "type": "n8n-nodes-base.code"
+    },
+    {
+      "parameters": {
+        "workflowId": "cLn5Z4D5siEgPvR7",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "f8399298-2ae5-4c59-bc40-bdd07c9fa04f",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        544
+      ],
+      "name": "Run setup onboarding flow",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "workflowId": "MeF3RSE0WJ78S6dP",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "de1782ab-bfc5-4924-bde7-b0c2a012bf82",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        544
+      ],
+      "name": "Run demo learning phase",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition_conversation_status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "695f0e08-f4ea-41f9-b28a-441c9d404efb",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        544
+      ],
+      "name": "Check conversation status",
+      "type": "n8n-nodes-base.if"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "setup-status-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0f6cd9c4-1715-497b-aa48-1b44f19ad85b",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        544
+      ],
+      "name": "Check setup status",
+      "type": "n8n-nodes-base.if"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition_learning_status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dd48147f-4e74-4da3-bb15-6172afd0f5e3",
+      "typeVersion": 2,
+      "position": [
+        2304,
+        544
+      ],
+      "name": "Check learning status",
+      "type": "n8n-nodes-base.if"
+    },
+    {
+      "parameters": {
+        "workflowId": "7cOuZf1MilvCPTgE",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "39500630-3b3a-4ab9-92ed-f91410e144a8",
+      "typeVersion": 1,
+      "position": [
+        2592,
+        544
+      ],
+      "name": "Validate and filter response",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "validation-status-check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6afbcccc-d4e3-42f6-9ec7-e1939e77cff6",
+      "typeVersion": 2,
+      "position": [
+        2896,
+        544
+      ],
+      "name": "Check validation status",
+      "type": "n8n-nodes-base.if"
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "id": "5509908d-21be-4ee6-ab32-58fd8c08fc66",
+      "typeVersion": 3,
+      "position": [
+        3200,
+        544
+      ],
+      "name": "Merge validated response",
+      "type": "n8n-nodes-base.merge"
+    },
+    {
+      "parameters": {
+        "workflowId": "4E2tMweG8tsjHtTW",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "a398d4cd-eb2e-4af1-be8b-7a30b3ce12a0",
+      "typeVersion": 1,
+      "position": [
+        3504,
+        544
+      ],
+      "name": "Save conversation state",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const norm = $('Normalize message').item.json.result || {};\nconst ctx = $('Load session and context').item.json.result || {};\nconst setupResult = $json.result || {};\nreturn [{ json: {\n  session_id: norm.session_id || '',\n  business_id: ctx.business_id || null,\n  action: setupResult.action || 'save_draft',\n  current_setup_stage: setupResult.next_setup_stage || 'collect_business_model',\n  draft_setup_data: setupResult.draft_setup_data || {},\n  setup_completed: setupResult.setup_completed || false\n}}];"
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        544
+      ],
+      "name": "Prepare setup state inputs",
+      "type": "n8n-nodes-base.code"
+    },
+    {
+      "parameters": {
+        "workflowId": "NqXGv2GY7djQqZ42",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "6772cca3-3aca-4550-8dbc-ddd543e45a66",
+      "typeVersion": 1,
+      "position": [
+        3792,
+        544
+      ],
+      "name": "Save setup state",
+      "type": "n8n-nodes-base.executeWorkflow"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "final_message",
+              "name": "message",
+              "type": "string",
+              "value": "={{ $if($('Validate and filter response').isExecuted, $('Validate and filter response').first()?.json?.result?.validated_response, null) ?? $if($('Run setup onboarding flow').isExecuted, $('Run setup onboarding flow').first()?.json?.result?.setup_response, null) ?? $if($('Run demo learning phase').isExecuted, $('Run demo learning phase').first()?.json?.result?.simulation_response, null) ?? 'An error occurred. Please try again.' }}"
+            },
+            {
+              "id": "final_stage",
+              "name": "state.stage",
+              "type": "string",
+              "value": "={{ $if($('Validate and filter response').isExecuted, $('Validate and filter response').first()?.json?.result?.next_stage, null) ?? $if($('Run setup onboarding flow').isExecuted, $('Run setup onboarding flow').first()?.json?.result?.next_setup_stage, null) ?? $if($('Run demo learning phase').isExecuted, $('Run demo learning phase').first()?.json?.result?.learning_stage, null) ?? 'unknown' }}"
+            },
+            {
+              "id": "final_session_id",
+              "name": "state.session_id",
+              "type": "string",
+              "value": "={{ $('Check normalize status').item.json.result?.session_id ?? '' }}"
+            },
+            {
+              "id": "final_status",
+              "name": "status",
+              "type": "string",
+              "value": "success"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "14855c48-a942-4a82-be2d-bddebf1e4e66",
+      "typeVersion": 3.4,
+      "position": [
+        4096,
+        544
+      ],
+      "name": "Build final response",
+      "type": "n8n-nodes-base.set"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error_response_message",
+              "name": "message",
+              "value": "={{ $json.error || 'An unexpected error occurred. Please try again.' }}",
+              "type": "string"
+            },
+            {
+              "id": "error_response_state",
+              "name": "state",
+              "value": "={{ { stage: $json.current_stage || 'error' } }}",
+              "type": "object"
+            },
+            {
+              "id": "error_response_status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1d30372f-dc68-4b76-a748-8190038dbb10",
+      "typeVersion": 3.4,
+      "position": [
+        4400,
+        544
+      ],
+      "name": "Build error response",
+      "type": "n8n-nodes-base.set"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  \"message\": $json.message ?? 'An error occurred. Please try again.',\n  \"state\": {\n    \"stage\": $json.state?.stage ?? 'unknown',\n    \"session_id\": $json.state?.session_id ?? ''\n  },\n  \"status\": $json.status ?? 'error'\n}) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "e261ec12-04d8-45d5-8de3-9fb86254718f",
+      "typeVersion": 1.1,
+      "position": [
+        4704,
+        544
+      ],
+      "name": "Respond to caller",
+      "type": "n8n-nodes-base.respondToWebhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: $json.error || 'An unexpected error occurred. Please try again.', state: { stage: $json.current_stage || 'unknown' } }) }}",
+        "options": {
+          "responseCode": 500,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "4c52c99b-02b3-4320-84e3-e5ca5d030ea0",
+      "typeVersion": 1.1,
+      "position": [
+        4992,
+        544
+      ],
+      "name": "Respond with error",
+      "type": "n8n-nodes-base.respondToWebhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook inbound": {
+      "main": [
+        [
+          {
+            "node": "Normalize message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize message": {
+      "main": [
+        [
+          {
+            "node": "Check normalize status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check normalize status": {
+      "main": [
+        [
+          {
+            "node": "Load session and context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build error response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load session and context": {
+      "main": [
+        [
+          {
+            "node": "Check session status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check session status": {
+      "main": [
+        [
+          {
+            "node": "Route session mode",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build error response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare setup inputs": {
+      "main": [
+        [
+          {
+            "node": "Run setup onboarding flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load setup draft": {
+      "main": [
+        [
+          {
+            "node": "Prepare setup inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route session mode": {
+      "main": [
+        [
+          {
+            "node": "Load setup draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run demo learning phase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run conversation engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run conversation engine": {
+      "main": [
+        [
+          {
+            "node": "Check conversation status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run setup onboarding flow": {
+      "main": [
+        [
+          {
+            "node": "Check setup status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run demo learning phase": {
+      "main": [
+        [
+          {
+            "node": "Check learning status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check conversation status": {
+      "main": [
+        [
+          {
+            "node": "Validate and filter response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build error response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check setup status": {
+      "main": [
+        [
+          {
+            "node": "Prepare setup state inputs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build error response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare setup state inputs": {
+      "main": [
+        [
+          {
+            "node": "Save setup state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check learning status": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Build error response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and filter response": {
+      "main": [
+        [
+          {
+            "node": "Check validation status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check validation status": {
+      "main": [
+        [
+          {
+            "node": "Save conversation state",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build error response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save conversation state": {
+      "main": [
+        [
+          {
+            "node": "Merge validated response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save setup state": {
+      "main": [
+        [
+          {
+            "node": "Merge validated response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge validated response": {
+      "main": [
+        [
+          {
+            "node": "Build final response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build final response": {
+      "main": [
+        [
+          {
+            "node": "Respond to caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build error response": {
+      "main": [
+        [
+          {
+            "node": "Respond with error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a1ebf5f0-0172-4b2a-8001-52feb3f05d22",
+  "meta": {
+    "instanceId": "a6fa1ea70c2b65d69b2a991c3cbda0430e4cb91a5e0e2ee3a5a6ce456bce1e90"
+  },
+  "id": "04FOFdVyLI7S4TBu",
+  "tags": []
+}

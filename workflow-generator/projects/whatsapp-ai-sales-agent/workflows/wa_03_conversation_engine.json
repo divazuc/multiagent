@@ -1,0 +1,562 @@
+{
+  "name": "WA_03_Conversation Engine",
+  "nodes": [
+    {
+      "id": "fce97627-815c-4824-b5a0-1ddd0204e141",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "name": "Workflow Input Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "b68fe498-ac93-4deb-93b2-7383037a6b9d",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        200
+      ],
+      "name": "Extract Input Fields",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "message",
+              "value": "={{ $json.message }}",
+              "type": "string"
+            },
+            {
+              "name": "session_id",
+              "value": "={{ $json.session_id }}",
+              "type": "string"
+            },
+            {
+              "name": "business_id",
+              "value": "={{ $json.business_id }}",
+              "type": "string"
+            },
+            {
+              "name": "current_stage",
+              "value": "={{ $json.current_stage }}",
+              "type": "string"
+            },
+            {
+              "name": "business_profile",
+              "value": "={{ $json.business_profile }}",
+              "type": "object"
+            },
+            {
+              "name": "persona",
+              "value": "={{ $json.persona }}",
+              "type": "object"
+            },
+            {
+              "name": "guardrails",
+              "value": "={{ $json.guardrails }}",
+              "type": "object"
+            },
+            {
+              "name": "hebrew_patterns",
+              "value": "={{ $json.hebrew_patterns }}",
+              "type": "object"
+            },
+            {
+              "name": "conversation_history",
+              "value": "={{ $json.conversation_history }}",
+              "type": "array"
+            },
+            {
+              "name": "missing_qualification_data",
+              "value": "={{ $json.missing_qualification_data }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cf59b678-8cd8-40f3-b234-6c86091b4781",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        200
+      ],
+      "name": "Detect Intent and Qualify",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are an intent detection and qualification analysis engine for a digital sales agent. Your task is to analyze the incoming user message in the context of the conversation history and return a structured JSON analysis.\\n\\nYou must return ONLY valid JSON â€” no explanation, no markdown.\\n\\nAnalyze:\\n1. User intent: 'high_intent' | 'info_seeking' | 'objection' | 'unclear' | 'human_request' | 'ready_to_buy'\\n2. Detected language: 'hebrew' | 'english' | 'mixed'\\n3. Qualification status based on missing_qualification_data\\n4. Whether to trigger CTA, continue qualifying, clarify, or escalate\\n5. Urgency level: 'high' | 'medium' | 'low'\\n6. Escalation needed and reason (if any)\\n\\nDecision matrix:\\n- high_intent or ready_to_buy â†’ cta_decision: 'cta'\\n- info_seeking + qualification incomplete â†’ cta_decision: 'qualify'\\n- unclear â†’ cta_decision: 'clarify'\\n- human_request or complex/repeated objection â†’ cta_decision: 'escalate'\\n\\nReturn exactly this JSON shape:\\n{\\n  \\\"detected_intent\\\": \\\"\\\",\\n  \\\"language\\\": \\\"\\\",\\n  \\\"urgency\\\": \\\"\\\",\\n  \\\"cta_decision\\\": \\\"\\\",\\n  \\\"qualification_complete\\\": false,\\n  \\\"missing_fields\\\": [],\\n  \\\"escalate\\\": false,\\n  \\\"escalation_reason\\\": \\\"\\\",\\n  \\\"qualification_progress\\\": {\\n    \\\"need\\\": null,\\n    \\\"scope\\\": null,\\n    \\\"budget\\\": null,\\n    \\\"timeline\\\": null,\\n    \\\"urgency\\\": null\\n  }\\n}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Analyze this conversation.\\n\\nBusiness Profile: {{ JSON.stringify($json.business_profile) }}\\n\\nMissing Qualification Data: {{ JSON.stringify($json.missing_qualification_data) }}\\n\\nConversation History: {{ JSON.stringify($json.conversation_history) }}\\n\\nLatest User Message: {{ $json.message }}\\n\\nCurrent Stage: {{ $json.current_stage }}\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "e931bb69-5538-40f5-9e6b-4f1d46b5965b",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "name": "Parse Intent Analysis",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet analysis;\ntry {\n  const text = raw?.content?.[0]?.text || '{}';\n  analysis = JSON.parse(text);\n} catch (e) {\n  analysis = {\n    detected_intent: 'unclear',\n    language: 'english',\n    urgency: 'low',\n    cta_decision: 'clarify',\n    qualification_complete: false,\n    missing_fields: [],\n    escalate: false,\n    escalation_reason: '',\n    qualification_progress: { need: null, scope: null, budget: null, timeline: null, urgency: null }\n  };\n}\nconst prev = $('Extract Input Fields').first().json;\nreturn [{ json: { ...prev, intent_analysis: analysis } }];"
+      }
+    },
+    {
+      "id": "e11ed557-928c-450a-8de5-f6afa53ebd17",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        200
+      ],
+      "name": "Check Escalation Flag",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.intent_analysis.escalate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ecef5630-97f5-42bc-baf2-ed1805c30379",
+      "typeVersion": 3.4,
+      "position": [
+        1600,
+        200
+      ],
+      "name": "Build Escalation Response",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "name": "result.candidate_response",
+              "value": "={{ $json.persona.escalation_phrase || 'Let me connect you with someone who can help you better.' }}",
+              "type": "string"
+            },
+            {
+              "name": "result.next_stage",
+              "value": "escalated",
+              "type": "string"
+            },
+            {
+              "name": "result.action",
+              "value": "none",
+              "type": "string"
+            },
+            {
+              "name": "result.qualification_progress",
+              "value": "={{ $json.intent_analysis.qualification_progress }}",
+              "type": "object"
+            },
+            {
+              "name": "result.cta_triggered",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "name": "result.escalate",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "name": "result.escalation_reason",
+              "value": "={{ $json.intent_analysis.escalation_reason }}",
+              "type": "string"
+            },
+            {
+              "name": "result.detected_intent",
+              "value": "={{ $json.intent_analysis.detected_intent }}",
+              "type": "string"
+            },
+            {
+              "name": "result.language",
+              "value": "={{ $json.intent_analysis.language }}",
+              "type": "string"
+            },
+            {
+              "name": "error",
+              "value": null,
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "929ecfa2-5af6-4f67-883e-b8de5c375877",
+      "typeVersion": 4.2,
+      "position": [
+        1900,
+        200
+      ],
+      "name": "Generate Candidate Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"You are a digital sales representative simulating the voice of a specific business owner. You must respond EXACTLY as this business owner would respond â€” using their tone, language patterns, sentence length, and style. You are NOT an AI assistant. You are a human sales person.\\n\\nCRITICAL RULES:\\n- Sound 100% human â€” NEVER like AI\\n- Use the persona language patterns EXACTLY as provided\\n- Ask ONLY ONE question per response\\n- Keep responses SHORT (1-4 sentences max)\\n- Always move conversation forward (qualify â†’ CTA â†’ close)\\n- Use the CTA decision provided to guide your response direction\\n- If language is Hebrew or mixed, respond in Hebrew using the hebrew_patterns provided\\n- NEVER invent information about the business\\n- NEVER break character\\n- NEVER be generic\\n- Forbidden claims from guardrails must NEVER appear\\n\\nPersona: {{ JSON.stringify($('Parse Intent Analysis').first().json.persona) }}\\n\\nBusiness Profile: {{ JSON.stringify($('Parse Intent Analysis').first().json.business_profile) }}\\n\\nHebrew Patterns (use if language is Hebrew): {{ JSON.stringify($('Parse Intent Analysis').first().json.hebrew_patterns) }}\\n\\nGuardrails (NEVER violate): {{ JSON.stringify($('Parse Intent Analysis').first().json.guardrails) }}\\n\\nCTA Decision from analysis: {{ $('Parse Intent Analysis').first().json.intent_analysis.cta_decision }}\\nDetected Language: {{ $('Parse Intent Analysis').first().json.intent_analysis.language }}\\nMissing Qualification Fields: {{ JSON.stringify($('Parse Intent Analysis').first().json.intent_analysis.missing_fields) }}\\n\\nRespond with ONLY the message text â€” no JSON, no formatting, no explanation.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Conversation History: {{ JSON.stringify($('Parse Intent Analysis').first().json.conversation_history) }}\\n\\nLatest User Message: {{ $('Parse Intent Analysis').first().json.message }}\\n\\nGenerate the next sales response.\"\n    }\n  ]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "ANTHROPIC_HTTP_HEADER_AUTH"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "446ad0ef-58e5-49f5-b4e6-acd626f0ccab",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "name": "Determine Next Stage",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const intentData = $('Parse Intent Analysis').first().json;\nconst analysis = intentData.intent_analysis;\nconst rawResponse = $input.first().json;\n\nconst candidateText = rawResponse?.content?.[0]?.text || '';\n\nconst decisionMap = {\n  'cta': { next_stage: 'cta', action: 'commit', cta_triggered: true },\n  'qualify': { next_stage: 'qualification', action: 'none', cta_triggered: false },\n  'clarify': { next_stage: 'clarification', action: 'none', cta_triggered: false },\n  'escalate': { next_stage: 'escalated', action: 'none', cta_triggered: false }\n};\n\nconst decision = decisionMap[analysis.cta_decision] || decisionMap['clarify'];\n\nreturn [{ json: {\n  status: candidateText ? 'success' : 'error',\n  result: {\n    candidate_response: candidateText,\n    next_stage: decision.next_stage,\n    action: decision.action,\n    qualification_progress: analysis.qualification_progress || {},\n    cta_triggered: decision.cta_triggered,\n    escalate: analysis.escalate || false,\n    escalation_reason: analysis.escalation_reason || '',\n    detected_intent: analysis.detected_intent || 'unclear',\n    language: analysis.language || 'english'\n  },\n  error: candidateText ? null : 'Claude returned empty response'\n}}];"
+      }
+    },
+    {
+      "id": "bb5ebf23-f73a-438b-866b-9eccd14dfd6c",
+      "typeVersion": 3,
+      "position": [
+        2500,
+        200
+      ],
+      "name": "Merge Outputs",
+      "type": "n8n-nodes-base.merge",
+      "parameters": {
+        "mode": "chooseBranch",
+        "chooseBranch": {
+          "branch": 0
+        }
+      }
+    },
+    {
+      "id": "924e4356-f32e-437e-bfd0-f3b634fd7988",
+      "typeVersion": 3.4,
+      "position": [
+        2800,
+        200
+      ],
+      "name": "Handle Engine Error",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "name": "result",
+              "value": "={}",
+              "type": "object"
+            },
+            {
+              "name": "error",
+              "value": "Conversation engine failed to generate response",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c5e773af-2f53-458f-8ca7-dc96ff03a824",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        200
+      ],
+      "name": "Check Response Valid",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "e9ff5637-12e3-4943-991a-19890d45910e",
+      "typeVersion": 3.4,
+      "position": [
+        3400,
+        200
+      ],
+      "name": "Final Success Output",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "name": "result",
+              "value": "={{ $json.result }}",
+              "type": "object"
+            },
+            {
+              "name": "error",
+              "value": null,
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "470bb666-be14-46a3-b005-14ea9b04c5be",
+      "typeVersion": 1,
+      "position": [
+        3700,
+        200
+      ],
+      "name": "Note - Conversation Engine",
+      "type": "n8n-nodes-base.stickyNote",
+      "parameters": {
+        "content": "## WA_03 â€” Conversation Engine\n\n**Role:** Sub-workflow (no DB writes)\n\n**Flow:**\n1. Extract all input fields from supervisor\n2. Send to Claude for intent detection & qualification analysis\n3. Parse structured JSON analysis\n4. Branch: escalate immediately OR generate response\n5. Claude generates persona-matched candidate response\n6. Determine next stage from decision matrix\n7. Return structured output to supervisor\n\n**Decision Matrix:**\n- high_intent / ready_to_buy â†’ CTA\n- info_seeking + incomplete â†’ qualify\n- unclear â†’ clarify\n- human_request / complex â†’ escalate\n\n**Output shape:**\n`{ status, result: { candidate_response, next_stage, action, qualification_progress, cta_triggered, escalate, escalation_reason, detected_intent, language }, error }`",
+        "height": 400,
+        "width": 380
+      }
+    }
+  ],
+  "connections": {
+    "Workflow Input Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Input Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input Fields": {
+      "main": [
+        [
+          {
+            "node": "Detect Intent and Qualify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Intent and Qualify": {
+      "main": [
+        [
+          {
+            "node": "Parse Intent Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Intent Analysis": {
+      "main": [
+        [
+          {
+            "node": "Check Escalation Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Escalation Flag": {
+      "main": [
+        [
+          {
+            "node": "Build Escalation Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Candidate Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Escalation Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Candidate Response": {
+      "main": [
+        [
+          {
+            "node": "Determine Next Stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Next Stage": {
+      "main": [
+        [
+          {
+            "node": "Check Response Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Response Valid": {
+      "main": [
+        [
+          {
+            "node": "Final Success Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Engine Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Success Output": {
+      "main": [
+        [
+          {
+            "node": "Merge Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

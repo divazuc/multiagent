@@ -2,705 +2,720 @@
   "name": "AG_11_PROJECT_STATE_MANAGER",
   "nodes": [
     {
-      "id": "a1100-0001-4000-8000-000000000001",
+      "parameters": {
+        "content": "## AG_11 — Project State Manager\n\n**Purpose:** Persistent project state across ChatGPT GPT sessions.\n\n### Manual Setup Required\n1. Create credential → Postgres → name it exactly: **DATABASE_CONNECTION**\n2. Enter your Postgres/Supabase host, port, db, user, password\n3. Run the schema SQL shown in the second sticky note\n4. Set this workflow **Active**\n\n### Endpoints (all POST)\n- /ag/project/create-or-resume\n- /ag/project/state\n- /ag/project/save-step-result\n- /ag/project/mark-step-failed\n- /ag/project/get-next-step\n- /ag/project/latest-snapshot\n\n### Called by\nAG_00 calls these endpoints via HTTP Request nodes.\nCustom GPT can also call /latest-snapshot and /state directly.",
+        "height": 300,
+        "width": 680,
+        "color": 7
+      },
+      "id": "6591e120-7303-4c23-af03-b9c8ffc1c1ff",
       "name": "Sticky Note - Setup",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        250,
-        60
-      ],
-      "parameters": {
-        "content": "## AG_11 — Project State Manager\n\n**Purpose:** Persistent project state across ChatGPT GPT sessions.\n\n### Manual Setup Required\n1. Create credential → Postgres → name it exactly: **DATABASE_CONNECTION**\n2. Enter your Postgres/Supabase host, port, db, user, password\n3. Run the schema SQL shown in the second sticky note\n4. Set this workflow **Active**\n\n### Endpoints (all POST)\n- /ag/project/create-or-resume\n- /ag/project/state\n- /ag/project/save-step-result\n- /ag/project/mark-step-failed\n- /ag/project/get-next-step\n- /ag/project/latest-snapshot\n\n### Called by\nAG_00 calls these endpoints via HTTP Request nodes.\nCustom GPT can also call /latest-snapshot and /state directly.",
-        "color": 7,
-        "width": 680,
-        "height": 300
-      }
+        -656,
+        -752
+      ]
     },
     {
-      "id": "a1100-0002-4000-8000-000000000001",
+      "parameters": {
+        "content": "## Required DB Tables — Run Once\n\n```sql\nCREATE TABLE IF NOT EXISTS ag_projects (\n  project_id TEXT PRIMARY KEY,\n  title TEXT,\n  status TEXT DEFAULT 'active',\n  latest_run_id TEXT,\n  current_step TEXT,\n  last_completed_step TEXT,\n  next_action TEXT DEFAULT 'start',\n  last_summary TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS ag_runs (\n  run_id TEXT PRIMARY KEY,\n  project_id TEXT REFERENCES ag_projects(project_id),\n  status TEXT DEFAULT 'processing',\n  current_step TEXT,\n  last_completed_step TEXT,\n  next_action TEXT,\n  retry_count INT DEFAULT 0,\n  error TEXT,\n  started_at TIMESTAMPTZ DEFAULT NOW(),\n  completed_at TIMESTAMPTZ\n);\nCREATE TABLE IF NOT EXISTS ag_step_results (\n  step_result_id TEXT PRIMARY KEY,\n  run_id TEXT, project_id TEXT,\n  step_name TEXT, status TEXT,\n  summary TEXT,\n  structured_output JSONB DEFAULT '{}'::jsonb,\n  risks JSONB DEFAULT '[]'::jsonb,\n  assumptions JSONB DEFAULT '[]'::jsonb,\n  blocking_questions JSONB DEFAULT '[]'::jsonb,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS ag_project_logs (\n  log_id TEXT PRIMARY KEY,\n  project_id TEXT, run_id TEXT,\n  event_type TEXT, step_name TEXT,\n  message TEXT, payload JSONB DEFAULT '{}'::jsonb,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS ag_artifacts (\n  artifact_id TEXT PRIMARY KEY,\n  project_id TEXT, run_id TEXT,\n  artifact_type TEXT, title TEXT,\n  content TEXT, version_label TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\n```",
+        "height": 700,
+        "width": 820,
+        "color": 5
+      },
+      "id": "037464e2-48a0-4ecd-9b6a-c9a11c083f21",
       "name": "Sticky Note - DB Schema",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1000,
-        60
-      ],
-      "parameters": {
-        "content": "## Required DB Tables — Run Once\n\n```sql\nCREATE TABLE IF NOT EXISTS ag_projects (\n  project_id TEXT PRIMARY KEY,\n  title TEXT,\n  status TEXT DEFAULT 'active',\n  latest_run_id TEXT,\n  current_step TEXT,\n  last_completed_step TEXT,\n  next_action TEXT DEFAULT 'start',\n  last_summary TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  updated_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS ag_runs (\n  run_id TEXT PRIMARY KEY,\n  project_id TEXT REFERENCES ag_projects(project_id),\n  status TEXT DEFAULT 'processing',\n  current_step TEXT,\n  last_completed_step TEXT,\n  next_action TEXT,\n  retry_count INT DEFAULT 0,\n  error TEXT,\n  started_at TIMESTAMPTZ DEFAULT NOW(),\n  completed_at TIMESTAMPTZ\n);\nCREATE TABLE IF NOT EXISTS ag_step_results (\n  step_result_id TEXT PRIMARY KEY,\n  run_id TEXT, project_id TEXT,\n  step_name TEXT, status TEXT,\n  summary TEXT,\n  structured_output JSONB DEFAULT '{}'::jsonb,\n  risks JSONB DEFAULT '[]'::jsonb,\n  assumptions JSONB DEFAULT '[]'::jsonb,\n  blocking_questions JSONB DEFAULT '[]'::jsonb,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS ag_project_logs (\n  log_id TEXT PRIMARY KEY,\n  project_id TEXT, run_id TEXT,\n  event_type TEXT, step_name TEXT,\n  message TEXT, payload JSONB DEFAULT '{}'::jsonb,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\nCREATE TABLE IF NOT EXISTS ag_artifacts (\n  artifact_id TEXT PRIMARY KEY,\n  project_id TEXT, run_id TEXT,\n  artifact_type TEXT, title TEXT,\n  content TEXT, version_label TEXT,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\n```",
-        "color": 5,
-        "width": 820,
-        "height": 700
-      }
+        944,
+        -1008
+      ]
     },
     {
-      "id": "a1101-0001-4000-8000-000000000001",
-      "name": "Webhook - Create Or Resume",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        420
-      ],
-      "webhookId": "ag11-ag-project-create-or-resume",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/project/create-or-resume",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "b3229b0f-4364-477a-92d2-25f645eb05fa",
+      "name": "Webhook - Create Or Resume",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -144
+      ],
+      "webhookId": "ag11-ag-project-create-or-resume"
     },
     {
-      "id": "a1101-0002-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nconst now = new Date().toISOString();\nconst project_id = (item.project_id || '').trim() || ('proj_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36)));\nconst title = (item.title || 'Untitled Project').replace(/'/g, \"''\");\nconst run_id = 'run_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nreturn [{ json: { project_id, title, run_id, now } }];"
+      },
+      "id": "98918ef3-eb3c-44b6-b6e6-7ca71f10f699",
       "name": "Code - Prepare Create Resume",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nconst now = new Date().toISOString();\nconst project_id = (item.project_id || '').trim() || ('proj_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36)));\nconst title = (item.title || 'Untitled Project').replace(/'/g, \"''\");\nconst run_id = 'run_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nreturn [{ json: { project_id, title, run_id, now } }];"
-      }
+        -496,
+        -144
+      ]
     },
     {
-      "id": "a1101-0003-4000-8000-000000000001",
-      "name": "Postgres - Upsert Project",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        750,
-        420
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO ag_projects (project_id, title, status, next_action, created_at, updated_at)\nVALUES ('{{ $json.project_id }}', '{{ $json.title }}', 'active', 'start', '{{ $json.now }}', '{{ $json.now }}')\nON CONFLICT (project_id) DO UPDATE SET updated_at = '{{ $json.now }}'\nRETURNING *",
         "options": {}
       },
+      "id": "3674805c-694a-4304-be39-b8693bb02781",
+      "name": "Postgres - Upsert Project",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -256,
+        -144
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1101-0004-4000-8000-000000000001",
-      "name": "Postgres - Insert Run",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1000,
-        420
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "WITH existing AS (\n  SELECT run_id FROM ag_runs\n  WHERE project_id = '{{ $('Code - Prepare Create Resume').first().json.project_id }}'\n    AND status = 'processing'\n  ORDER BY started_at DESC LIMIT 1\n),\ninserted AS (\n  INSERT INTO ag_runs (run_id, project_id, status, started_at)\n  SELECT '{{ $('Code - Prepare Create Resume').first().json.run_id }}',\n         '{{ $('Code - Prepare Create Resume').first().json.project_id }}',\n         'processing',\n         '{{ $('Code - Prepare Create Resume').first().json.now }}'\n  WHERE NOT EXISTS (SELECT 1 FROM existing)\n  RETURNING run_id\n)\nSELECT COALESCE(\n  (SELECT run_id FROM existing),\n  (SELECT run_id FROM inserted)\n) AS actual_run_id,\n((SELECT run_id FROM existing) IS NOT NULL) AS reused",
         "options": {}
       },
+      "id": "8b947c1a-27b5-45c1-a6ca-22a652c1f730",
+      "name": "Postgres - Insert Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        -144
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1101-0005-4000-8000-000000000001",
-      "name": "Postgres - Link Run To Project",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1250,
-        420
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE ag_projects\nSET latest_run_id = '{{ $('Postgres - Insert Run').first().json.actual_run_id }}', updated_at = NOW()\nWHERE project_id = '{{ $('Code - Prepare Create Resume').first().json.project_id }}'\nRETURNING *",
         "options": {}
       },
+      "id": "6000c4f3-d88d-4e6c-b162-4de87af510da",
+      "name": "Postgres - Link Run To Project",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        -144
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1101-0006-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const prep = $('Code - Prepare Create Resume').first().json;\nconst runRow = $('Postgres - Insert Run').first().json;\nconst proj = $('Postgres - Link Run To Project').first().json;\nconst reused = runRow.reused === true || runRow.reused === 't';\nreturn [{ json: {\n  success: true,\n  message: reused ? 'Existing run resumed.' : 'Project resumed.',\n  data: {\n    project_id: proj.project_id || prep.project_id,\n    run_id: runRow.actual_run_id || prep.run_id,\n    reused_run: reused,\n    status: proj.status || 'active',\n    current_step: proj.current_step || null,\n    last_completed_step: proj.last_completed_step || null,\n    next_action: proj.next_action || 'start',\n    last_summary: proj.last_summary || null\n  }\n} }];"
+      },
+      "id": "4dda7f05-d9b4-4e7c-9a96-7ccf93728af4",
       "name": "Code - Format Create Resume Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1500,
-        420
-      ],
-      "parameters": {
-        "jsCode": "const prep = $('Code - Prepare Create Resume').first().json;\nconst runRow = $('Postgres - Insert Run').first().json;\nconst proj = $('Postgres - Link Run To Project').first().json;\nconst reused = runRow.reused === true || runRow.reused === 't';\nreturn [{ json: {\n  success: true,\n  message: reused ? 'Existing run resumed.' : 'Project resumed.',\n  data: {\n    project_id: proj.project_id || prep.project_id,\n    run_id: runRow.actual_run_id || prep.run_id,\n    reused_run: reused,\n    status: proj.status || 'active',\n    current_step: proj.current_step || null,\n    last_completed_step: proj.last_completed_step || null,\n    next_action: proj.next_action || 'start',\n    last_summary: proj.last_summary || null\n  }\n} }];"
-      }
+        512,
+        -144
+      ]
     },
     {
-      "id": "a1101-0007-4000-8000-000000000001",
-      "name": "Respond - Create Or Resume",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        1750,
-        420
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "9bac3550-cc62-4bb7-9d7a-7f61068bac34",
+      "name": "Respond - Create Or Resume",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -144
+      ]
     },
     {
-      "id": "a1102-0001-4000-8000-000000000001",
-      "name": "Webhook - Get State",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        660
-      ],
-      "webhookId": "ag11-ag-project-state",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/project/state",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "0404faed-5a2c-4142-baab-35349f94993e",
+      "name": "Webhook - Get State",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        112
+      ],
+      "webhookId": "ag11-ag-project-state"
     },
     {
-      "id": "a1102-0002-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id) return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required field: project_id' } } }];\nreturn [{ json: { project_id: item.project_id } }];"
+      },
+      "id": "9c035571-0134-4554-886c-8c5ae27933de",
       "name": "Code - Validate State Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        660
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id) return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required field: project_id' } } }];\nreturn [{ json: { project_id: item.project_id } }];"
-      }
+        -496,
+        112
+      ]
     },
     {
-      "id": "a1102-0003-4000-8000-000000000001",
-      "name": "Postgres - Get Project And Run",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        750,
-        660
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT p.project_id, p.title, p.status, p.latest_run_id,\n  p.current_step, p.last_completed_step, p.next_action, p.last_summary,\n  p.created_at, p.updated_at,\n  r.run_id AS r_run_id, r.status AS r_status,\n  r.current_step AS r_current_step, r.last_completed_step AS r_last_completed,\n  r.next_action AS r_next_action, r.retry_count, r.error AS r_error,\n  r.started_at, r.completed_at\nFROM ag_projects p\nLEFT JOIN ag_runs r ON r.run_id = p.latest_run_id\nWHERE p.project_id = '{{ $json.project_id }}'",
         "options": {}
       },
+      "id": "949f3d13-0aef-4962-a981-fdb0a1e200fc",
+      "name": "Postgres - Get Project And Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -256,
+        112
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1102-0004-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nif (!row || !row.project_id) return [{ json: { success: false, message: 'Project not found.', data: { error: 'No project for this project_id' } } }];\nreturn [{ json: { success: true, message: 'State loaded.', data: {\n  project_id: row.project_id, title: row.title, status: row.status,\n  latest_run_id: row.latest_run_id, current_step: row.current_step,\n  last_completed_step: row.last_completed_step, next_action: row.next_action,\n  last_summary: row.last_summary, created_at: row.created_at, updated_at: row.updated_at,\n  run: row.r_run_id ? { run_id: row.r_run_id, status: row.r_status, current_step: row.r_current_step, last_completed_step: row.r_last_completed, next_action: row.r_next_action, retry_count: row.retry_count, error: row.r_error, started_at: row.started_at, completed_at: row.completed_at } : null\n} } }];"
+      },
+      "id": "235baab6-b1ae-4e05-89ee-4af36fe30410",
       "name": "Code - Format State Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1000,
-        660
-      ],
-      "parameters": {
-        "jsCode": "const row = $input.first().json;\nif (!row || !row.project_id) return [{ json: { success: false, message: 'Project not found.', data: { error: 'No project for this project_id' } } }];\nreturn [{ json: { success: true, message: 'State loaded.', data: {\n  project_id: row.project_id, title: row.title, status: row.status,\n  latest_run_id: row.latest_run_id, current_step: row.current_step,\n  last_completed_step: row.last_completed_step, next_action: row.next_action,\n  last_summary: row.last_summary, created_at: row.created_at, updated_at: row.updated_at,\n  run: row.r_run_id ? { run_id: row.r_run_id, status: row.r_status, current_step: row.r_current_step, last_completed_step: row.r_last_completed, next_action: row.r_next_action, retry_count: row.retry_count, error: row.r_error, started_at: row.started_at, completed_at: row.completed_at } : null\n} } }];"
-      }
+        0,
+        112
+      ]
     },
     {
-      "id": "a1102-0005-4000-8000-000000000001",
-      "name": "Respond - Get State",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        1250,
-        660
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "9e427f1a-538a-466c-ae57-de21a1a1af5f",
+      "name": "Respond - Get State",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        256,
+        112
+      ]
     },
     {
-      "id": "a1103-0001-4000-8000-000000000001",
-      "name": "Webhook - Save Step Result",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        900
-      ],
-      "webhookId": "ag11-ag-project-save-step-result",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/project/save-step-result",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "4b47990a-2f07-4435-9f83-ca4b0894b16d",
+      "name": "Webhook - Save Step Result",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        352
+      ],
+      "webhookId": "ag11-ag-project-save-step-result"
     },
     {
-      "id": "a1103-0002-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id || !item.run_id || !item.step_name) {\n  return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required fields: project_id, run_id, step_name' } } }];\n}\nconst step_result_id = 'sr_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nconst log_id = 'log_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nconst now = new Date().toISOString();\nconst status = item.status || 'success';\nconst summary = (item.summary || '').replace(/'/g, \"''\").slice(0, 2000);\nconst structured_output = JSON.stringify(item.structured_output || {});\nconst risks = JSON.stringify(item.risks || []);\nconst assumptions = JSON.stringify(item.assumptions || []);\nconst blocking_questions = JSON.stringify(item.blocking_questions || []);\nreturn [{ json: { project_id: item.project_id, run_id: item.run_id, step_name: item.step_name, step_result_id, log_id, now, status, summary, structured_output, risks, assumptions, blocking_questions } }];"
+      },
+      "id": "eee73da9-7526-4ac0-bc0f-74c0e211702d",
       "name": "Code - Prepare Save Step",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        900
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id || !item.run_id || !item.step_name) {\n  return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required fields: project_id, run_id, step_name' } } }];\n}\nconst step_result_id = 'sr_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nconst log_id = 'log_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nconst now = new Date().toISOString();\nconst status = item.status || 'success';\nconst summary = (item.summary || '').replace(/'/g, \"''\").slice(0, 2000);\nconst structured_output = JSON.stringify(item.structured_output || {});\nconst risks = JSON.stringify(item.risks || []);\nconst assumptions = JSON.stringify(item.assumptions || []);\nconst blocking_questions = JSON.stringify(item.blocking_questions || []);\nreturn [{ json: { project_id: item.project_id, run_id: item.run_id, step_name: item.step_name, step_result_id, log_id, now, status, summary, structured_output, risks, assumptions, blocking_questions } }];"
-      }
+        -496,
+        352
+      ]
     },
     {
-      "id": "a1103-0003-4000-8000-000000000001",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ag_step_results (\n  step_result_id,\n  run_id,\n  project_id,\n  step_name,\n  status,\n  summary,\n  structured_output,\n  risks,\n  assumptions,\n  blocking_questions,\n  created_at\n)\nSELECT\n  '{{ $json.step_result_id }}',\n  COALESCE(\n    (SELECT run_id FROM ag_runs WHERE run_id = '{{ $json.run_id }}' LIMIT 1),\n    (SELECT latest_run_id FROM ag_projects WHERE project_id = '{{ $json.project_id }}' AND latest_run_id IS NOT NULL LIMIT 1),\n    '{{ $json.run_id }}'\n  ),\n  '{{ $json.project_id }}',\n  '{{ $json.step_name }}',\n  '{{ $json.status }}',\n  '{{ $json.summary }}',\n  '{{ $json.structured_output }}'::jsonb,\n  '{{ $json.risks }}'::jsonb,\n  '{{ $json.assumptions }}'::jsonb,\n  '{{ $json.blocking_questions }}'::jsonb,\n  '{{ $json.now }}'\nRETURNING step_result_id, run_id;",
+        "options": {}
+      },
+      "id": "432b1c2d-84e5-45de-a502-13f702c3cdf6",
       "name": "Postgres - Insert Step Result",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        750,
-        900
+        -256,
+        352
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO ag_step_results\n  (step_result_id, run_id, project_id, step_name, status, summary, structured_output, risks, assumptions, blocking_questions, created_at)\nVALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11)\nRETURNING step_result_id",
-        "options": {},
-        "additionalFields": {
-          "queryParams": "={{ [$json.step_result_id,$json.run_id,$json.project_id,$json.step_name,$json.status,$json.summary,$json.structured_output,$json.risks,$json.assumptions,$json.blocking_questions,$json.now] }}"
-        }
-      },
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1103-0004-4000-8000-000000000001",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ag_runs\nSET last_completed_step = '{{ $('Code - Prepare Save Step').first().json.step_name }}',\n    current_step = '{{ $('Code - Prepare Save Step').first().json.step_name }}',\n    status = '{{ $('Code - Prepare Save Step').first().json.status }}'\nWHERE run_id = '{{ $input.first().json.run_id }}'\nRETURNING run_id, status",
+        "options": {}
+      },
+      "id": "9d530b4e-e879-4e5d-8bb1-8ab901e9d663",
       "name": "Postgres - Update Run State",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        1000,
-        900
+        0,
+        352
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE ag_runs\nSET last_completed_step = '{{ $('Code - Prepare Save Step').first().json.step_name }}',\n    current_step = '{{ $('Code - Prepare Save Step').first().json.step_name }}',\n    status = '{{ $('Code - Prepare Save Step').first().json.status }}'\nWHERE run_id = '{{ $('Code - Prepare Save Step').first().json.run_id }}'\nRETURNING run_id, status",
-        "options": {}
-      },
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1103-0005-4000-8000-000000000001",
-      "name": "Postgres - Update Project State",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1250,
-        900
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE ag_projects\nSET last_completed_step = '{{ $('Code - Prepare Save Step').first().json.step_name }}',\n    current_step = '{{ $('Code - Prepare Save Step').first().json.step_name }}',\n    last_summary = '{{ $('Code - Prepare Save Step').first().json.summary }}',\n    updated_at = '{{ $('Code - Prepare Save Step').first().json.now }}'\nWHERE project_id = '{{ $('Code - Prepare Save Step').first().json.project_id }}'\nRETURNING project_id, status, next_action",
         "options": {}
       },
+      "id": "7adc22e0-3fb3-4818-a877-2bdef6585d0a",
+      "name": "Postgres - Update Project State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        352
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1103-0006-4000-8000-000000000001",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ag_project_logs (log_id, project_id, run_id, event_type, step_name, message, created_at)\nVALUES (\n  '{{ $('Code - Prepare Save Step').first().json.log_id }}',\n  '{{ $('Code - Prepare Save Step').first().json.project_id }}',\n  '{{ $('Postgres - Insert Step Result').first().json.run_id }}',\n  'step_saved',\n  '{{ $('Code - Prepare Save Step').first().json.step_name }}',\n  '{{ $('Code - Prepare Save Step').first().json.summary }}',\n  '{{ $('Code - Prepare Save Step').first().json.now }}'\n)",
+        "options": {}
+      },
+      "id": "15879987-a562-4720-af9e-46d2b210a53d",
       "name": "Postgres - Log Step Event",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        1500,
-        900
+        512,
+        352
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO ag_project_logs (log_id, project_id, run_id, event_type, step_name, message, created_at)\nVALUES ($1,$2,$3,'step_saved',$4,$5,$6)",
-        "options": {},
-        "additionalFields": {
-          "queryParams": "={{ [$('Code - Prepare Save Step').first().json.log_id,$('Code - Prepare Save Step').first().json.project_id,$('Code - Prepare Save Step').first().json.run_id,$('Code - Prepare Save Step').first().json.step_name,'Step result saved: '+$('Code - Prepare Save Step').first().json.step_name,$('Code - Prepare Save Step').first().json.now] }}"
-        }
-      },
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1103-0007-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const prep = $('Code - Prepare Save Step').first().json;\nconst proj = $('Postgres - Update Project State').first().json;\nconst insertResult = $('Postgres - Insert Step Result').first().json;\nreturn [{ json: { success: true, message: 'Step result saved.', data: {\n  project_id: prep.project_id, run_id: (insertResult && insertResult.run_id) || prep.run_id,\n  step_name: prep.step_name, step_result_id: prep.step_result_id,\n  status: prep.status, project_status: (proj && proj.status) || 'active',\n  next_action: (proj && proj.next_action) || 'continue'\n} } }];"
+      },
+      "id": "eea103ad-7f45-4ac2-a38a-704093955342",
       "name": "Code - Format Save Step Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1750,
-        900
-      ],
-      "parameters": {
-        "jsCode": "const prep = $('Code - Prepare Save Step').first().json;\nconst proj = $('Postgres - Update Project State').first().json;\nreturn [{ json: { success: true, message: 'Step result saved.', data: {\n  project_id: prep.project_id, run_id: prep.run_id,\n  step_name: prep.step_name, step_result_id: prep.step_result_id,\n  status: prep.status, project_status: (proj && proj.status) || 'active',\n  next_action: (proj && proj.next_action) || 'continue'\n} } }];"
-      }
+        752,
+        352
+      ]
     },
     {
-      "id": "a1103-0008-4000-8000-000000000001",
-      "name": "Respond - Save Step Result",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        2000,
-        900
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "cd48f29f-6110-499d-ad68-785826edaf55",
+      "name": "Respond - Save Step Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1008,
+        352
+      ]
     },
     {
-      "id": "a1104-0001-4000-8000-000000000001",
-      "name": "Webhook - Mark Step Failed",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        1140
-      ],
-      "webhookId": "ag11-ag-project-mark-step-failed",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/project/mark-step-failed",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "ca4395f4-abc9-47ec-bc38-230179517520",
+      "name": "Webhook - Mark Step Failed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        592
+      ],
+      "webhookId": "ag11-ag-project-mark-step-failed"
     },
     {
-      "id": "a1104-0002-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id || !item.run_id || !item.step_name) {\n  return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required fields: project_id, run_id, step_name' } } }];\n}\nconst log_id = 'log_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nconst now = new Date().toISOString();\nconst retry_count = Number(item.retry_count) || 0;\nconst next_action = item.next_action || 'stop';\nconst error_msg = (item.error || 'Unknown error').replace(/'/g, \"''\").slice(0, 1000);\nreturn [{ json: { project_id: item.project_id, run_id: item.run_id, step_name: item.step_name, error_msg, retry_count, next_action, run_status: 'failed', log_id, now } }];"
+      },
+      "id": "e03d9a79-8a5f-4d22-adaf-175867b83261",
       "name": "Code - Prepare Mark Failed",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        1140
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id || !item.run_id || !item.step_name) {\n  return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required fields: project_id, run_id, step_name' } } }];\n}\nconst log_id = 'log_' + (Math.random().toString(36).slice(2,10)+Date.now().toString(36));\nconst now = new Date().toISOString();\nconst retry_count = Number(item.retry_count) || 0;\nconst next_action = item.next_action || 'stop';\nconst error_msg = (item.error || 'Unknown error').replace(/'/g, \"''\").slice(0, 1000);\nreturn [{ json: { project_id: item.project_id, run_id: item.run_id, step_name: item.step_name, error_msg, retry_count, next_action, run_status: 'failed', log_id, now } }];"
-      }
+        -496,
+        592
+      ]
     },
     {
-      "id": "a1104-0003-4000-8000-000000000001",
-      "name": "Postgres - Update Run Failed",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        750,
-        1140
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE ag_runs\nSET status = '{{ $json.run_status }}',\n    error = '{{ $json.error_msg }}',\n    retry_count = {{ $json.retry_count }},\n    next_action = '{{ $json.next_action }}',\n    current_step = '{{ $json.step_name }}',\n    completed_at = '{{ $json.now }}'\nWHERE run_id = '{{ $json.run_id }}'\nRETURNING run_id, status",
         "options": {}
       },
+      "id": "28bd3b91-f612-4d30-855c-585d9593adf6",
+      "name": "Postgres - Update Run Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -256,
+        592
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1104-0004-4000-8000-000000000001",
-      "name": "Postgres - Update Project Failed",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1000,
-        1140
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE ag_projects\nSET status = 'failed',\n    current_step = '{{ $('Code - Prepare Mark Failed').first().json.step_name }}',\n    next_action = '{{ $('Code - Prepare Mark Failed').first().json.next_action }}',\n    updated_at = '{{ $('Code - Prepare Mark Failed').first().json.now }}'\nWHERE project_id = '{{ $('Code - Prepare Mark Failed').first().json.project_id }}'\nRETURNING project_id, status, next_action",
         "options": {}
       },
+      "id": "6b28ad7b-2b3f-4a84-b665-0568959aa45b",
+      "name": "Postgres - Update Project Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        592
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1104-0005-4000-8000-000000000001",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ag_project_logs (log_id, project_id, run_id, event_type, step_name, message, payload, created_at)\nVALUES (\n  '{{ $('Code - Prepare Mark Failed').first().json.log_id }}',\n  '{{ $('Code - Prepare Mark Failed').first().json.project_id }}',\n  '{{ $('Code - Prepare Mark Failed').first().json.run_id }}',\n  'step_failed',\n  '{{ $('Code - Prepare Mark Failed').first().json.step_name }}',\n  '{{ $('Code - Prepare Mark Failed').first().json.error_msg }}',\n  '{}'::jsonb,\n  '{{ $('Code - Prepare Mark Failed').first().json.now }}'\n)",
+        "options": {}
+      },
+      "id": "5f1d8f43-5a63-44c9-b7c6-3b5a3c9ffb57",
       "name": "Postgres - Log Failure Event",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        1250,
-        1140
+        256,
+        592
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO ag_project_logs (log_id, project_id, run_id, event_type, step_name, message, payload, created_at)\nVALUES ($1,$2,$3,'step_failed',$4,$5,$6::jsonb,$7)",
-        "options": {},
-        "additionalFields": {
-          "queryParams": "={{ [$('Code - Prepare Mark Failed').first().json.log_id,$('Code - Prepare Mark Failed').first().json.project_id,$('Code - Prepare Mark Failed').first().json.run_id,$('Code - Prepare Mark Failed').first().json.step_name,'Step failed: '+$('Code - Prepare Mark Failed').first().json.step_name+' — '+$('Code - Prepare Mark Failed').first().json.error_msg,JSON.stringify({retry_count:$('Code - Prepare Mark Failed').first().json.retry_count,next_action:$('Code - Prepare Mark Failed').first().json.next_action}),$('Code - Prepare Mark Failed').first().json.now] }}"
-        }
-      },
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1104-0006-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const prep = $('Code - Prepare Mark Failed').first().json;\nconst proj = $('Postgres - Update Project Failed').first().json;\nreturn [{ json: { success: true, message: 'Failure recorded.', data: {\n  project_id: prep.project_id, run_id: prep.run_id, step_name: prep.step_name,\n  status: prep.run_status, error: prep.error_msg,\n  retry_count: prep.retry_count, next_action: (proj && proj.next_action) || prep.next_action\n} } }];"
+      },
+      "id": "8f07a84d-3e82-4d59-9e7f-699397d93409",
       "name": "Code - Format Mark Failed Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1500,
-        1140
-      ],
-      "parameters": {
-        "jsCode": "const prep = $('Code - Prepare Mark Failed').first().json;\nconst proj = $('Postgres - Update Project Failed').first().json;\nreturn [{ json: { success: true, message: 'Failure recorded.', data: {\n  project_id: prep.project_id, run_id: prep.run_id, step_name: prep.step_name,\n  status: prep.run_status, error: prep.error_msg,\n  retry_count: prep.retry_count, next_action: (proj && proj.next_action) || prep.next_action\n} } }];"
-      }
+        512,
+        592
+      ]
     },
     {
-      "id": "a1104-0007-4000-8000-000000000001",
-      "name": "Respond - Mark Step Failed",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        1750,
-        1140
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "3af59ed2-fbd5-4a91-9a9a-bc0988681530",
+      "name": "Respond - Mark Step Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        592
+      ]
     },
     {
-      "id": "a1105-0001-4000-8000-000000000001",
-      "name": "Webhook - Get Next Step",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        1380
-      ],
-      "webhookId": "ag11-ag-project-get-next-step",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/project/get-next-step",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "3980a096-4249-46eb-86e1-7ad1dfce6926",
+      "name": "Webhook - Get Next Step",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        832
+      ],
+      "webhookId": "ag11-ag-project-get-next-step"
     },
     {
-      "id": "a1105-0002-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id) return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required field: project_id' } } }];\nreturn [{ json: { project_id: item.project_id } }];"
+      },
+      "id": "6ffeaed0-0535-4457-8b01-db863f1490e7",
       "name": "Code - Validate Next Step Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        1380
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id) return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required field: project_id' } } }];\nreturn [{ json: { project_id: item.project_id } }];"
-      }
+        -496,
+        832
+      ]
     },
     {
-      "id": "a1105-0003-4000-8000-000000000001",
-      "name": "Postgres - Query Next Step",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        750,
-        1380
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT p.project_id, p.status, p.current_step, p.last_completed_step,\n  p.next_action, p.latest_run_id,\n  r.status AS r_status, r.next_action AS r_next_action,\n  r.error, r.retry_count\nFROM ag_projects p\nLEFT JOIN ag_runs r ON r.run_id = p.latest_run_id\nWHERE p.project_id = '{{ $json.project_id }}'",
         "options": {}
       },
+      "id": "4d3c605a-cfa5-433f-be30-b67a8bff5b7c",
+      "name": "Postgres - Query Next Step",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -256,
+        832
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1105-0004-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nif (!row || !row.project_id) return [{ json: { success: false, message: 'Project not found.', data: { error: 'No project found' } } }];\nreturn [{ json: { success: true, message: 'Next step retrieved.', data: {\n  project_id: row.project_id, status: row.status,\n  current_step: row.current_step, last_completed_step: row.last_completed_step,\n  next_action: row.r_next_action || row.next_action || 'start',\n  run_id: row.latest_run_id, run_status: row.r_status,\n  error: row.error || null, retry_count: row.retry_count || 0\n} } }];"
+      },
+      "id": "1e5ea97b-ae9d-40f0-9aea-db5f4622641d",
       "name": "Code - Format Next Step Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1000,
-        1380
-      ],
-      "parameters": {
-        "jsCode": "const row = $input.first().json;\nif (!row || !row.project_id) return [{ json: { success: false, message: 'Project not found.', data: { error: 'No project found' } } }];\nreturn [{ json: { success: true, message: 'Next step retrieved.', data: {\n  project_id: row.project_id, status: row.status,\n  current_step: row.current_step, last_completed_step: row.last_completed_step,\n  next_action: row.r_next_action || row.next_action || 'start',\n  run_id: row.latest_run_id, run_status: row.r_status,\n  error: row.error || null, retry_count: row.retry_count || 0\n} } }];"
-      }
+        0,
+        832
+      ]
     },
     {
-      "id": "a1105-0005-4000-8000-000000000001",
-      "name": "Respond - Get Next Step",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        1250,
-        1380
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "60fc70db-2006-4983-b655-964e8dbb4845",
+      "name": "Respond - Get Next Step",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        256,
+        832
+      ]
     },
     {
-      "id": "a1106-0001-4000-8000-000000000001",
-      "name": "Webhook - Latest Snapshot",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        250,
-        1620
-      ],
-      "webhookId": "ag11-ag-project-latest-snapshot",
       "parameters": {
         "httpMethod": "POST",
         "path": "ag/project/latest-snapshot",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "id": "11efc209-7388-45c9-87d8-c8b93950320b",
+      "name": "Webhook - Latest Snapshot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        1072
+      ],
+      "webhookId": "ag11-ag-project-latest-snapshot"
     },
     {
-      "id": "a1106-0002-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id) return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required field: project_id' } } }];\nreturn [{ json: { project_id: item.project_id } }];"
+      },
+      "id": "c1c107b0-b38a-49d5-9fad-fa02d4942b02",
       "name": "Code - Validate Snapshot Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
-        1620
-      ],
-      "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst item = raw.body ?? raw;\nif (!item.project_id) return [{ json: { success: false, message: 'Validation failed', data: { error: 'invalid_input', details: 'Missing required field: project_id' } } }];\nreturn [{ json: { project_id: item.project_id } }];"
-      }
+        -496,
+        1072
+      ]
     },
     {
-      "id": "a1106-0003-4000-8000-000000000001",
-      "name": "Postgres - Get Full Snapshot",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        750,
-        1620
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT\n  p.project_id, p.status, p.current_step, p.last_completed_step,\n  p.next_action, p.latest_run_id,\n  (\n    SELECT json_agg(json_build_object('type', a.artifact_type, 'title', a.title, 'version', a.version_label))\n    FROM (SELECT * FROM ag_artifacts WHERE project_id = p.project_id ORDER BY created_at DESC LIMIT 3) a\n  ) AS artifacts,\n  (\n    SELECT json_agg(json_build_object('step', s.step_name, 'status', s.status))\n    FROM (SELECT * FROM ag_step_results WHERE project_id = p.project_id ORDER BY created_at DESC LIMIT 3) s\n  ) AS step_highlights\nFROM ag_projects p\nWHERE p.project_id = '{{ $json.project_id }}'",
         "options": {}
       },
+      "id": "e7b9e204-7302-4169-9c47-fbaf278ee52c",
+      "name": "Postgres - Get Full Snapshot",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -256,
+        1072
+      ],
       "credentials": {
         "postgres": {
-          "id": "JkW6r0tzzwglsN7L",
-          "name": "Postgres_Supabase"
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
     },
     {
-      "id": "a1106-0004-4000-8000-000000000001",
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nif (!row || !row.project_id) return [{ json: { success: false, message: 'Project not found.', data: { error: 'No project found' } } }];\nreturn [{ json: {\n  success: true,\n  message: 'Snapshot loaded.',\n  data: {\n    project_id: row.project_id,\n    run_id: row.latest_run_id || null,\n    current_step: row.current_step || null,\n    last_completed_step: row.last_completed_step || null,\n    status: row.status,\n    next_action: row.next_action || 'start',\n    artifacts: row.artifacts || [],\n    step_highlights: row.step_highlights || []\n  }\n} }];"
+      },
+      "id": "0b1cf1a9-5ca0-4296-a4c3-619b85160433",
       "name": "Code - Format Snapshot Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1000,
-        1620
-      ],
-      "parameters": {
-        "jsCode": "const row = $input.first().json;\nif (!row || !row.project_id) return [{ json: { success: false, message: 'Project not found.', data: { error: 'No project found' } } }];\nreturn [{ json: {\n  success: true,\n  message: 'Snapshot loaded.',\n  data: {\n    project_id: row.project_id,\n    run_id: row.latest_run_id || null,\n    current_step: row.current_step || null,\n    last_completed_step: row.last_completed_step || null,\n    status: row.status,\n    next_action: row.next_action || 'start',\n    artifacts: row.artifacts || [],\n    step_highlights: row.step_highlights || []\n  }\n} }];"
-      }
+        0,
+        1072
+      ]
     },
     {
-      "id": "a1106-0005-4000-8000-000000000001",
-      "name": "Respond - Latest Snapshot",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        1250,
-        1620
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 200
         }
-      }
-    },
-    {
-      "id": "a1100-0090-4000-8000-000000000001",
-      "name": "Respond - 400 Validation Error",
+      },
+      "id": "63f00b32-7721-4cad-a10d-a48a882e97db",
+      "name": "Respond - Latest Snapshot",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        750,
-        1860
-      ],
+        256,
+        1072
+      ]
+    },
+    {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
           "responseCode": 400
         }
-      }
+      },
+      "id": "2cece1bf-f211-4606-b1ad-dc40f6bfe78c",
+      "name": "Respond - 400 Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -256,
+        1312
+      ]
     },
     {
-      "id": "a1102-0010-4000-8000-000000000001",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3f6315aa-6765-4de5-a364-ea220514504d",
       "name": "IF - Validate State",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        625,
-        660
-      ],
+        -384,
+        112
+      ]
+    },
+    {
       "parameters": {
         "conditions": {
           "options": {
@@ -720,18 +735,19 @@
             }
           ],
           "combinator": "and"
-        }
-      }
-    },
-    {
-      "id": "a1103-0010-4000-8000-000000000001",
+        },
+        "options": {}
+      },
+      "id": "78925609-4a37-4f0f-83de-b2f0cd863e5b",
       "name": "IF - Validate Save Step",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        625,
-        900
-      ],
+        -384,
+        352
+      ]
+    },
+    {
       "parameters": {
         "conditions": {
           "options": {
@@ -751,18 +767,19 @@
             }
           ],
           "combinator": "and"
-        }
-      }
-    },
-    {
-      "id": "a1104-0010-4000-8000-000000000001",
+        },
+        "options": {}
+      },
+      "id": "21315d72-902e-4023-84ae-4a608ab10a2c",
       "name": "IF - Validate Mark Failed",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        625,
-        1140
-      ],
+        -384,
+        592
+      ]
+    },
+    {
       "parameters": {
         "conditions": {
           "options": {
@@ -782,18 +799,19 @@
             }
           ],
           "combinator": "and"
-        }
-      }
-    },
-    {
-      "id": "a1105-0010-4000-8000-000000000001",
+        },
+        "options": {}
+      },
+      "id": "822bda33-95ae-4346-afaa-a46bdf4e375c",
       "name": "IF - Validate Next Step",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        625,
-        1380
-      ],
+        -384,
+        832
+      ]
+    },
+    {
       "parameters": {
         "conditions": {
           "options": {
@@ -813,41 +831,88 @@
             }
           ],
           "combinator": "and"
-        }
-      }
-    },
-    {
-      "id": "a1106-0010-4000-8000-000000000001",
+        },
+        "options": {}
+      },
+      "id": "fbef9257-dba0-4ce1-8914-6012b524d875",
       "name": "IF - Validate Snapshot",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        625,
-        1620
-      ],
+        -384,
+        1072
+      ]
+    },
+    {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": false,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "id": "cond-valid",
-              "leftValue": "={{ $json.success }}",
-              "rightValue": false,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
+        "httpMethod": "POST",
+        "path": "ag/project/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c4f1e8a2-2b3d-4e5f-a6b7-c8d9e0f1a2b3",
+      "name": "Webhook - List Projects",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        1552
+      ],
+      "webhookId": "ag11-ag-project-list"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT project_id, title, status, updated_at FROM ag_projects ORDER BY updated_at DESC LIMIT 50",
+        "options": {}
+      },
+      "id": "d5e2f9b3-3c4e-5f6a-b7c8-d9e0f1a2b3c4",
+      "name": "Postgres - List Projects",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -496,
+        1552
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yAaiY6sTLcdKfd8E",
+          "name": "multiagent_n8n_postgres"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst projects = rows.map(function(r) { return r.json; }).filter(function(r) { return r && r.project_id; });\nreturn [{ json: { success: true, message: 'Projects loaded.', data: projects } }];"
+      },
+      "id": "e6f3a0c4-4d5e-6f7a-c8d9-e0f1a2b3c4d5",
+      "name": "Code - Format List Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        1552
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f7a4b1d5-5e6f-7a8b-d9e0-f1a2b3c4d5e6",
+      "name": "Respond - List Projects",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        1552
+      ]
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook - Create Or Resume": {
       "main": [
@@ -1279,20 +1344,57 @@
           }
         ]
       ]
+    },
+    "Webhook - List Projects": {
+      "main": [
+        [
+          {
+            "node": "Postgres - List Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - List Projects": {
+      "main": [
+        [
+          {
+            "node": "Code - Format List Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Format List Response": {
+      "main": [
+        [
+          {
+            "node": "Respond - List Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
-  "versionId": "a1100-0099-4000-8000-000000000001",
+  "versionId": "04b36483-6577-427c-a1ce-7f4d375a9320",
   "meta": {
-    "templateCredsSetupCompleted": false,
-    "instanceId": "AG_MULTIAGENT_SYSTEM"
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a6fa1ea70c2b65d69b2a991c3cbda0430e4cb91a5e0e2ee3a5a6ce456bce1e90"
   },
-  "id": "AG_11_PROJECT_STATE_MANAGER",
+  "id": "1yhFok9bK8y3fyrR",
   "tags": [
     {
+      "updatedAt": "2026-03-30T14:14:49.911Z",
+      "createdAt": "2026-03-30T14:14:49.911Z",
+      "id": "A2ybI5hABV9fezJt",
       "name": "AG_MULTIAGENT"
     }
   ]

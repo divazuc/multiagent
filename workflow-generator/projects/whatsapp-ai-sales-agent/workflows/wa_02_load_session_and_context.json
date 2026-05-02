@@ -1,0 +1,364 @@
+{
+  "name": "WA_02_Load Session and Context",
+  "nodes": [
+    {
+      "id": "819052aa-4644-4c2d-90cc-45b8f10b13eb",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "69559fcf-a45d-46f7-8a1c-63008a667a28",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        200
+      ],
+      "name": "Extract input fields",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg",
+              "name": "message",
+              "value": "={{ $json.result?.message ?? $json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "sid",
+              "name": "session_id",
+              "value": "={{ $json.result?.session_id ?? $json.session_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c320a112-4891-482e-b403-b294f7e88fce",
+      "typeVersion": 2.5,
+      "position": [
+        700,
+        200
+      ],
+      "name": "Lookup session by session_id",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.session_id, s.business_id, s.session_mode, s.current_stage, s.setup_completed, s.qualification_progress FROM (SELECT '{{ $json.session_id }}' AS sid) t LEFT JOIN sessions s ON s.session_id = t.sid LIMIT 1;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "4416542d-238f-4ac6-b949-7f72ad97de91",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "name": "Check session found",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.business_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "8acc9a29-6e57-4d4e-8e12-03b001a4c182",
+      "typeVersion": 2.5,
+      "position": [
+        1300,
+        200
+      ],
+      "name": "Load business profile",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT bp.business_id, bp.business_name, bp.business_model, bp.sales_goal, bp.conversation_strategy, bp.services, bp.decision_logic, bp.key_questions, bp.objection_handling, bp.persona, bp.guardrails, bp.hebrew_patterns FROM business_profiles bp WHERE bp.business_id = '{{ $('Check session found').item.json.business_id }}' LIMIT 1;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "053bfbce-ab62-457a-b864-ae044582dfed",
+      "typeVersion": 2.5,
+      "position": [
+        1600,
+        200
+      ],
+      "name": "Load conversation history",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT c.role, c.content, c.stage, c.created_at FROM conversations c WHERE c.session_id = '{{ $('Check session found').item.json.session_id }}' ORDER BY c.created_at ASC LIMIT 50;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "1b32f70d-4939-43cd-83c9-5d99d30a4e0f",
+      "typeVersion": 3,
+      "position": [
+        1900,
+        200
+      ],
+      "name": "Merge DB results",
+      "type": "n8n-nodes-base.merge",
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      }
+    },
+    {
+      "id": "96fc905d-d64e-4bb9-8d11-a2a80f6da022",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "name": "Build context payload",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const session = $('Check session found').item.json;\nconst profile = $('Load business profile').item.json || {};\nconst historyItems = $('Load conversation history').all();\n\nconst conversationHistory = historyItems.map(i => ({\n  role: i.json.role,\n  content: i.json.content,\n  stage: i.json.stage,\n  created_at: i.json.created_at\n}));\n\nlet persona = {};\nlet guardrails = {};\nlet hebrewPatterns = {};\nlet services = [];\nlet qualificationProgress = {};\n\ntry { persona = typeof profile.persona === 'string' ? JSON.parse(profile.persona) : (profile.persona || {}); } catch(e) {}\ntry { guardrails = typeof profile.guardrails === 'string' ? JSON.parse(profile.guardrails) : (profile.guardrails || {}); } catch(e) {}\ntry { hebrewPatterns = typeof profile.hebrew_patterns === 'string' ? JSON.parse(profile.hebrew_patterns) : (profile.hebrew_patterns || {}); } catch(e) {}\ntry { services = typeof profile.services === 'string' ? JSON.parse(profile.services) : (profile.services || []); } catch(e) {}\ntry { qualificationProgress = typeof session.qualification_progress === 'string' ? JSON.parse(session.qualification_progress) : (session.qualification_progress || {}); } catch(e) {}\n\nconst allFields = ['need','scope','budget','timeline','urgency'];\nconst missingQualificationData = allFields.filter(f => !qualificationProgress[f]);\n\nreturn [{ json: {\n  business_id: session.business_id,\n  session_mode: session.session_mode || 'live_mode',\n  setup_completed: session.setup_completed || false,\n  current_stage: session.current_stage || 'start',\n  business_profile: {\n    business_name: profile.business_name,\n    business_model: profile.business_model,\n    sales_goal: profile.sales_goal,\n    conversation_strategy: profile.conversation_strategy,\n    services: services,\n    decision_logic: profile.decision_logic,\n    key_questions: profile.key_questions,\n    objection_handling: profile.objection_handling\n  },\n  persona,\n  guardrails,\n  hebrew_patterns: hebrewPatterns,\n  conversation_history: conversationHistory,\n  missing_qualification_data: missingQualificationData\n}}];"
+      }
+    },
+    {
+      "id": "cea33297-4667-46a7-bed1-0ef4444e3c42",
+      "typeVersion": 3.4,
+      "position": [
+        2500,
+        200
+      ],
+      "name": "Return success",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "result",
+              "value": "={{ $json }}",
+              "type": "object"
+            },
+            {
+              "id": "s3",
+              "name": "error",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "134c5ebd-09eb-456a-ab68-1b0a0f258a5a",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        200
+      ],
+      "name": "Build new session payload",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const sessionId = $('Extract input fields').item.json.session_id;\nreturn [{ json: {\n  business_id: null,\n  session_mode: 'setup',\n  setup_completed: false,\n  current_stage: 'setup_start',\n  business_profile: {},\n  persona: {},\n  guardrails: {},\n  hebrew_patterns: {},\n  conversation_history: [],\n  missing_qualification_data: ['need','scope','budget','timeline','urgency']\n}}];"
+      }
+    },
+    {
+      "id": "80a0386a-743c-4a25-8cf2-584b9cb7cec8",
+      "typeVersion": 3.4,
+      "position": [
+        3100,
+        200
+      ],
+      "name": "Return new session success",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s4",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "result",
+              "value": "={{ $json }}",
+              "type": "object"
+            },
+            {
+              "id": "s6",
+              "name": "error",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract input fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract input fields": {
+      "main": [
+        [
+          {
+            "node": "Lookup session by session_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup session by session_id": {
+      "main": [
+        [
+          {
+            "node": "Check session found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check session found": {
+      "main": [
+        [
+          {
+            "node": "Load business profile",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build new session payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load business profile": {
+      "main": [
+        [
+          {
+            "node": "Load conversation history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load conversation history": {
+      "main": [
+        [
+          {
+            "node": "Merge DB results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge DB results": {
+      "main": [
+        [
+          {
+            "node": "Build context payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build context payload": {
+      "main": [
+        [
+          {
+            "node": "Return success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build new session payload": {
+      "main": [
+        [
+          {
+            "node": "Return new session success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

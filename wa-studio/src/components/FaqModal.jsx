@@ -1,0 +1,446 @@
+import { useState, useEffect } from 'react'
+import { loadFaqItems, updateFaqItem, deleteFaqItem, addFaqItem, approveSuggestedFaqItem, dismissSuggestedFaqItem } from '../lib/supabase.js'
+import { CATEGORIES, ARCHETYPES, ARCHETYPE_KEYS, FAQ_STARTERS_BY_CATEGORY } from '../lib/faq-starters.js'
+import { getFaqForBusinessType, BUSINESS_TYPES } from '../lib/faq-by-business-type.js'
+
+const STATUS = {
+  pending:  { label: 'ממתין',   cls: 'fq-status-pending'  },
+  active:   { label: 'פעיל',    cls: 'fq-status-active'   },
+  inactive: { label: 'לא פעיל', cls: 'fq-status-inactive' },
+}
+
+function itemStatus(item) {
+  if (!item.answer) return 'pending'
+  return item.is_active ? 'active' : 'inactive'
+}
+
+function sortItems(items) {
+  const order = { pending: 0, active: 1, inactive: 2 }
+  return [...items].sort((a, b) => order[itemStatus(a)] - order[itemStatus(b)])
+}
+
+const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
+const syncKnowledge = (businessId) => {
+  fetch(AGENT_BASE ? `${AGENT_BASE}/knowledge/sync` : '/api/agent/knowledge/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ business_id: businessId }),
+  }).catch(() => {})
+}
+
+export default function FaqPanel({ businessId, businessName, businessCategory, onClose }) {
+  const [items, setItems]               = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState(null)
+  const [expandedId, setExpandedId]     = useState(null)
+  const [editState, setEditState]       = useState({})
+  const [addOpen, setAddOpen]           = useState(false)
+  const [newItem, setNewItem]           = useState({ category: 'general', question: '', answer: '' })
+  const [saving, setSaving]             = useState(false)
+  const [suggestOpen, setSuggestOpen]   = useState(false)
+  const [expandedCat, setExpandedCat]   = useState(null)
+
+  useEffect(() => { load() }, [businessId])
+
+  async function load() {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await loadFaqItems(businessId)
+      setItems(sortItems(data))
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function startEdit(item) {
+    setEditState(prev => ({
+      ...prev,
+      [item.id]: {
+        question: item.question,
+        answer: item.answer,
+        category: item.category || 'general',
+      },
+    }))
+    setExpandedId(item.id)
+  }
+
+  function cancelEdit(id) {
+    setEditState(prev => { const n = { ...prev }; delete n[id]; return n })
+  }
+
+  async function saveEdit(item) {
+    const edit = editState[item.id]
+    if (!edit) return
+    setSaving(true)
+    try {
+      await updateFaqItem(item.id, {
+        question: edit.question,
+        answer: edit.answer,
+        category: edit.category,
+      })
+      cancelEdit(item.id)
+      await load()
+      syncKnowledge(businessId)
+    } catch (e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
+
+  async function toggleActive(item) {
+    try {
+      await updateFaqItem(item.id, { is_active: !item.is_active })
+      await load()
+      syncKnowledge(businessId)
+    } catch (e) { setError(e.message) }
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('למחוק שאלה זו?')) return
+    try {
+      await deleteFaqItem(id)
+      if (expandedId === id) setExpandedId(null)
+      await load()
+      syncKnowledge(businessId)
+    } catch (e) { setError(e.message) }
+  }
+
+  async function handleAdd() {
+    if (!newItem.question.trim()) return
+    setSaving(true)
+    try {
+      await addFaqItem(businessId, newItem)
+      setNewItem({ category: 'general', question: '', answer: '' })
+      setAddOpen(false)
+      await load()
+      syncKnowledge(businessId)
+    } catch (e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
+
+  function useSuggestion(suggestion) {
+    setNewItem({ category: suggestion.category, question: suggestion.question, answer: suggestion.answer })
+    setAddOpen(true)
+    setSuggestOpen(false)
+    // scroll to top so form is visible
+    document.querySelector('.fq-list')?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Build suggestions list — exclude questions already in the FAQ
+  const existingQuestions = new Set(items.map(i => i.question.trim().toLowerCase()))
+  const suggestions = Object.entries(FAQ_STARTERS_BY_CATEGORY).map(([cat, starters]) => ({
+    cat,
+    label: CATEGORIES[cat] || cat,
+    items: starters.filter(s => !existingQuestions.has(s.question.trim().toLowerCase())),
+  })).filter(g => g.items.length > 0)
+
+  const suggested = items.filter(i => i.suggested && !i.is_active)
+  const pending  = items.filter(i => !i.suggested && itemStatus(i) === 'pending')
+  const answered = items.filter(i => !i.suggested && itemStatus(i) !== 'pending')
+
+  async function approveSuggestion(item) {
+    try {
+      await approveSuggestedFaqItem(item.id)
+      await load()
+      syncKnowledge(businessId)
+    } catch (e) { setError(e.message) }
+  }
+
+  async function dismissSuggestion(item) {
+    try {
+      await dismissSuggestedFaqItem(item.id)
+      await load()
+    } catch (e) { setError(e.message) }
+  }
+
+  return (
+    <div className="fq-panel">
+      <div className="fq-header">
+        <button className="fq-back-btn" onClick={onClose} title="Back to chat">←</button>
+        <div className="fq-header-title">
+          <span className="fq-title">Knowledge Base</span>
+          <span className="fq-subtitle" lang="he">{businessName}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            className="fq-add-btn"
+            onClick={() => { setSuggestOpen(o => !o); setAddOpen(false) }}
+            style={{ background: suggestOpen ? 'var(--accent)' : undefined }}
+            title="הצעות שאלות"
+          >
+            💡 הצעות
+          </button>
+          <button className="fq-add-btn" onClick={() => { setAddOpen(o => !o); setSuggestOpen(false) }}>
+            {addOpen ? '✕' : '+ חדש'}
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="fq-error">{error}</div>}
+
+      <div className="fq-list">
+        {addOpen && (
+          <div className="fq-add-form" lang="he">
+            <div className="fq-add-row">
+              <label className="fq-add-label">קטגוריה:</label>
+              <select
+                className="fq-select"
+                value={newItem.category}
+                onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
+              >
+                {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <input
+              className="fq-input"
+              placeholder="שאלה..."
+              value={newItem.question}
+              onChange={e => setNewItem(p => ({ ...p, question: e.target.value }))}
+              dir="rtl"
+            />
+            <textarea
+              className="fq-textarea"
+              placeholder="תשובה (ניתן להשאיר ריק)..."
+              value={newItem.answer}
+              onChange={e => setNewItem(p => ({ ...p, answer: e.target.value }))}
+              rows={3}
+              dir="rtl"
+            />
+            <div className="fq-form-actions">
+              <button className="fq-btn-save" onClick={handleAdd} disabled={saving || !newItem.question.trim()}>שמור</button>
+              <button className="fq-btn-cancel" onClick={() => { setAddOpen(false); setNewItem({ category: 'general', question: '', answer: '' }) }}>ביטול</button>
+            </div>
+          </div>
+        )}
+
+        {suggestOpen && (
+          <div className="fq-suggest-panel" lang="he">
+            <div className="fq-suggest-header">
+              💡 שאלות מוצעות — לחץ <strong>+</strong> להוספה ועריכה לפני שמירה
+            </div>
+            {businessCategory && (() => {
+              const bizTypeSuggestions = getFaqForBusinessType(businessCategory)
+                .filter(s => !existingQuestions.has(s.question.trim().toLowerCase()))
+              return bizTypeSuggestions.length > 0 ? (
+                <div className="fq-suggest-group">
+                  <div
+                    className="fq-suggest-group-hd"
+                    onClick={() => setExpandedCat(expandedCat === '__biz_type__' ? null : '__biz_type__')}
+                  >
+                    <span>✨ מותאם לעסק שלך / For your business type — {BUSINESS_TYPES[businessCategory] ?? businessCategory}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="fq-count">{bizTypeSuggestions.length}</span>
+                      <span>{expandedCat === '__biz_type__' ? '▾' : '▸'}</span>
+                    </span>
+                  </div>
+                  {expandedCat === '__biz_type__' && bizTypeSuggestions.map((s, i) => (
+                    <div key={i} className="fq-suggest-row">
+                      <div className="fq-suggest-content">
+                        <div className="fq-suggest-q" dir="rtl">{s.question}</div>
+                        <div className="fq-suggest-a" dir="rtl">{s.answer}</div>
+                      </div>
+                      <button
+                        className="fq-suggest-add-btn"
+                        onClick={() => useSuggestion(s)}
+                        title="הוסף וערוך"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            })()}
+            {businessCategory && suggestions.length > 0 && (
+              <div className="fq-suggest-group-hd" style={{ cursor: 'default', opacity: 0.6, fontSize: 11 }}>
+                שאלות כלליות / General
+              </div>
+            )}
+            {suggestions.length === 0 && !businessCategory && (
+              <div className="fq-state-msg">כל ההצעות כבר נוספו 🎉</div>
+            )}
+            {suggestions.map(group => (
+              <div key={group.cat} className="fq-suggest-group">
+                <div
+                  className="fq-suggest-group-hd"
+                  onClick={() => setExpandedCat(expandedCat === group.cat ? null : group.cat)}
+                >
+                  <span>{group.label}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="fq-count">{group.items.length}</span>
+                    <span>{expandedCat === group.cat ? '▾' : '▸'}</span>
+                  </span>
+                </div>
+                {expandedCat === group.cat && group.items.map((s, i) => (
+                  <div key={i} className="fq-suggest-row">
+                    <div className="fq-suggest-content">
+                      <div className="fq-suggest-q" dir="rtl">{s.question}</div>
+                      <div className="fq-suggest-a" dir="rtl">{s.answer}</div>
+                    </div>
+                    <button
+                      className="fq-suggest-add-btn"
+                      onClick={() => useSuggestion(s)}
+                      title="הוסף וערוך"
+                    >
+                      +
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && suggested.length > 0 && (
+          <section className="fq-section">
+            <div className="fq-section-hd" lang="he">
+              <span>💡 הוצע משיחות</span>
+              <span className="fq-count">{suggested.length}</span>
+            </div>
+            {suggested.map(item => (
+              <div key={item.id} className="fq-row fq-row-suggested" lang="he">
+                <div className="fq-row-hd" style={{ cursor: 'default' }}>
+                  <span className="fq-cat-badge">{CATEGORIES[item.category] || item.category}</span>
+                  <span className="fq-q-text" dir="rtl">{item.question || '(שאלה ריקה)'}</span>
+                  <span className="fq-row-btns" onClick={e => e.stopPropagation()}>
+                    <button className="fq-icon-btn" onClick={() => approveSuggestion(item)} title="אשר">✅</button>
+                    <button className="fq-icon-btn" onClick={() => dismissSuggestion(item)} title="דחה">❌</button>
+                  </span>
+                </div>
+                {item.answer && (
+                  <div className="fq-row-body">
+                    <div className="fq-answer-text" dir="rtl">{item.answer}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </section>
+        )}
+
+        {loading && <div className="fq-state-msg">טוען...</div>}
+
+        {!loading && items.length === 0 && !addOpen && (
+          <div className="fq-state-msg" lang="he">אין שאלות עדיין — לחצו על "+ שאלה חדשה" כדי להוסיף.</div>
+        )}
+
+        {!loading && pending.length > 0 && (
+          <section className="fq-section">
+            <div className="fq-section-hd" lang="he">
+              <span>ממתין לתשובה</span>
+              <span className="fq-count">{pending.length}</span>
+            </div>
+            {pending.map(item => (
+              <FaqRow key={item.id} item={item}
+                expanded={expandedId === item.id} editing={editState[item.id]} saving={saving}
+                onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                onEdit={() => startEdit(item)} onCancelEdit={() => cancelEdit(item.id)}
+                onSave={() => saveEdit(item)} onDelete={() => handleDelete(item.id)}
+                onToggleActive={() => toggleActive(item)}
+                onEditChange={patch => setEditState(prev => ({ ...prev, [item.id]: { ...prev[item.id], ...patch } }))}
+              />
+            ))}
+          </section>
+        )}
+
+        {!loading && answered.length > 0 && (
+          <section className="fq-section">
+            {pending.length > 0 && (
+              <div className="fq-section-hd" lang="he">
+                <span>שאלות קיימות</span>
+                <span className="fq-count">{answered.length}</span>
+              </div>
+            )}
+            {answered.map(item => (
+              <FaqRow key={item.id} item={item}
+                expanded={expandedId === item.id} editing={editState[item.id]} saving={saving}
+                onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                onEdit={() => startEdit(item)} onCancelEdit={() => cancelEdit(item.id)}
+                onSave={() => saveEdit(item)} onDelete={() => handleDelete(item.id)}
+                onToggleActive={() => toggleActive(item)}
+                onEditChange={patch => setEditState(prev => ({ ...prev, [item.id]: { ...prev[item.id], ...patch } }))}
+              />
+            ))}
+          </section>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FaqRow({ item, expanded, editing, onToggle, onEdit, onCancelEdit, onSave, onDelete, onToggleActive, onEditChange, saving }) {
+  const status   = itemStatus(item)
+  const st       = STATUS[status]
+  const catLabel = CATEGORIES[item.category] || item.category
+  const archetypes = Array.isArray(item.archetypes) ? item.archetypes : []
+  const archetypePills = archetypes.length === 0
+    ? [{ key: 'universal', label: 'כללי', cls: 'fq-arc-universal' }]
+    : archetypes
+        .filter(a => ARCHETYPE_KEYS.includes(a))
+        .map(a => ({ key: a, label: ARCHETYPES[a], cls: `fq-arc-${a}` }))
+
+  return (
+    <div className={`fq-row fq-row-${status}`}>
+      <div className="fq-row-hd" onClick={onToggle}>
+        <span className="fq-chevron">{expanded ? '▾' : '▸'}</span>
+        <span className="fq-cat-badge" lang="he">{catLabel}</span>
+        {archetypePills.map(p => (
+          <span key={p.key} className={`fq-arc-badge ${p.cls}`} lang="he">{p.label}</span>
+        ))}
+        <span className="fq-q-text" lang="he" dir="rtl">{item.question || '(שאלה ריקה)'}</span>
+        <span className={`fq-status-badge ${st.cls}`} lang="he">{st.label}</span>
+        <span className="fq-row-btns" onClick={e => e.stopPropagation()}>
+          <button className="fq-icon-btn" onClick={onEdit} title="ערוך">✏️</button>
+          <button className="fq-icon-btn" onClick={onDelete} title="מחק">🗑️</button>
+        </span>
+      </div>
+
+      {expanded && (
+        <div className="fq-row-body" lang="he">
+          {editing ? (
+            <>
+              <input
+                className="fq-input"
+                value={editing.question}
+                onChange={e => onEditChange({ question: e.target.value })}
+                dir="rtl"
+                placeholder="שאלה"
+              />
+              <textarea
+                className="fq-textarea"
+                value={editing.answer}
+                onChange={e => onEditChange({ answer: e.target.value })}
+                rows={4}
+                dir="rtl"
+                placeholder="תשובה..."
+              />
+              <select
+                className="fq-select"
+                value={editing.category}
+                onChange={e => onEditChange({ category: e.target.value })}
+              >
+                {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <div className="fq-form-actions">
+                <button className="fq-btn-save" onClick={onSave} disabled={saving}>שמור</button>
+                <button className="fq-btn-cancel" onClick={onCancelEdit}>ביטול</button>
+              </div>
+            </>
+          ) : (
+            <>
+              {item.answer
+                ? <div className="fq-answer-text" dir="rtl">{item.answer}</div>
+                : <div className="fq-answer-empty">אין תשובה עדיין — לחצו על ✏️ לעריכה</div>
+              }
+              {item.answer && (
+                <label className="fq-active-label">
+                  <input type="checkbox" checked={item.is_active} onChange={onToggleActive} />
+                  <span>{item.is_active ? 'פעיל — בטל סימון להשבית' : 'לא פעיל — סמנו להפעלה'}</span>
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

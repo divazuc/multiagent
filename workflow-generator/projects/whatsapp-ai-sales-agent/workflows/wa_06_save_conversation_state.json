@@ -1,0 +1,478 @@
+{
+  "name": "WA_06_Save Conversation State",
+  "nodes": [
+    {
+      "id": "0d626f62-8065-4e64-bdd3-0f26eea66bf6",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "name": "Input Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "d33d7f52-99c1-4ad4-9de1-85eae2130f66",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        200
+      ],
+      "name": "Receive sub-workflow input",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "session_id",
+              "name": "session_id",
+              "value": "={{ $json.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "business_id",
+              "name": "business_id",
+              "value": "={{ $json.business_id }}",
+              "type": "string"
+            },
+            {
+              "id": "user_message",
+              "name": "user_message",
+              "value": "={{ $json.user_message }}",
+              "type": "string"
+            },
+            {
+              "id": "agent_response",
+              "name": "agent_response",
+              "value": "={{ $json.agent_response }}",
+              "type": "string"
+            },
+            {
+              "id": "stage",
+              "name": "stage",
+              "value": "={{ $json.stage }}",
+              "type": "string"
+            },
+            {
+              "id": "action",
+              "name": "action",
+              "value": "={{ $json.action }}",
+              "type": "string"
+            },
+            {
+              "id": "qualification_progress",
+              "name": "qualification_progress",
+              "value": "={{ $json.qualification_progress }}",
+              "type": "object"
+            },
+            {
+              "id": "cta_triggered",
+              "name": "cta_triggered",
+              "value": "={{ $json.cta_triggered }}",
+              "type": "boolean"
+            },
+            {
+              "id": "escalate",
+              "name": "escalate",
+              "value": "={{ $json.escalate }}",
+              "type": "boolean"
+            },
+            {
+              "id": "escalation_reason",
+              "name": "escalation_reason",
+              "value": "={{ $json.escalation_reason }}",
+              "type": "string"
+            },
+            {
+              "id": "language",
+              "name": "language",
+              "value": "={{ $json.language }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7e601024-f3a3-44ab-a0ae-73b636f952aa",
+      "typeVersion": 2,
+      "position": [
+        700,
+        200
+      ],
+      "name": "Validate required fields",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst required = ['session_id', 'business_id', 'user_message', 'agent_response', 'stage'];\nconst missing = required.filter(f => !d[f]);\nif (missing.length > 0) {\n  return [{ json: { valid: false, missing_fields: missing } }];\n}\nreturn [{ json: { valid: true, missing_fields: [] } }];"
+      }
+    },
+    {
+      "id": "3aed29fe-600a-4cf2-ab78-c07e557ed060",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "name": "Is input valid?",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "valid_check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "754a3e7e-474d-4726-b533-f649fa2af5ef",
+      "typeVersion": 2.5,
+      "position": [
+        1300,
+        200
+      ],
+      "name": "Save conversation message",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO conversation_messages (\n  session_id,\n  business_id,\n  user_message,\n  agent_response,\n  stage,\n  action,\n  qualification_progress,\n  cta_triggered,\n  escalate,\n  escalation_reason,\n  language,\n  created_at\n) VALUES (\n  '{{ $('Receive sub-workflow input').item.json.session_id }}',\n  '{{ $('Receive sub-workflow input').item.json.business_id }}',\n  '{{ $('Receive sub-workflow input').item.json.user_message.replace(/'/g, \"''\") }}',\n  '{{ $('Receive sub-workflow input').item.json.agent_response.replace(/'/g, \"''\") }}',\n  '{{ $('Receive sub-workflow input').item.json.stage }}',\n  '{{ $('Receive sub-workflow input').item.json.action }}',\n  '{{ JSON.stringify($('Receive sub-workflow input').item.json.qualification_progress || {}) }}'::jsonb,\n  {{ $('Receive sub-workflow input').item.json.cta_triggered ? 'true' : 'false' }},\n  {{ $('Receive sub-workflow input').item.json.escalate ? 'true' : 'false' }},\n  '{{ ($('Receive sub-workflow input').item.json.escalation_reason || '').replace(/'/g, \"''\") }}',\n  '{{ $('Receive sub-workflow input').item.json.language || 'en' }}',\n  NOW()\n)\nRETURNING id;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "6520a1dc-8d7d-434c-87ae-d940b71e6b68",
+      "typeVersion": 2.5,
+      "position": [
+        1600,
+        200
+      ],
+      "name": "Update session state",
+      "type": "n8n-nodes-base.postgres",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sessions\nSET\n  current_stage = '{{ $('Receive sub-workflow input').item.json.stage }}',\n  last_message_at = NOW(),\n  cta_triggered = {{ $('Receive sub-workflow input').item.json.cta_triggered ? 'true' : 'false' }},\n  escalate = {{ $('Receive sub-workflow input').item.json.escalate ? 'true' : 'false' }},\n  qualification_progress = '{{ JSON.stringify($('Receive sub-workflow input').item.json.qualification_progress || {}) }}'::jsonb\nWHERE session_id = '{{ $('Receive sub-workflow input').item.json.session_id }}'\n  AND session_mode = 'live_mode'\nRETURNING session_id, session_mode;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "O6dnMJBEHEOipCdX",
+          "name": "Whatsapp_agent_DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "66c8dbba-1de4-4040-8f79-aee565661ea0",
+      "typeVersion": 2,
+      "position": [
+        1900,
+        200
+      ],
+      "name": "Check DB errors",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const msgResult = $('Save conversation message').first()?.json;\nconst sessionResult = $('Update session state').first()?.json;\n\nconst msgError = msgResult?.error || (Array.isArray(msgResult) && msgResult.length === 0);\nconst sessionError = sessionResult?.error;\n\nif (msgError) {\n  return [{ json: {\n    has_error: true,\n    error_source: 'conversation_message_insert',\n    error_detail: msgResult?.error || 'No rows returned from insert'\n  }}];\n}\n\nreturn [{ json: {\n  has_error: false,\n  message_id: Array.isArray(msgResult) ? msgResult[0]?.id : msgResult?.id,\n  session_updated: !sessionError && sessionResult !== null\n}}];"
+      }
+    },
+    {
+      "id": "0c708ae2-9c48-4e72-bbe8-85895001decf",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "name": "Did DB write succeed?",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "error_check",
+              "leftValue": "={{ $json.has_error }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "9a28c92d-1dc6-478f-8c8d-3651a78f84b4",
+      "typeVersion": 3.4,
+      "position": [
+        2500,
+        200
+      ],
+      "name": "Return success",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "result.saved",
+              "name": "result.saved",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "result.session_id",
+              "name": "result.session_id",
+              "value": "={{ $('Receive sub-workflow input').item.json.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "error",
+              "name": "error",
+              "value": null,
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "44b402f0-5fc8-4eed-b1f7-173479d74a65",
+      "typeVersion": 3.4,
+      "position": [
+        2800,
+        200
+      ],
+      "name": "Return DB error",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "result.saved",
+              "name": "result.saved",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "result.session_id",
+              "name": "result.session_id",
+              "value": "={{ $('Receive sub-workflow input').item.json.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "error",
+              "name": "error",
+              "value": "={{ $('Check DB errors').item.json.error_detail || 'Database write failed' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f11e5e70-8e7e-4ae0-bd4b-d1c978cc98a5",
+      "typeVersion": 3.4,
+      "position": [
+        3100,
+        200
+      ],
+      "name": "Return validation error",
+      "type": "n8n-nodes-base.set",
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "result.saved",
+              "name": "result.saved",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "result.session_id",
+              "name": "result.session_id",
+              "value": "={{ $('Receive sub-workflow input').item.json.session_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "error",
+              "name": "error",
+              "value": "={{ 'Missing required fields: ' + $('Validate required fields').item.json.missing_fields.join(', ') }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "316e5317-969c-4e3d-8e4b-2c3cc5278809",
+      "typeVersion": 1,
+      "position": [
+        3400,
+        200
+      ],
+      "name": "Note: Save Conversation State",
+      "type": "n8n-nodes-base.stickyNote",
+      "parameters": {
+        "content": "## WA_06 — Save Conversation State\n\n**Purpose:** Single atomic write path for live conversation data.\n\n**Steps:**\n1. Validate required input fields\n2. Insert message row into `conversation_messages`\n3. Update `sessions` table (live_mode only)\n4. Return success or structured error\n\n**DB tables used:**\n- `conversation_messages` — full message record\n- `sessions` — stage, CTA, escalation, qualification progress\n\n**Only runs for `session_mode = live_mode` sessions.**",
+        "height": 280,
+        "width": 340,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Input Trigger": {
+      "main": [
+        [
+          {
+            "node": "Receive sub-workflow input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive sub-workflow input": {
+      "main": [
+        [
+          {
+            "node": "Validate required fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate required fields": {
+      "main": [
+        [
+          {
+            "node": "Is input valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is input valid?": {
+      "main": [
+        [
+          {
+            "node": "Save conversation message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return validation error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save conversation message": {
+      "main": [
+        [
+          {
+            "node": "Update session state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update session state": {
+      "main": [
+        [
+          {
+            "node": "Check DB errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check DB errors": {
+      "main": [
+        [
+          {
+            "node": "Did DB write succeed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Did DB write succeed?": {
+      "main": [
+        [
+          {
+            "node": "Return success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return DB error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

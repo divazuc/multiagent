@@ -2178,13 +2178,20 @@
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "fic-01",
               "leftValue": "={{ $json.flow_action }}",
               "rightValue": "create_and_show_menu",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -2195,18 +2202,28 @@
       "name": "IF - Flow Is Create",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1648, 608]
+      "position": [
+        1648,
+        608
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "fiea-01",
               "leftValue": "={{ $json.flow_action }}",
               "rightValue": "execute_approved",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -2217,7 +2234,10 @@
       "name": "IF - Flow Is Execute Approved",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1840, 704]
+      "position": [
+        1840,
+        704
+      ]
     },
     {
       "parameters": {
@@ -2232,7 +2252,10 @@
       "name": "HTTP Request - AG11 Create For Menu",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1840, 528],
+      "position": [
+        1840,
+        528
+      ],
       "continueOnFail": true
     },
     {
@@ -2243,7 +2266,10 @@
       "name": "Code - Format New Project Menu",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2048, 528]
+      "position": [
+        2048,
+        528
+      ]
     },
     {
       "parameters": {
@@ -2253,7 +2279,10 @@
       "name": "Code - Build Action Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2048, 704]
+      "position": [
+        2048,
+        704
+      ]
     },
     {
       "parameters": {
@@ -2268,7 +2297,10 @@
       "name": "HTTP Request - AG11 Action Call",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2240, 704],
+      "position": [
+        2240,
+        704
+      ],
       "continueOnFail": true
     },
     {
@@ -2279,7 +2311,10 @@
       "name": "Code - Format Action Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2432, 704]
+      "position": [
+        2432,
+        704
+      ]
     },
     {
       "parameters": {
@@ -2293,24 +2328,28 @@
       "name": "Respond to Webhook - Action",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [2624, 704]
+      "position": [
+        2624,
+        704
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "isp-01",
               "leftValue": "={{ $json.action_choice }}",
               "rightValue": 7,
-              "operator": { "type": "number", "operation": "equals" }
-            },
-            {
-              "id": "isp-02",
-              "leftValue": "={{ !$json.error }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -2321,7 +2360,10 @@
       "name": "IF - Is Start Project",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [2144, 864]
+      "position": [
+        2144,
+        864
+      ]
     },
     {
       "parameters": {
@@ -2336,7 +2378,10 @@
       "name": "HTTP Request - AG11 Start Create",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2336, 976]
+      "position": [
+        2336,
+        976
+      ]
     },
     {
       "parameters": {
@@ -2351,7 +2396,10 @@
       "name": "HTTP Request - AG11 Start Save Step",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2528, 976]
+      "position": [
+        2528,
+        976
+      ]
     },
     {
       "parameters": {
@@ -2366,7 +2414,10 @@
       "name": "HTTP Request - AG11 Start Verify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2720, 976],
+      "position": [
+        2720,
+        976
+      ],
       "continueOnFail": true
     },
     {
@@ -2377,7 +2428,42 @@
       "name": "Code - Format Start Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2912, 976]
+      "position": [
+        2912,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "action-err-01",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fix-action-error-route-001",
+      "name": "IF - Action Request Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2144,
+        704
+      ]
     }
   ],
   "pinData": {},
@@ -3566,7 +3652,7 @@
       "main": [
         [
           {
-            "node": "IF - Is Start Project",
+            "node": "IF - Action Request Error",
             "type": "main",
             "index": 0
           }
@@ -3651,6 +3737,24 @@
         [
           {
             "node": "Respond to Webhook - Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Action Request Error": {
+      "main": [
+        [
+          {
+            "node": "Code - Format Action Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Is Start Project",
             "type": "main",
             "index": 0
           }

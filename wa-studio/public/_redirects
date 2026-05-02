@@ -1,0 +1,4 @@
+/biz/assets/* /biz/assets/:splat 200
+/biz/*         /biz/index.html 200
+/assets/*      /assets/:splat 200
+/*             /index.html 200
