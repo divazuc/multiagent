@@ -839,6 +839,127 @@ app.get('/billing/:business_id', async (req, res) => {
   }
 });
 
+// ── Admin: list all businesses with stats ─────────────────────────────────────
+app.get('/admin/businesses', async (req, res) => {
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const month      = new Date().toISOString().slice(0, 7);
+    const monthStart = `${month}-01`;
+    const monthEnd   = `${month}-31`;
+    const now        = new Date();
+
+    const { data: businesses, error } = await supabase
+      .from('businesses')
+      .select('id, name, slug, archetype, status, is_test, created_at, contact_email')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+
+    const enriched = await Promise.all((businesses ?? []).map(async (biz) => {
+      const [profileRes, contactsRes, faqRes, billingRes, sessionRes] = await Promise.all([
+        supabase.from('business_profiles').select('agent_active, persona, setup_completed').eq('business_id', biz.id).maybeSingle(),
+        supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('business_id', biz.id),
+        supabase.from('knowledge_items').select('id', { count: 'exact', head: true }).eq('business_id', biz.id).eq('is_active', true),
+        supabase.from('wa_billing_events').select('type, window_date').eq('business_id', biz.id).gte('window_date', monthStart).lte('window_date', monthEnd),
+        supabase.from('sessions').select('session_mode, setup_completed, updated_at').eq('business_id', biz.id).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
+      ]);
+
+      const ui   = billingRes.data?.filter(e => e.type === 'user_initiated').length ?? 0;
+      const bi   = billingRes.data?.filter(e => e.type === 'business_initiated').length ?? 0;
+      const cost = Math.max(0, ui - 1000) * 0.015 + bi * 0.055;
+
+      const sess    = sessionRes.data;
+      const profile = profileRes.data;
+      const hasDemo = profile?.persona?.extracted_from_demo === true;
+      const daysSinceActivity = sess?.updated_at
+        ? Math.floor((now - new Date(sess.updated_at)) / 86400000)
+        : 999;
+
+      // Health: red = stuck in setup >3d, yellow = cold >7d or no demo or no faq
+      let health = 'green';
+      if (!sess || sess.session_mode === 'setup') {
+        health = daysSinceActivity > 3 ? 'red' : 'yellow';
+      } else if (daysSinceActivity > 7 || !hasDemo || (faqRes.count ?? 0) === 0) {
+        health = 'yellow';
+      }
+
+      return {
+        ...biz,
+        session_mode:     sess?.session_mode ?? null,
+        setup_completed:  sess?.setup_completed ?? false,
+        agent_active:     profile?.agent_active ?? true,
+        has_demo:         hasDemo,
+        total_leads:      contactsRes.count ?? 0,
+        active_faq:       faqRes.count ?? 0,
+        last_activity:    sess?.updated_at ?? null,
+        days_inactive:    daysSinceActivity,
+        billing_month:    { ui, bi, estimated_cost_usd: Math.round(cost * 100) / 100 },
+        health,
+      };
+    }));
+
+    // Global totals
+    const totalUI  = enriched.reduce((s, b) => s + b.billing_month.ui, 0);
+    const totalBI  = enriched.reduce((s, b) => s + b.billing_month.bi, 0);
+    const totalCost = enriched.reduce((s, b) => s + b.billing_month.estimated_cost_usd, 0);
+
+    return res.json({
+      status: 'success',
+      businesses: enriched,
+      global: { total_businesses: enriched.length, month, ui: totalUI, bi: totalBI, estimated_cost_usd: Math.round(totalCost * 100) / 100, estimated_cost_ils: Math.ceil(totalCost * 3.7 * 100) / 100 },
+    });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// ── Admin: delete business (cascade) ─────────────────────────────────────────
+app.delete('/admin/business/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ status: 'error', message: 'id required' });
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    // Get all session_ids for this business first
+    const { data: sessions } = await supabase.from('sessions').select('session_id').eq('business_id', id);
+    const sessionIds = (sessions ?? []).map(s => s.session_id);
+
+    await Promise.all([
+      sessionIds.length && supabase.from('conversation_messages').delete().in('session_id', sessionIds),
+      sessionIds.length && supabase.from('setup_drafts').delete().in('session_id', sessionIds),
+      sessionIds.length && supabase.from('agent_runs').delete().in('session_id', sessionIds).catch(() => {}),
+      supabase.from('contacts').delete().eq('business_id', id),
+      supabase.from('knowledge_items').delete().eq('business_id', id),
+      supabase.from('wa_billing_events').delete().eq('business_id', id),
+      supabase.from('lead_followups').delete().eq('business_id', id),
+      supabase.from('business_profiles').delete().eq('business_id', id),
+    ].filter(Boolean));
+
+    await supabase.from('sessions').delete().eq('business_id', id);
+    const { error } = await supabase.from('businesses').delete().eq('id', id);
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+    return res.json({ status: 'success' });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
+// ── Admin: edit business ──────────────────────────────────────────────────────
+app.patch('/admin/business/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, status, archetype } = req.body ?? {};
+  try {
+    const { supabase } = await import('./lib/supabase.js');
+    const updates = {};
+    if (name)      updates.name = name;
+    if (status)    updates.status = status;
+    if (archetype) updates.archetype = archetype;
+    const { error } = await supabase.from('businesses').update(updates).eq('id', id);
+    if (error) return res.status(500).json({ status: 'error', message: error.message });
+    return res.json({ status: 'success' });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT ?? 8080;
 loadAgents().then(() => {
