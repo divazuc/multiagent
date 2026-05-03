@@ -232,7 +232,7 @@ const PROGRESS_KEYS = STAGES.map(s => s.key)
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function SetupWizard({ session, draft, sending, onSend, onRefreshDB, onCommitted }) {
+export default function SetupWizard({ session, draft, sending, onSend, onRefreshDB, onCommitted, onStartDemo }) {
   const [selections, setSelections] = useState([])
   const [textValue, setTextValue]   = useState('')
   const [saving, setSaving]         = useState(false)
@@ -394,7 +394,7 @@ export default function SetupWizard({ session, draft, sending, onSend, onRefresh
         {shouldSkip ? (
           <SkipNotice label={stageConfig?.title} onSkip={() => handleSave(null)} saving={saving} />
         ) : stageConfig?.type === 'confirm' ? (
-          <ConfirmStage draft={draft} onCommit={handleCommit} saving={saving} />
+          <ConfirmStage draft={draft} onCommit={handleCommit} onStartDemo={onStartDemo} saving={saving} />
         ) : stageConfig?.type === 'details' ? (
           <DetailsStage config={stageConfig} value={details} onChange={setDetails} />
         ) : stageConfig?.type === 'availability' ? (
@@ -508,32 +508,53 @@ function TextStage({ config, value, onChange }) {
   )
 }
 
-function ConfirmStage({ draft, onCommit, saving }) {
+function ConfirmStage({ draft, onCommit, onStartDemo, saving }) {
   const lines = [
-    draft?.archetype       && `Business type: ${draft.archetype}`,
-    draft?.agent_mode      && `Agent mode: ${draft.agent_mode}`,
-    draft?.cta_goal        && `CTA goal: ${[].concat(draft.cta_goal)[0]?.replace?.(/_/g, ' ') ?? draft.cta_goal}`,
-    draft?.push_speed      && `Push speed: ${draft.push_speed}`,
-    draft?.persona?.tone   && `Tone: ${[].concat(draft.persona.tone).join(', ')}`,
-    draft?.faq_topics?.length && `FAQ topics: ${draft.faq_topics.length} selected`,
+    draft?.archetype       && `סוג עסק: ${draft.archetype}`,
+    draft?.agent_mode      && `מצב סוכן: ${draft.agent_mode}`,
+    draft?.cta_goal        && `מטרת CTA: ${[].concat(draft.cta_goal)[0]?.replace?.(/_/g, ' ') ?? draft.cta_goal}`,
+    draft?.push_speed      && `קצב דחיפה: ${draft.push_speed}`,
+    draft?.persona?.tone   && `טון: ${[].concat(draft.persona.tone).join(', ')}`,
+    draft?.faq_topics?.length && `נושאי FAQ: ${draft.faq_topics.length} נבחרו`,
   ].filter(Boolean)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Ready to activate your agent?</div>
-      <div style={{ background: 'var(--surface)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>✅ ההגדרות מוכנות!</div>
+
+      <div style={{ background: 'var(--surface)', borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {lines.map((l, i) => (
           <div key={i} style={{ fontSize: 13, color: 'var(--text-dim)', display: 'flex', gap: 8 }}>
             <span style={{ color: 'var(--accent)' }}>✓</span> {l}
           </div>
         ))}
       </div>
+
+      {/* Recommended: Demo */}
+      <div style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', borderRadius: 12, padding: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)', marginBottom: 6 }}>
+          🎙️ שלב הלמידה — מומלץ מאוד
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
+          ענה על 12 שאלות קצרות ו-Claude ילמד לדבר בדיוק כמוך.
+          ללא שלב זה הסוכן יענה בסגנון כללי — יעבוד, אבל לא יישמע כמוך.
+        </div>
+        <button
+          onClick={onStartDemo}
+          disabled={saving}
+          style={{ ...btnStyle('primary'), padding: '12px 20px', fontSize: 13, width: '100%' }}
+        >
+          {saving ? '...' : '🎙️ התחל שלב למידה'}
+        </button>
+      </div>
+
+      {/* Skip to live */}
       <button
         onClick={onCommit}
         disabled={saving}
-        style={{ ...btnStyle('primary'), padding: '14px', fontSize: 14 }}
+        style={{ ...btnStyle('ghost'), fontSize: 12, padding: '8px 16px' }}
       >
-        {saving ? '...מפעיל' : '🚀 הפעל סוכן / Activate Agent'}
+        דלג → עבור ישירות ללייב (סגנון כללי)
       </button>
     </div>
   )

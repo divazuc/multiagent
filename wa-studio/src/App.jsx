@@ -341,6 +341,9 @@ export default function App() {
                 await refreshSessions()
                 setActiveSession(prev => prev ? { ...prev, session_mode: 'live', setup_completed: true } : prev)
               }}
+              onSkipToLive={async () => {
+                await handleActivateLive()
+              }}
             />
           ) : activeSession?.session_mode === 'setup' && !activeSession?.setup_completed
           ? (
@@ -352,8 +355,19 @@ export default function App() {
               onRefreshDB={() => refreshDB(activeSession?.session_id)}
               onCommitted={async () => {
                 await refreshSessions()
-                const updated = await refreshDB(activeSession?.session_id)
+                await refreshDB(activeSession?.session_id)
                 setActiveSession(prev => prev ? { ...prev, setup_completed: true, session_mode: 'live' } : prev)
+              }}
+              onStartDemo={async () => {
+                if (!activeSession?.business_id) return
+                try {
+                  // Commit setup first, then create a learning session
+                  await fetch(`${AGENT_BASE ? AGENT_BASE : '/api/agent'}/setup/commit`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: activeSession.session_id, business_id: activeSession.business_id }),
+                  })
+                  await handleRestartSession(activeSession, 'learning', activeSession.business_id)
+                } catch (e) { setError('Failed to start demo: ' + e.message) }
               }}
             />
           ) : (
@@ -369,6 +383,7 @@ export default function App() {
               onOpenPrefs={() => setPrefsOpen(true)}
               agentActive={dbState.profile?.agent_active ?? true}
               onToggleActive={handleToggleActive}
+              hasVoiceProfile={dbState.profile?.persona?.extracted_from_demo ?? null}
               suggestedCount={suggestedCount}
             />
           )

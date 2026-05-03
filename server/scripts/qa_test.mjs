@@ -143,14 +143,23 @@ async function run() {
       ['agent_availability',  async () => { await clickContinue(page); }],
       ['confirm',          async () => {
         await wait(500);
-        const activateBtn = await page.$('button:has-text("הפעל סוכן"), button:has-text("Activate Agent"), button:has-text("הפעל")');
-        if (activateBtn) {
-          await activateBtn.click();
-          await wait(4000); // wait for commit + session refresh
+        // Confirm stage: click "skip to live" (commits setup directly)
+        const skipBtn = await page.$('button:has-text("דלג → עבור"), button:has-text("דלג")');
+        if (skipBtn) {
+          await skipBtn.click();
+          await wait(4000);
           pass('Clicked Activate Agent');
         } else {
-          const btns = await page.$$eval('button', b => b.map(e => e.textContent.trim()).filter(t=>t));
-          fail(`Activate button not found. Buttons: ${JSON.stringify(btns).slice(0,200)}`);
+          // Fallback: old-style activate button
+          const activateBtn = await page.$('button:has-text("הפעל סוכן"), button:has-text("Activate Agent"), button:has-text("הפעל")');
+          if (activateBtn) {
+            await activateBtn.click();
+            await wait(4000);
+            pass('Clicked Activate Agent');
+          } else {
+            const btns = await page.$$eval('button', b => b.map(e => e.textContent.trim()).filter(t=>t));
+            fail(`Activate button not found. Buttons: ${JSON.stringify(btns).slice(0,200)}`);
+          }
         }
       }],
     ];
