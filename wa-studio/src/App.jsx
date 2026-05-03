@@ -10,6 +10,7 @@ import DemoWizard from './components/DemoWizard.jsx'
 import BusinessPreferences from './components/BusinessPreferences.jsx'
 import { createSession, listSessions, loadDBState, advanceSetupStage, markSetupComplete, seedBusinessProfile, clearSessionData, seedFaqStarters, setSessionMode, loadSuggestedFaqCount } from './lib/supabase.js'
 import FaqPanel from './components/FaqModal.jsx'
+import AdminPanel from './components/AdminPanel.jsx'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const WEBHOOK_PATH = AGENT_BASE ? `${AGENT_BASE}/wa-inbound` : '/api/agent/wa-inbound'
@@ -28,6 +29,7 @@ export default function App() {
   const [suggestedCount, setSuggestedCount] = useState(0)
   const [prefsOpen, setPrefsOpen] = useState(false)
   const [rightPanel, setRightPanel] = useState('db') // 'db' | 'runs'
+  const [showAdmin, setShowAdmin] = useState(false)
   const [showSessions, setShowSessions] = useState(false)
   const [showRight, setShowRight] = useState(false)
 
@@ -289,12 +291,16 @@ export default function App() {
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
           <button
-            onClick={() => setRightPanel('db')}
-            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: rightPanel === 'db' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
+            onClick={() => setShowAdmin(v => !v)}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: showAdmin ? '#f59e0b' : 'var(--surface-3)', color: showAdmin ? '#fff' : 'var(--text)' }}
+          >🛠️ Admin</button>
+          <button
+            onClick={() => { setShowAdmin(false); setRightPanel('db') }}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: !showAdmin && rightPanel === 'db' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
           >DB</button>
           <button
-            onClick={() => setRightPanel('runs')}
-            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: rightPanel === 'runs' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
+            onClick={() => { setShowAdmin(false); setRightPanel('runs') }}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: !showAdmin && rightPanel === 'runs' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
           >Runs</button>
           {/* Mobile: toggle right panel */}
           <button className="mobile-toggle" onClick={() => setShowRight(v => !v)} title="Inspector">🔍</button>
@@ -317,7 +323,9 @@ export default function App() {
           onRefresh={refreshSessions}
           className={showSessions ? 'open' : ''}
         />
-        {prefsOpen && activeSession?.business_id && dbState.profile
+        {showAdmin
+          ? <AdminPanel />
+          : prefsOpen && activeSession?.business_id && dbState.profile
           ? (
             <BusinessPreferences
               session={activeSession}
@@ -388,12 +396,12 @@ export default function App() {
             />
           )
         }
-        <div className={`panel panel-right ${showRight ? 'open' : ''}`}>
+        {!showAdmin && <div className={`panel panel-right ${showRight ? 'open' : ''}`}>
           {rightPanel === 'runs'
             ? <RunsPanel activeSession={activeSession} />
             : <DBInspector dbState={dbState} onRefresh={() => refreshDB(activeSession?.session_id)} />
           }
-        </div>
+        </div>}
       </div>
     </div>
   )
