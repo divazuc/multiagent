@@ -12,7 +12,9 @@ const CATEGORY_ICONS = {
   'דוגמת שיחה / Sample': '💬',
 }
 
-export default function DemoWizard({ session, onCompleted }) {
+const MIN_QUESTIONS = 3
+
+export default function DemoWizard({ session, onCompleted, onSkipToLive }) {
   const [messages, setMessages] = useState([])
   const [input, setInput]       = useState('')
   const [sending, setSending]   = useState(false)
@@ -149,6 +151,18 @@ export default function DemoWizard({ session, onCompleted }) {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Early exit — go live after MIN_QUESTIONS */}
+      {!done && progress.current >= MIN_QUESTIONS && onSkipToLive && (
+        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+          <button
+            onClick={onSkipToLive}
+            style={{ width: '100%', padding: '8px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}
+          >
+            מספיק לי — עבור ללייב עכשיו ({progress.current}/{progress.total} שאלות הושלמו)
+          </button>
+        </div>
+      )}
 
       {/* Input */}
       {!done && (

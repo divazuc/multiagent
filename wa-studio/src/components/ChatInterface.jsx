@@ -3,7 +3,7 @@ import { SETUP_STAGES, ARCHETYPE_STAGE_PATHS } from '../lib/presets.js'
 
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 
-export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq, onOpenPrefs, agentActive, onToggleActive, suggestedCount }) {
+export default function ChatInterface({ session, messages, sending, onSend, onClear, onStartOnboarding, onActivateLive, onOpenFaq, onOpenPrefs, agentActive, onToggleActive, suggestedCount, hasVoiceProfile }) {
   const [input, setInput] = useState('')
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -103,6 +103,16 @@ export default function ChatInterface({ session, messages, sending, onSend, onCl
               <div className="stage-label">{s.label}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* No-demo nudge */}
+      {session?.session_mode === 'live' && session?.setup_completed && hasVoiceProfile === false && (
+        <div style={{ margin: '8px 12px 0', padding: '10px 14px', borderRadius: 10, background: 'var(--accent-dim)', border: '1px solid var(--accent)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ color: 'var(--text-dim)' }}>💡 הסוכן טרם עבר שלב למידה — הוא יענה בסגנון כללי.</span>
+          <button onClick={onStartOnboarding} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+            התחל למידה
+          </button>
         </div>
       )}
 
