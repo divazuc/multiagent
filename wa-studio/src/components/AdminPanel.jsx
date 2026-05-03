@@ -80,7 +80,7 @@ export default function AdminPanel() {
   const USD_ILS = 3.7
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: 'var(--bg)' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: 'var(--bg)', direction: 'rtl' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -153,7 +153,7 @@ export default function AdminPanel() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
-                {['', 'שם עסק', 'סוג', 'מצב', 'דמו', 'FAQ', 'לידים', 'הודעות', 'עלות', 'ימים ללא פעילות', ''].map((h, i) => (
+                {['פעולות', 'ימים ללא פעילות', 'עלות', 'הודעות', 'לידים', 'FAQ', 'דמו', 'מצב', 'סוג', 'שם עסק', ''].map((h, i) => (
                   <th key={i} style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -165,34 +165,34 @@ export default function AdminPanel() {
               {filtered.map(biz => (
                 <>
                   <tr key={biz.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '12px 10px', fontSize: 16 }}>{HEALTH_ICON[biz.health]}</td>
-                    <td style={{ padding: '12px 10px' }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{biz.name}</div>
-                      {biz.is_test && <span style={{ fontSize: 10, background: '#f59e0b22', color: '#d97706', padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>test</span>}
+                    <td style={{ padding: '12px 10px', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => handleEdit(biz)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 4 }}>✏️</button>
+                      <button onClick={() => handleDelete(biz)} style={{ background: 'none', border: '1px solid #f87171', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#f87171' }}>🗑️</button>
                     </td>
-                    <td style={{ padding: '12px 10px', fontSize: 12, color: 'var(--text-muted)' }}>{biz.archetype ?? '—'}</td>
+                    <td style={{ padding: '12px 10px', fontSize: 12, color: biz.days_inactive > 7 ? '#f87171' : 'var(--text-muted)' }}>
+                      {biz.days_inactive >= 999 ? '—' : `${biz.days_inactive}d`}
+                    </td>
+                    <td style={{ padding: '12px 10px', fontSize: 12, color: biz.billing_month.estimated_cost_usd > 0 ? 'var(--text)' : 'var(--text-muted)' }}>
+                      {biz.billing_month.estimated_cost_usd > 0 ? `$${biz.billing_month.estimated_cost_usd}` : 'חינם'}
+                    </td>
+                    <td style={{ padding: '12px 10px', fontSize: 12 }}>
+                      <span>{biz.billing_month.ui + biz.billing_month.bi}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10, display: 'block' }}>{biz.billing_month.ui}↓ {biz.billing_month.bi}↑</span>
+                    </td>
+                    <td style={{ padding: '12px 10px', fontSize: 13 }}>{biz.total_leads}</td>
+                    <td style={{ padding: '12px 10px', fontSize: 13, color: biz.active_faq === 0 ? 'var(--text-muted)' : 'var(--text)' }}>{biz.active_faq}</td>
+                    <td style={{ padding: '12px 10px', fontSize: 13 }}>{biz.has_demo ? '✅' : '—'}</td>
                     <td style={{ padding: '12px 10px' }}>
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 10, background: biz.session_mode === 'live' ? '#00a88420' : '#f59e0b20', color: biz.session_mode === 'live' ? 'var(--accent)' : '#d97706' }}>
                         {MODE_LABELS[biz.session_mode] ?? '—'}
                       </span>
                     </td>
-                    <td style={{ padding: '12px 10px', fontSize: 13 }}>{biz.has_demo ? '✅' : '—'}</td>
-                    <td style={{ padding: '12px 10px', fontSize: 13, color: biz.active_faq === 0 ? 'var(--text-muted)' : 'var(--text)' }}>{biz.active_faq}</td>
-                    <td style={{ padding: '12px 10px', fontSize: 13 }}>{biz.total_leads}</td>
-                    <td style={{ padding: '12px 10px', fontSize: 12 }}>
-                      <span>{biz.billing_month.ui + biz.billing_month.bi}</span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: 10, display: 'block' }}>{biz.billing_month.ui}↓ {biz.billing_month.bi}↑</span>
+                    <td style={{ padding: '12px 10px', fontSize: 12, color: 'var(--text-muted)' }}>{biz.archetype ?? '—'}</td>
+                    <td style={{ padding: '12px 10px' }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{biz.name}</div>
+                      {biz.is_test && <span style={{ fontSize: 10, background: '#f59e0b22', color: '#d97706', padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>test</span>}
                     </td>
-                    <td style={{ padding: '12px 10px', fontSize: 12, color: biz.billing_month.estimated_cost_usd > 0 ? 'var(--text)' : 'var(--text-muted)' }}>
-                      {biz.billing_month.estimated_cost_usd > 0 ? `$${biz.billing_month.estimated_cost_usd}` : 'חינם'}
-                    </td>
-                    <td style={{ padding: '12px 10px', fontSize: 12, color: biz.days_inactive > 7 ? '#f87171' : 'var(--text-muted)' }}>
-                      {biz.days_inactive >= 999 ? '—' : `${biz.days_inactive}d`}
-                    </td>
-                    <td style={{ padding: '12px 10px', whiteSpace: 'nowrap' }}>
-                      <button onClick={() => handleEdit(biz)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 4 }}>✏️</button>
-                      <button onClick={() => handleDelete(biz)} style={{ background: 'none', border: '1px solid #f87171', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#f87171' }}>🗑️</button>
-                    </td>
+                    <td style={{ padding: '12px 10px', fontSize: 16 }}>{HEALTH_ICON[biz.health]}</td>
                   </tr>
 
                   {/* Edit row */}
