@@ -11,9 +11,10 @@ export function normalizeMessage(data) {
         ? msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title
         : msg.text?.body;
 
-      const session_id = data.entry[0].changes[0].value.contacts?.[0]?.wa_id ?? msg.from;
+      const session_id     = data.entry[0].changes[0].value.contacts?.[0]?.wa_id ?? msg.from;
+      const phone_number_id = data.entry[0].changes[0].value.metadata?.phone_number_id ?? null;
 
-      return validate(text, session_id);
+      return validate(text, session_id, phone_number_id);
     }
 
     // Direct format: { message, session_id }
@@ -27,12 +28,12 @@ export function normalizeMessage(data) {
   }
 }
 
-function validate(message, session_id) {
+function validate(message, session_id, phone_number_id = null) {
   const m = String(message ?? '').trim();
   const s = String(session_id ?? '').trim();
   if (!m) return err('Empty message');
   if (!s) return err('Empty session_id');
-  return { status: 'success', result: { message: m, session_id: s }, error: null };
+  return { status: 'success', result: { message: m, session_id: s, phone_number_id }, error: null };
 }
 
 function err(msg) {
