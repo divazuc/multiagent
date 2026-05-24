@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase.js'
+import { apiFetch } from '../lib/supabase.js'
 
 const STATUS_COLOR = { success: '#00a884', error: '#f87171', running: '#f59e0b' }
 const STEP_COLOR   = { success: '#00a884', error: '#f87171' }
@@ -13,18 +13,11 @@ export default function RunsPanel({ activeSession }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      let q = supabase
-        .from('agent_runs')
-        .select('id, session_id, business_id, status, session_mode, total_duration_ms, final_response, error, created_at, completed_at')
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (activeSession?.session_id) {
-        q = q.eq('session_id', activeSession.session_id)
-      }
-
-      const { data, error } = await q
-      if (!error) setRuns(data ?? [])
+      const qs = activeSession?.session_id ? `?session_id=${encodeURIComponent(activeSession.session_id)}` : ''
+      const data = await apiFetch(`/data/runs${qs}`)
+      setRuns(data ?? [])
+    } catch {
+      // ignore — stale data on error
     } finally {
       setLoading(false)
     }
@@ -34,12 +27,12 @@ export default function RunsPanel({ activeSession }) {
 
   async function loadSteps(run) {
     if (selected?.id === run.id) { setSelected(null); return }
-    const { data } = await supabase
-      .from('agent_runs')
-      .select('id, steps')
-      .eq('id', run.id)
-      .single()
-    setSelected({ ...run, steps: data?.steps ?? [] })
+    try {
+      const data = await apiFetch(`/data/runs/${run.id}`)
+      setSelected({ ...run, steps: data?.steps ?? [] })
+    } catch {
+      setSelected({ ...run, steps: [] })
+    }
     setExpanded(null)
   }
 

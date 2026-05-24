@@ -6,3 +6,6 @@ wa-studio/tests/demo_audit.json
 wa-studio/wf_*.json
 wa-studio/exec_*.json
 wa-studio/wa0?_put.json
+.claude/
+wa-studio/.vite/
+server/scripts/*.png

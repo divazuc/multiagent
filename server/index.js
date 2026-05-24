@@ -4,6 +4,7 @@ import { loadContext } from './lib/context.js';
 import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
 import { sendWhatsAppMessage } from './lib/wa-send.js';
+import dataRouter from './routes/data.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
   .split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '')); // strip quotes + trailing slash
@@ -38,6 +39,9 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+// ── Data proxy (replaces direct anon Supabase calls from the frontend) ────────
+app.use('/data', dataRouter);
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));
