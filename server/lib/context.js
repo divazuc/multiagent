@@ -43,7 +43,7 @@ export async function loadContext({ message, session_id }) {
     const [profileRes, historyRes, draftRes] = await Promise.all([
       isSetup ? Promise.resolve({ data: null, error: null }) :
         supabase.from('business_profiles')
-          .select('business_id, business_name, business_model, sales_goal, conversation_strategy, services, decision_logic, key_questions, objection_handling, persona, guardrails, hebrew_patterns')
+          .select('business_id, business_name, business_model, sales_goal, conversation_strategy, services, decision_logic, key_questions, objection_handling, persona, guardrails, hebrew_patterns, agent_mode, cta_goal, knowledge')
           .eq('business_id', session.business_id)
           .maybeSingle(),
       isSetup ? Promise.resolve({ data: [], error: null }) :
@@ -80,6 +80,9 @@ export async function loadContext({ message, session_id }) {
         decision_logic: profile.decision_logic,
         key_questions: profile.key_questions,
         objection_handling: profile.objection_handling,
+        agent_mode: profile.agent_mode ?? undefined,
+        cta_goal: normalizeCtaGoal(profile.cta_goal),
+        knowledge: parseJson(profile.knowledge, {}),
       },
       persona: parseJson(profile.persona, {}),
       guardrails: parseJson(profile.guardrails, {}),
@@ -91,6 +94,13 @@ export async function loadContext({ message, session_id }) {
   } catch (e) {
     return err(`Unexpected error: ${e.message}`);
   }
+}
+
+// cta_goal is stored as a stringified array (e.g. '["book_call"]')
+function normalizeCtaGoal(value) {
+  const parsed = parseJson(value, value);
+  if (Array.isArray(parsed)) return parsed.join(', ') || undefined;
+  return parsed ?? undefined;
 }
 
 function parseJson(value, fallback) {
