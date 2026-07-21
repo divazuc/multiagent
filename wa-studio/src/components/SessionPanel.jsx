@@ -5,9 +5,14 @@ import { listBusinesses, createBusiness } from '../lib/supabase.js'
 const MODE_LABELS = { setup: 'Setup', live: 'Live', learning: 'Demo' }
 const MODE_COLORS = { setup: '#f59e0b', live: '#22c55e', learning: '#818cf8' }
 
+// Test-harness leftovers (QA Test 1234, PW Test …, Playwright Test Co, Fix Test Biz)
+const QA_NAME_RE = /^(QA|PW|Playwright|Fix)\s?Test/i
+const isQaName = (name) => QA_NAME_RE.test(name || '')
+
 export default function SessionPanel({ sessions, activeSession, onSelect, onCreate, onRestart, onSeed, onRefresh, className = '' }) {
   const [mode, setMode] = useState('setup')
   const [creating, setCreating] = useState(false)
+  const [showQa, setShowQa] = useState(false)
   const [showSeed, setShowSeed] = useState(false)
   const [error, setError] = useState(null)
   const [conflict, setConflict] = useState(null) // existing session for selected business
@@ -111,15 +116,33 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
     }
   }
 
-  const activeBiz = businesses.filter(b => b.status === 'active')
-  const inactiveBiz = businesses.filter(b => b.status === 'inactive')
+  const activeBiz = businesses.filter(b => b.status === 'active' && (showQa || !isQaName(b.name)))
+  const inactiveBiz = businesses.filter(b => b.status === 'inactive' && (showQa || !isQaName(b.name)))
   const selectedBiz = businesses.find(b => b.id === selectedBizId)
+
+  const visibleSessions = sessions.filter(s => {
+    if (showQa) return true
+    const biz = businesses.find(b => b.id === s.business_id)
+    return !biz || !isQaName(biz.name)
+  })
+  const qaHiddenCount = sessions.length - visibleSessions.length
 
   return (
     <aside className={`panel panel-sessions ${className}`}>
       <div className="panel-header">
         <span>Sessions</span>
-        <button className="btn-icon" onClick={() => { onRefresh(); loadBusinesses() }} title="Refresh">↻</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {(qaHiddenCount > 0 || showQa) && (
+            <button
+              className={`qa-toggle ${showQa ? 'on' : ''}`}
+              onClick={() => setShowQa(v => !v)}
+              title={showQa ? 'Hide QA test sessions' : 'Show QA test sessions'}
+            >
+              {showQa ? 'Hide QA' : `QA · ${qaHiddenCount}`}
+            </button>
+          )}
+          <button className="btn-icon" onClick={() => { onRefresh(); loadBusinesses() }} title="Refresh">↻</button>
+        </div>
       </div>
 
       <div className="new-session-form">
@@ -231,8 +254,12 @@ export default function SessionPanel({ sessions, activeSession, onSelect, onCrea
 
       {/* ── Session list ── */}
       <div className="session-list">
-        {sessions.length === 0 && <div className="empty-state">No sessions yet</div>}
-        {sessions.map(s => {
+        {visibleSessions.length === 0 && (
+          <div className="empty-state">
+            {qaHiddenCount > 0 ? 'No sessions — QA sessions are hidden' : 'No sessions yet'}
+          </div>
+        )}
+        {visibleSessions.map(s => {
           const biz = businesses.find(b => b.id === s.business_id)
           return (
             <div

@@ -7,6 +7,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      rollupOptions: {
+        input: {
+          main: 'index.html',
+          demo: 'demo.html',
+        },
+      },
+    },
     server: {
       port: 5174,
       proxy: {

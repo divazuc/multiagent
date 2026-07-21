@@ -32,6 +32,22 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false)
   const [showSessions, setShowSessions] = useState(false)
   const [showRight, setShowRight] = useState(false)
+  const [agentOnline, setAgentOnline] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    const ping = async () => {
+      try {
+        const r = await fetch(AGENT_BASE ? `${AGENT_BASE}/health` : '/api/agent/health')
+        if (alive) setAgentOnline(r.ok)
+      } catch {
+        if (alive) setAgentOnline(false)
+      }
+    }
+    ping()
+    const t = setInterval(ping, 30000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -287,21 +303,27 @@ export default function App() {
 
         <span className="logo">💬 WA Studio</span>
         <span className="header-sub">סביבת בדיקה לסוכן עסקי</span>
+        <span className={`agent-status ${agentOnline ? 'on' : agentOnline === false ? 'off' : ''}`}>
+          <span className="agent-status-dot" />
+          {agentOnline ? 'Agent online' : agentOnline === false ? 'Agent offline' : 'Connecting…'}
+        </span>
         {error && <span className="header-error">{error}</span>}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button
-            onClick={() => setShowAdmin(v => !v)}
-            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: showAdmin ? '#f59e0b' : 'var(--surface-3)', color: showAdmin ? '#fff' : 'var(--text)' }}
-          >🛠️ Admin</button>
-          <button
-            onClick={() => { setShowAdmin(false); setRightPanel('db') }}
-            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: !showAdmin && rightPanel === 'db' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
-          >DB</button>
-          <button
-            onClick={() => { setShowAdmin(false); setRightPanel('runs') }}
-            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: !showAdmin && rightPanel === 'runs' ? 'var(--accent)' : 'var(--surface-3)', color: 'var(--text)' }}
-          >Runs</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="header-tabs">
+            <button
+              className={`header-tab admin ${showAdmin ? 'active' : ''}`}
+              onClick={() => setShowAdmin(v => !v)}
+            >🛠️ Admin</button>
+            <button
+              className={`header-tab ${!showAdmin && rightPanel === 'db' ? 'active' : ''}`}
+              onClick={() => { setShowAdmin(false); setRightPanel('db') }}
+            >DB</button>
+            <button
+              className={`header-tab ${!showAdmin && rightPanel === 'runs' ? 'active' : ''}`}
+              onClick={() => { setShowAdmin(false); setRightPanel('runs') }}
+            >Runs</button>
+          </div>
           {/* Mobile: toggle right panel */}
           <button className="mobile-toggle" onClick={() => setShowRight(v => !v)} title="Inspector">🔍</button>
         </div>

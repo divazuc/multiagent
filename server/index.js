@@ -41,6 +41,19 @@ app.use((req, res, next) => {
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+// ── Studio RPC — whitelisted DB ops for the wa-studio frontend ────────────────
+app.post('/studio/rpc', async (req, res) => {
+  const { fn, args } = req.body ?? {};
+  try {
+    const { runStudioOp } = await import('./lib/studio.js');
+    const result = await runStudioOp(fn, args);
+    res.json({ ok: true, result: result ?? null });
+  } catch (e) {
+    console.error(`[studio] ${fn} failed:`, e.message);
+    res.status(e.status ?? 500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── Client error logger ───────────────────────────────────────────────────────
 app.post('/log/error', async (req, res) => {
   const { message, source, stack, url, ts } = req.body ?? {};

@@ -48,18 +48,20 @@ export async function completeRun(run, { final_response, session_mode, error = n
 
   const total_duration_ms = Date.now() - run.startedAt;
 
-  await supabase
-    .from('agent_runs')
-    .update({
-      status: error ? 'error' : 'success',
-      steps: run.steps,
-      final_response: final_response ?? null,
-      session_mode: session_mode ?? null,
-      error: error ?? null,
-      total_duration_ms,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', run.id);
+  const update = {
+    status: error ? 'error' : 'success',
+    steps: run.steps,
+    final_response: final_response ?? null,
+    session_mode: session_mode ?? null,
+    error: error ?? null,
+    total_duration_ms,
+    completed_at: new Date().toISOString(),
+  };
+  // index.js stamps these on the run object once normalize/load_context resolve them
+  if (run.session_id) update.session_id = run.session_id;
+  if (run.business_id) update.business_id = run.business_id;
+
+  await supabase.from('agent_runs').update(update).eq('id', run.id);
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────

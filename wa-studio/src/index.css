@@ -47,6 +47,42 @@ html, body, #root {
 .header-sub { color: var(--text-muted); font-size: 12px; }
 .header-error { margin-left: auto; color: var(--error-text); font-size: 12px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Live agent connection indicator */
+.agent-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-muted);
+  padding: 2px 10px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface-2);
+}
+.agent-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+.agent-status.on { color: var(--accent); border-color: rgba(0,168,132,0.35); }
+.agent-status.on .agent-status-dot { background: var(--accent); animation: statusPulse 2s ease-in-out infinite; }
+.agent-status.off { color: var(--error-text); border-color: rgba(239,68,68,0.35); }
+.agent-status.off .agent-status-dot { background: var(--error-text); }
+@keyframes statusPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,168,132,0.45); }
+  50%      { box-shadow: 0 0 0 4px rgba(0,168,132,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-status.on .agent-status-dot { animation: none; }
+}
+
+/* Header segmented control */
+.header-tabs {
+  display: flex; gap: 2px; padding: 2px;
+  background: var(--surface-2); border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.header-tab {
+  padding: 4px 12px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-muted);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.header-tab:hover { color: var(--text); }
+.header-tab.active { background: var(--accent-dim); color: var(--accent); }
+.header-tab.admin.active { background: rgba(245,158,11,0.2); color: var(--warning); }
+
 .app-body { display: grid; grid-template-columns: 240px 1fr 270px; flex: 1; overflow: hidden; }
 
 /* ── Panels ── */
@@ -103,6 +139,16 @@ html, body, #root {
 .badge-dim { color: var(--text-muted); border-color: var(--border); }
 
 .empty-state { padding: 20px 16px; text-align: center; color: var(--text-muted); font-size: 12px; }
+
+/* QA-session filter toggle */
+.qa-toggle {
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-muted); font-size: 10px; font-weight: 600;
+  padding: 1px 8px; border-radius: 8px; cursor: pointer;
+  letter-spacing: 0.3px; transition: color 0.15s, border-color 0.15s;
+}
+.qa-toggle:hover { color: var(--text); border-color: var(--border-bright); }
+.qa-toggle.on { color: var(--warning); border-color: rgba(245,158,11,0.4); }
 
 .session-conflict { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--surface-2); border: 1px solid var(--border-bright); border-radius: var(--radius-sm); }
 .session-conflict-msg { font-size: 11px; color: var(--text-dim); line-height: 1.5; }

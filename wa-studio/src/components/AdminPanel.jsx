@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const api = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
@@ -163,8 +163,8 @@ export default function AdminPanel() {
                 <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 13 }}>אין עסקים בקטגוריה זו</td></tr>
               )}
               {filtered.map(biz => (
-                <>
-                  <tr key={biz.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <Fragment key={biz.id}>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '12px 10px', whiteSpace: 'nowrap' }}>
                       <button onClick={() => handleEdit(biz)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 4 }}>✏️</button>
                       <button onClick={() => handleDelete(biz)} style={{ background: 'none', border: '1px solid #f87171', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#f87171' }}>🗑️</button>
@@ -236,7 +236,7 @@ export default function AdminPanel() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

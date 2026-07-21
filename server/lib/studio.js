@@ -1,0 +1,285 @@
+import { supabase } from './supabase.js';
+
+// Named-operation whitelist for the wa-studio frontend. Each op mirrors a
+// query the studio previously ran directly against Supabase with the anon
+// key — moved server-side after anon grants were revoked (RLS audit).
+
+const FAQ_UPDATE_COLUMNS = ['category', 'question', 'answer', 'archetypes', 'is_active', 'suggested'];
+
+function pick(obj, keys) {
+  const out = {};
+  for (const k of keys) if (k in (obj ?? {})) out[k] = obj[k];
+  return out;
+}
+
+const ops = {
+  // ── Businesses ─────────────────────────────────────────────────────────────
+  async listBusinesses() {
+    const { data, error } = await supabase
+      .from('businesses')
+      .select('id, name, slug, archetype, plan_type, status, is_test, whatsapp_number, setup_completed, setup_stage, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async createBusiness({ name, slug, archetype, planType = 'basic', phone, isTest = false } = {}) {
+    if (!name) { const e = new Error('name is required'); e.status = 400; throw e; }
+    const whatsappNumber = phone || (isTest ? `test_${Math.random().toString(36).slice(2, 10).toUpperCase()}` : null);
+    const { data, error } = await supabase
+      .from('businesses')
+      .insert({
+        name,
+        slug: slug || null,
+        archetype: archetype || null,
+        plan_type: planType,
+        whatsapp_number: whatsappNumber,
+        status: 'active',
+        is_test: isTest,
+      })
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateBusinessPhone(businessId, phone) {
+    const { error } = await supabase
+      .from('businesses')
+      .update({ whatsapp_number: phone, updated_at: new Date().toISOString() })
+      .eq('id', businessId);
+    if (error) throw error;
+  },
+
+  async setBusinessStatus(businessId, status) {
+    const { error } = await supabase
+      .from('businesses')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', businessId);
+    if (error) throw error;
+  },
+
+  // ── Sessions ───────────────────────────────────────────────────────────────
+  async createSession(sessionId, mode, businessId = null) {
+    const { data, error } = await supabase
+      .from('sessions')
+      .upsert({
+        session_id: sessionId,
+        session_mode: mode,
+        business_id: businessId,
+        setup_completed: mode !== 'setup',
+        current_stage: mode === 'setup' ? 'business_details' : 'start',
+        current_setup_stage: mode === 'setup' ? 'business_details' : null,
+      }, { onConflict: 'session_id' })
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async listSessions() {
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('session_id, session_mode, current_stage, current_setup_stage, setup_completed, business_id, created_at, updated_at')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async loadDBState(sessionId) {
+    const [sessionRes, draftRes, messagesRes] = await Promise.all([
+      supabase.from('sessions').select('*').eq('session_id', sessionId).maybeSingle(),
+      supabase.from('setup_drafts').select('*').eq('session_id', sessionId).maybeSingle(),
+      supabase.from('conversation_messages')
+        .select('*').eq('session_id', sessionId)
+        .order('created_at', { ascending: true }).limit(50),
+    ]);
+    let profile = null;
+    if (sessionRes.data?.business_id) {
+      const { data } = await supabase
+        .from('business_profiles').select('*')
+        .eq('business_id', sessionRes.data.business_id).maybeSingle();
+      profile = data ?? null;
+    }
+    return {
+      session: sessionRes.data ?? null,
+      draft: draftRes.data ?? null,
+      profile,
+      messages: messagesRes.data ?? [],
+    };
+  },
+
+  async clearSessionData(sessionId) {
+    await Promise.all([
+      supabase.from('conversation_messages').delete().eq('session_id', sessionId),
+      supabase.from('setup_drafts').delete().eq('session_id', sessionId),
+    ]);
+    await supabase.from('sessions').delete().eq('session_id', sessionId);
+  },
+
+  async advanceSetupStage(sessionId, nextStage, setupCompleted = false) {
+    const update = { current_stage: nextStage, current_setup_stage: nextStage, updated_at: new Date().toISOString() };
+    if (setupCompleted) update.setup_completed = true;
+    const { error } = await supabase.from('sessions').update(update).eq('session_id', sessionId);
+    if (error) throw error;
+  },
+
+  async markSetupComplete(sessionId) {
+    const { error } = await supabase
+      .from('sessions')
+      .update({ setup_completed: true, updated_at: new Date().toISOString() })
+      .eq('session_id', sessionId);
+    if (error) throw error;
+  },
+
+  async setSessionMode(sessionId, mode) {
+    const { error } = await supabase
+      .from('sessions')
+      .update({ session_mode: mode, updated_at: new Date().toISOString() })
+      .eq('session_id', sessionId);
+    if (error) throw error;
+  },
+
+  // ── FAQ / knowledge items ──────────────────────────────────────────────────
+  async loadFaqItems(businessId) {
+    const { data, error } = await supabase
+      .from('knowledge_items')
+      .select('id, category, question, answer, archetypes, is_active, suggested, created_at')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async loadSuggestedFaqCount(businessId) {
+    const { count, error } = await supabase
+      .from('knowledge_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .eq('suggested', true)
+      .eq('is_active', false);
+    if (error) return 0;
+    return count ?? 0;
+  },
+
+  async approveSuggestedFaqItem(id) {
+    const { error } = await supabase
+      .from('knowledge_items')
+      .update({ is_active: true, suggested: false, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async dismissSuggestedFaqItem(id) {
+    const { error } = await supabase.from('knowledge_items').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async updateFaqItem(id, updates) {
+    const clean = pick(updates, FAQ_UPDATE_COLUMNS);
+    const { error } = await supabase
+      .from('knowledge_items')
+      .update({ ...clean, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async deleteFaqItem(id) {
+    const { error } = await supabase.from('knowledge_items').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async addFaqItem(businessId, { category, question, answer = '', archetypes = [] } = {}) {
+    const { data, error } = await supabase
+      .from('knowledge_items')
+      .insert({
+        business_id: businessId,
+        category: category || 'general',
+        question,
+        answer,
+        archetypes: Array.isArray(archetypes) ? archetypes : [],
+        language: 'he',
+        is_active: false,
+      })
+      .select().maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  // Frontend computes starter rows (archetype filtering lives in wa-studio);
+  // the server only guards against double-seeding and stray fields.
+  async seedFaqItems(businessId, rows) {
+    const { count, error: countError } = await supabase
+      .from('knowledge_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId);
+    if (countError) throw countError;
+    if (count > 0 || !Array.isArray(rows) || !rows.length) return;
+
+    const clean = rows.slice(0, 50).map(r => ({
+      business_id: businessId,
+      category: r.category || 'general',
+      question: r.question,
+      answer: '',
+      archetypes: Array.isArray(r.archetypes) ? r.archetypes : [],
+      language: 'he',
+      is_active: false,
+    }));
+    const { error } = await supabase.from('knowledge_items').insert(clean);
+    if (error) throw error;
+  },
+
+  // ── Presets ────────────────────────────────────────────────────────────────
+  async seedBusinessProfile(sessionId, profile) {
+    const businessId = `seed-${sessionId}`;
+    await supabase.from('business_profiles').upsert({
+      business_id: businessId,
+      session_id: sessionId,
+      ...profile,
+      setup_completed: true,
+      setup_stage: 'completed',
+      draft_setup_data: {},
+    }, { onConflict: 'business_id' });
+    await supabase.from('sessions').update({
+      business_id: businessId,
+      session_mode: 'live',
+      setup_completed: true,
+      current_stage: 'start',
+      updated_at: new Date().toISOString(),
+    }).eq('session_id', sessionId);
+  },
+
+  // ── Agent runs (RunsPanel) ─────────────────────────────────────────────────
+  async listRuns(sessionId = null) {
+    let q = supabase
+      .from('agent_runs')
+      .select('id, session_id, business_id, status, session_mode, total_duration_ms, final_response, error, created_at, completed_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (sessionId) q = q.eq('session_id', sessionId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async getRunSteps(runId) {
+    const { data, error } = await supabase
+      .from('agent_runs')
+      .select('id, steps')
+      .eq('id', runId)
+      .single();
+    if (error) throw error;
+    return data?.steps ?? [];
+  },
+};
+
+export async function runStudioOp(fn, args) {
+  const handler = ops[fn];
+  if (!handler) {
+    const err = new Error(`unknown studio op: ${fn}`);
+    err.status = 400;
+    throw err;
+  }
+  return handler(...(Array.isArray(args) ? args : []));
+}
