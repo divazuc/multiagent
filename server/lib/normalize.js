@@ -9,7 +9,9 @@ export function normalizeMessage(data) {
 
       const text = msg.type === 'interactive'
         ? msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title
-        : msg.text?.body;
+        : msg.type === 'button' // quick-reply tap on a template message
+          ? msg.button?.text
+          : msg.text?.body;
 
       const session_id     = data.entry[0].changes[0].value.contacts?.[0]?.wa_id ?? msg.from;
       const phone_number_id = data.entry[0].changes[0].value.metadata?.phone_number_id ?? null;

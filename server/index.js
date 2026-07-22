@@ -3,7 +3,8 @@ import { normalizeMessage } from './lib/normalize.js';
 import { loadContext } from './lib/context.js';
 import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
-import { sendWhatsAppMessage } from './lib/wa-send.js';
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from './lib/wa-send.js';
+import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedFallback } from './lib/wa-webhook.js';
 import dataRouter from './routes/data.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
@@ -25,7 +26,8 @@ async function loadAgents() {
 }
 
 const app = express();
-app.use(express.json());
+// rawBody is needed for Meta's X-Hub-Signature-256 HMAC validation
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -89,18 +91,43 @@ app.get('/wa-inbound', (req, res) => {
 });
 
 // ── Inbound WhatsApp webhook ──────────────────────────────────────────────────
+// Meta payloads: validate signature, ack 200 immediately (Meta retries slow
+// webhooks, causing duplicate replies), then run the pipeline detached.
+// Studio's direct {message, session_id} format stays synchronous — the UI
+// reads the reply from the HTTP response.
 app.post('/wa-inbound', async (req, res) => {
+  if (req.body?.object === 'whatsapp_business_account') {
+    if (!verifyMetaSignature(req)) {
+      return res.status(403).json({ status: 'error', message: 'invalid signature' });
+    }
+    const { kind, msgId, value } = classifyMetaPayload(req.body);
+    if (kind === 'ignore') return res.json({ status: 'ignored' });
+    if (seenMessage(msgId)) return res.json({ status: 'duplicate' });
+    res.json({ status: 'received' }); // fast-ack before any processing
+    if (kind === 'unsupported') {
+      sendUnsupportedFallback(value).catch(() => {});
+      return;
+    }
+    runAgentPipeline(req.body).catch(e => console.error('[wa-inbound] async pipeline failed:', e));
+    return;
+  }
+
+  const out = await runAgentPipeline(req.body);
+  return res.status(out.http).json(out.body);
+});
+
+async function runAgentPipeline(body) {
   const run = await startRun({ session_id: 'unknown', inbound_message: '[pending]' });
 
   try {
     // Step 1 — Normalize
-    let h = stepStart(run, 'normalize', { body: req.body });
-    const normalized = normalizeMessage(req.body);
+    let h = stepStart(run, 'normalize', { body });
+    const normalized = normalizeMessage(body);
     await stepDone(h, normalized);
 
     if (normalized.status !== 'success') {
       await completeRun(run, { error: normalized.error });
-      return res.status(400).json({ status: 'error', message: normalized.error });
+      return { http: 400, body: { status: 'error', message: normalized.error } };
     }
 
     const { message, session_id, phone_number_id } = normalized.result;
@@ -113,7 +140,7 @@ app.post('/wa-inbound', async (req, res) => {
 
     if (ctx.status !== 'success') {
       await completeRun(run, { error: ctx.error });
-      return res.status(500).json({ status: 'error', message: ctx.error });
+      return { http: 500, body: { status: 'error', message: ctx.error } };
     }
 
     const context = ctx.result;
@@ -132,13 +159,16 @@ app.post('/wa-inbound', async (req, res) => {
       if (profile) {
         if (profile.agent_active === false) {
           await completeRun(run, { skipped: 'agent_inactive' });
-          return res.json({ status: 'success', message: '', skipped: true, skip_reason: 'agent_inactive' });
+          return { http: 200, body: { status: 'success', message: '', skipped: true, skip_reason: 'agent_inactive' } };
         }
 
         if (profile.answer_after_hours === false && !isWithinWorkingHours(profile.working_hours)) {
           const msg = profile.after_hours_message || '';
           await completeRun(run, { skipped: 'after_hours' });
-          return res.json({ status: 'success', message: msg, skipped: true, skip_reason: 'after_hours' });
+          if (msg && session_id && business_id) {
+            sendWhatsAppMessage({ to: session_id, text: msg, businessId: business_id }).catch(() => {});
+          }
+          return { http: 200, body: { status: 'success', message: msg, skipped: true, skip_reason: 'after_hours' } };
         }
 
         if (profile.new_contacts_only === true) {
@@ -149,7 +179,7 @@ app.post('/wa-inbound', async (req, res) => {
             .eq('business_id', business_id);
           if (count > 0) {
             await completeRun(run, { skipped: 'known_contact' });
-            return res.json({ status: 'success', message: '', skipped: true, skip_reason: 'known_contact' });
+            return { http: 200, body: { status: 'success', message: '', skipped: true, skip_reason: 'known_contact' } };
           }
         }
 
@@ -164,7 +194,7 @@ app.post('/wa-inbound', async (req, res) => {
             .maybeSingle();
           if (firstMsg && !firstMsg.user_message) {
             await completeRun(run, { skipped: 'business_initiated' });
-            return res.json({ status: 'success', message: '', skipped: true, skip_reason: 'business_initiated' });
+            return { http: 200, body: { status: 'success', message: '', skipped: true, skip_reason: 'business_initiated' } };
           }
         }
       }
@@ -198,7 +228,7 @@ app.post('/wa-inbound', async (req, res) => {
 
     if (agentResult.status !== 'success') {
       await completeRun(run, { session_mode, error: agentResult.error });
-      return res.status(500).json({ status: 'error', message: agentResult.error });
+      return { http: 500, body: { status: 'error', message: agentResult.error } };
     }
 
     const r = agentResult.result;
@@ -250,21 +280,24 @@ app.post('/wa-inbound', async (req, res) => {
 
     await completeRun(run, { final_response, session_mode });
 
-    return res.json({
-      status: 'success',
-      message: final_response,
-      state: {
-        session_id,
-        stage: r?.next_setup_stage ?? r?.next_stage ?? context.current_stage,
+    return {
+      http: 200,
+      body: {
+        status: 'success',
+        message: final_response,
+        state: {
+          session_id,
+          stage: r?.next_setup_stage ?? r?.next_stage ?? context.current_stage,
+        },
       },
-    });
+    };
 
   } catch (e) {
     console.error('[orchestrator] unhandled error:', e);
     await completeRun(run, { error: e.message });
-    return res.status(500).json({ status: 'error', message: 'Internal server error' });
+    return { http: 500, body: { status: 'error', message: 'Internal server error' } };
   }
-});
+}
 
 // ── Billing event logger ──────────────────────────────────────────────────────
 async function logBillingEvent({ business_id, session_id, type = 'user_initiated' }) {
@@ -770,20 +803,28 @@ app.post('/follow-up/process', async (req, res) => {
         const scheduledFor = new Date(lastMsg.created_at);
         scheduledFor.setDate(scheduledFor.getDate() + delayDays);
 
+        // A follow-up is by definition outside the 24h customer-service window,
+        // so business-initiated sends must use an approved template.
+        const templateName = process.env.WHATSAPP_FOLLOWUP_TEMPLATE || null;
+        let wa_send = 'not_configured';
+        if (templateName) {
+          const sent = await sendWhatsAppTemplate({ to: session_id, templateName, businessId: biz.business_id });
+          wa_send = sent?.messages?.[0]?.id ? 'sent' : 'send_failed';
+        }
+
         await supabase.from('lead_followups').upsert({
           business_id:   biz.business_id,
           session_id,
-          status:        'sent', // future: 'pending' → send via WA API → update to 'sent'
+          status:        'sent',
           message,
           scheduled_for: scheduledFor.toISOString(),
           sent_at:       now.toISOString(),
-          // TODO: replace with real WA Business API send when integration is live
         }, { onConflict: 'business_id,session_id' });
 
         upsertContact({ business_id: biz.business_id, phone: session_id, status: 'followup_sent' }).catch(() => {});
         logBillingEvent({ business_id: biz.business_id, session_id, type: 'business_initiated' }).catch(() => {});
 
-        results.push({ session_id, status: 'sent', message });
+        results.push({ session_id, status: 'sent', wa_send, message });
       }
     }
 
