@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Overview from './Overview.jsx'
+import { DemoFaq, DemoSettings } from './FaqSettings.jsx'
 
 const AGENT = import.meta.env.VITE_AGENT_URL || '/api/agent'
 const DEFAULT_BIZ = '1037d6c1-e64f-4672-aa5c-19619ad6b821' // Leadz marketing
@@ -263,6 +264,12 @@ export default function ClientDashboard() {
             <button className={view === 'inbox' ? 'active' : ''} onClick={() => setView('inbox')}>
               מרכז הלידים
             </button>
+            <button className={view === 'faq' ? 'active' : ''} onClick={() => setView('faq')}>
+              שאלות ותשובות
+            </button>
+            <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>
+              הגדרות
+            </button>
           </nav>
           <div className="cd-agent-badge">
             <span className="cd-agent-dot" />
@@ -273,6 +280,8 @@ export default function ClientDashboard() {
 
       <main className="cd-main">
         {view === 'overview' && <Overview bizId={BIZ_ID} />}
+        {view === 'faq' && <DemoFaq bizId={BIZ_ID} showToast={showToast} />}
+        {view === 'settings' && <DemoSettings bizId={BIZ_ID} showToast={showToast} />}
 
         {view === 'inbox' && <>
         {/* ── KPI strip ── */}

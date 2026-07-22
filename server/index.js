@@ -404,9 +404,15 @@ function isWithinWorkingHours(working_hours) {
   const cur = now.getHours() * 60 + now.getMinutes();
   const day = working_hours.days[dayIdx];
   if (!day?.active) return false;
-  const [fH, fM] = (day.from || '09:00').split(':').map(Number);
-  const [tH, tM] = (day.to   || '18:00').split(':').map(Number);
-  return cur >= fH * 60 + fM && cur <= tH * 60 + tM;
+  const inRange = (from, to) => {
+    const [fH, fM] = (from || '09:00').split(':').map(Number);
+    const [tH, tM] = (to   || '18:00').split(':').map(Number);
+    return cur >= fH * 60 + fM && cur <= tH * 60 + tM;
+  };
+  if (inRange(day.from, day.to)) return true;
+  // Optional second range — e.g. a midday break splits the day in two
+  if (day.from2 && day.to2) return inRange(day.from2, day.to2);
+  return false;
 }
 
 const SETUP_STAGE_FLOW = {

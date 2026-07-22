@@ -273,6 +273,18 @@ const ops = {
     return data?.steps ?? [];
   },
 
+  // ── Bot settings (client dashboard) ────────────────────────────────────────
+  async getBotSettings(businessId) {
+    if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
+    const { data, error } = await supabase
+      .from('business_profiles')
+      .select('agent_active, answer_after_hours, working_hours, after_hours_message')
+      .eq('business_id', businessId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ?? {};
+  },
+
   // ── Business overview (client dashboard) ───────────────────────────────────
   async getOverviewStats(businessId, days = 30) {
     if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
