@@ -178,7 +178,7 @@ export default function Overview({ bizId }) {
     setStats(null); setError(false)
     ;(async () => {
       try {
-        const res = await fetch('/api/agent/studio/rpc', {
+        const res = await fetch(`${import.meta.env.VITE_AGENT_URL || '/api/agent'}/studio/rpc`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fn: 'getOverviewStats', args: [bizId, days] }),

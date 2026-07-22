@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Overview from './Overview.jsx'
 
-const AGENT = '/api/agent'
+const AGENT = import.meta.env.VITE_AGENT_URL || '/api/agent'
 const DEFAULT_BIZ = '1037d6c1-e64f-4672-aa5c-19619ad6b821' // Leadz marketing
 const BIZ_ID = new URLSearchParams(window.location.search).get('biz') || DEFAULT_BIZ
 
