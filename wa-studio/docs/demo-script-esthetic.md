@@ -11,15 +11,20 @@
 
 ---
 
-## הכנה לפני הפגישה (10 דק׳)
+## הדמו רץ בפרודקשן — בלי לוקאלהוסט 🎉
 
-1. **להעיר את Supabase** — להיכנס ל-dashboard של הפרויקט `mlbtqspcgdprmbytcsyc` ולוודא שהוא לא paused (free tier נרדם אחרי ~שבוע).
-2. להריץ שרת: `cd server && npm run dev` (פורט 8080). לוודא `http://localhost:8080/health` → `{"ok":true}`.
-3. להריץ סטודיו: `cd wa-studio && npm run dev` (פורט 5174).
-4. לפתוח שני טאבים:
-   - **Studio (כלי העבודה):** `http://localhost:5174` → לבחור עסק "אסתטיק קליניק" → סשן live חדש.
-   - **דשבורד הלקוח (מרכז הלידים):** `http://localhost:5174/demo.html?biz=bdc47180-a3c1-47d0-9a51-fea4b2830fe2`
-5. זמן תגובה צפוי: **12–25 שניות** להודעה — לדבר בזמן ההמתנה, לא לחכות בשקט.
+נבדק E2E על פרודקשן 2026-07-22 (Railway + Cloudflare Pages + Supabase):
+
+- **Studio (כלי העבודה):** `https://wastudio.divdev.co` → לבחור עסק "אסתטיק קליניק" → סשן live חדש
+- **דשבורד הלקוח (מרכז הלידים):** `https://wastudio.divdev.co/demo?biz=bdc47180-a3c1-47d0-9a51-fea4b2830fe2`
+- שרת: `https://wagent.divdev.co` (בריאות: `/health`)
+
+## הכנה לפני הפגישה (5 דק׳)
+
+1. **להעיר את Supabase** — להיכנס ל-dashboard של הפרויקט `mlbtqspcgdprmbytcsyc` ולוודא שהוא לא paused (free tier נרדם אחרי ~שבוע). בלעדיו שום דבר לא עובד — גם בפרודקשן.
+2. לפתוח את שני הטאבים למעלה ולשלוח הודעת בדיקה אחת בסטודיו.
+3. זמן תגובה צפוי: **12–25 שניות** להודעה — לדבר בזמן ההמתנה, לא לחכות בשקט.
+4. גיבוי אם משהו נופל: לוקאלית — `cd server && npm run dev` (8080) + `cd wa-studio && npm run dev` → `http://localhost:5174` (הדשבורד: `/demo.html?biz=...`).
 
 ---
 
