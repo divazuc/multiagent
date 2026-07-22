@@ -1,6 +1,30 @@
 # אפיון: חיבור הבוט ל-WhatsApp Cloud API (WABA)
 
-**תאריך:** 2026-07-23 · **סטטוס:** אפיון לאישור, טרם מומש
+**תאריך:** 2026-07-23 · **סטטוס:** ✅ **צד הקוד של שלב א׳ מומש, נבדק ופרוס בפרודקשן** (קומיט `81ebca5`, 2026-07-23)
+
+## ✅ מה כבר בוצע (שלב א׳ — קוד)
+
+| # | משימה | סטטוס |
+|---|---|---|
+| 1 | Fast-ack + עיבוד אסינכרוני (ack ב-<0.1 שנ׳, פייפליין ברקע; הסטודיו נשאר סינכרוני) | ✅ נבדק |
+| 2 | דדופ `message.id` (מטמון TTL בזיכרון) | ✅ נבדק |
+| 3 | סטטוסים / echoes / history → 200 שקט (היו מחזירים 400!) | ✅ נבדק בפרודקשן |
+| 4 | אימות חתימה X-Hub-Signature-256 — פעיל רק כש-`WHATSAPP_APP_SECRET` מוגדר | ✅ נבדק (403 לחתימה שגויה) |
+| 5 | fallback מנומס להודעות לא-טקסטואליות + פרסור button (תבניות) | ✅ נבדק |
+| 6 | שליחת template לפולו-אפ (`WHATSAPP_FOLLOWUP_TEMPLATE`) + `sendWhatsAppTemplate` | ✅ קוד מוכן, ממתין לתבנית מאושרת |
+| + | בונוס: הודעת "מחוץ לשעות פעילות" נשלחת עכשיו באמת בוואטסאפ (קודם רק חזרה ב-HTTP) | ✅ |
+
+נבדק E2E מקומית כולל פייפליין מלא בפורמט מטא (זיהוי עסק לפי phone_number_id → תשובת LLM → שמירה), רגרסיה מלאה של הסטודיו, ואימות בפרודקשן.
+
+## 📋 מה נשאר — צעדים ידניים שלך מול מטא (~30 דק׳)
+
+1. אפליקציית Meta (Business) + מוצר WhatsApp → WABA + מספר ייעודי.
+2. System User + טוקן קבוע (`whatsapp_business_messaging` + `whatsapp_business_management`).
+3. Webhook: URL `https://wagent.divdev.co/wa-inbound`, ה-verify token שכבר ב-Railway (`WHATSAPP_WEBHOOK_VERIFY_TOKEN`), הרשמה לשדה `messages`.
+4. **להוסיף ב-Railway:** `WHATSAPP_APP_SECRET` (מ-App Settings → Basic) — מפעיל את אימות החתימה.
+5. לעדכן את `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` ב-Railway (או פר-עסק: `businesses.wa_phone_number_id` + `wa_access_token`).
+6. תבנית פולו-אפ ב-WhatsApp Manager (טקסט קבוע, בלי פרמטרים — מאושר מהר) → להוסיף ב-Railway `WHATSAPP_FOLLOWUP_TEMPLATE=<שם התבנית>`.
+7. הודעת בדיקה למספר → תשובת בוט תוך ~20 שנ׳. זהו.
 
 שני שלבים:
 - **שלב א׳ — חיבור פרטי (עכשיו):** מספר ייעודי תחת ה-WABA שלנו, ישירות מול Cloud API. בלי תלות באישורים ממטא.
