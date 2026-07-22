@@ -11,7 +11,7 @@ const DOMAIN_META = [
 const BAR_IN = '#0d9488'
 const BAR_AFTER = '#4338ca'
 
-const nis = (n) => '₪' + Math.round(n).toLocaleString('he-IL')
+const nis = (n) => Math.round(n).toLocaleString('he-IL') + ' ₪'
 
 function useCountUp(target, ms = 900) {
   const [value, setValue] = useState(0)

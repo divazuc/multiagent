@@ -195,7 +195,7 @@ export default function ClientDashboard() {
                     onClick={() => selectLead(lead)}
                   >
                     <div className="cd-lead-top">
-                      <span className="cd-lead-phone">{formatPhone(lead.phone)}</span>
+                      <span className="cd-lead-phone">{lead.name || formatPhone(lead.phone)}</span>
                       <span className="cd-lead-time">{timeAgo(lead.last_activity_at)}</span>
                     </div>
                     <div className="cd-lead-mid">
