@@ -1,18 +1,47 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Overview from './Overview.jsx'
 
 const AGENT = import.meta.env.VITE_AGENT_URL || '/api/agent'
 const DEFAULT_BIZ = '1037d6c1-e64f-4672-aa5c-19619ad6b821' // Leadz marketing
 const BIZ_ID = new URLSearchParams(window.location.search).get('biz') || DEFAULT_BIZ
 
+// Covers both the seeded demo statuses and the live pipeline's ladder
+// (new_lead → in_conversation → cta_triggered → followup_sent → converted).
 const STATUS_LABELS = {
   new: { label: 'חדש', cls: 'chip-new' },
+  new_lead: { label: 'חדש', cls: 'chip-new' },
   in_conversation: { label: 'בשיחה', cls: 'chip-active' },
   qualified: { label: 'ליד חם', cls: 'chip-hot' },
+  cta_triggered: { label: 'ליד חם', cls: 'chip-hot' },
+  followup_sent: { label: 'נשלח פולו-אפ', cls: 'chip-active' },
+  converted: { label: 'טופל', cls: 'chip-done' },
   closed: { label: 'טופל', cls: 'chip-done' },
+  cold: { label: 'לא פעיל', cls: 'chip-done' },
+  not_relevant: { label: 'לא רלוונטי', cls: 'chip-done' },
 }
 
 const QUAL_LABELS = { need: 'צורך', scope: 'היקף', budget: 'תקציב', urgency: 'דחיפות', timeline: 'לו״ז' }
+
+// Smart tags — derived from the agent's AI summary per lead
+const TAG_DEFS = [
+  { key: 'botox', label: 'בוטוקס', re: /בוטוקס/ },
+  { key: 'lips', label: 'מילוי שפתיים', re: /שפתיים/ },
+  { key: 'laser', label: 'טיפולי לייזר', re: /לייזר/ },
+  { key: 'profhilo', label: 'פרופיילו', re: /פרופיילו/ },
+  { key: 'mezo', label: 'מזותרפיה', re: /מזותרפיה/ },
+  { key: 'hair', label: 'השתלת שיער', re: /השתלת שיער|קו שיער|קו קדמי|נשירה/ },
+  { key: 'brows', label: 'השתלת גבות', re: /גבות/ },
+  { key: 'beard', label: 'השתלת זקן', re: /זקן/ },
+  { key: 'doctors', label: 'קורס לרופאים', re: /קורס|סילבוס|רופא|הדרכה/ },
+  { key: 'rep', label: 'ממתין לנציגה', re: /נועה|נציגה|הועבר ל/ },
+  { key: 'pricing', label: 'שאלת מחיר', re: /מחיר/ },
+  { key: 'medical', label: 'שאלה רפואית', re: /הריון|רפואי/ },
+]
+
+function leadTags(lead) {
+  const text = `${lead.ai_summary || ''} ${lead.notes || ''}`
+  return TAG_DEFS.filter(t => t.re.test(text)).map(t => t.key)
+}
 
 // Fallback fixtures so the page always demos well, marked as sample data
 const SAMPLE_LEADS = [
@@ -60,6 +89,13 @@ async function rpc(fn, ...args) {
   return body.result
 }
 
+function followUpText(lead) {
+  const name = lead.name ? lead.name.split(' ')[0] : ''
+  const tag = TAG_DEFS.find(t => leadTags(lead).includes(t.key) && !['rep', 'pricing', 'medical'].includes(t.key))
+  const topic = tag ? tag.label : 'הטיפול שהתעניינת בו'
+  return `היי${name ? ' ' + name : ''}, כאן אסתטיק קליניק 🤍 רצינו לוודא שקיבלת את כל המידע על ${topic}. נשמח לתאם לך פגישת ייעוץ עם ד״ר לביא — מתי נוח לך?`
+}
+
 export default function ClientDashboard() {
   const [view, setView] = useState('overview')
   const [bizName, setBizName] = useState('העסק שלך')
@@ -70,6 +106,16 @@ export default function ClientDashboard() {
   const [qualification, setQualification] = useState(null)
   const [loadingThread, setLoadingThread] = useState(false)
   const [isSample, setIsSample] = useState(false)
+
+  // search + filters
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeTags, setActiveTags] = useState([])
+  const [statusFilter, setStatusFilter] = useState(null)
+
+  // quick actions
+  const [composer, setComposer] = useState(null) // null | {mode:'followup'|'free', text}
+  const [toast, setToast] = useState(null)
 
   useEffect(() => {
     (async () => {
@@ -108,6 +154,7 @@ export default function ClientDashboard() {
   const selectLead = useCallback(async (lead) => {
     setSelected(lead)
     setQualification(null)
+    setComposer(null)
     if (lead._sample) { setMessages(SAMPLE_MESSAGES); return }
     setLoadingThread(true)
     try {
@@ -123,7 +170,78 @@ export default function ClientDashboard() {
     }
   }, [])
 
-  const activeCount = leads.filter(l => l.status === 'in_conversation').length
+  // tag counts across all leads (for the filter chips)
+  const tagCounts = useMemo(() => {
+    const counts = {}
+    for (const l of leads) for (const t of leadTags(l)) counts[t] = (counts[t] || 0) + 1
+    return counts
+  }, [leads])
+
+  const statusCounts = useMemo(() => {
+    const counts = {}
+    for (const l of leads) {
+      const label = (STATUS_LABELS[l.status] || {}).label || l.status
+      counts[label] = (counts[label] || 0) + 1
+    }
+    return counts
+  }, [leads])
+
+  const filtered = useMemo(() => {
+    const q = query.trim()
+    return leads.filter(l => {
+      if (q) {
+        const phoneLocal = l.phone?.startsWith('972') ? '0' + l.phone.slice(3) : (l.phone || '')
+        const hay = `${l.name || ''} ${l.phone || ''} ${phoneLocal} ${formatPhone(l.phone)}`.replace(/-/g, '')
+        if (!hay.includes(q.replace(/-/g, ''))) return false
+      }
+      if (activeTags.length) {
+        const tags = leadTags(l)
+        if (!activeTags.some(t => tags.includes(t))) return false
+      }
+      if (statusFilter) {
+        const label = (STATUS_LABELS[l.status] || {}).label || l.status
+        if (label !== statusFilter) return false
+      }
+      return true
+    })
+  }, [leads, query, activeTags, statusFilter])
+
+  const filtersActive = query.trim() || activeTags.length > 0 || statusFilter
+
+  function showToast(text) {
+    setToast(text)
+    setTimeout(() => setToast(null), 3200)
+  }
+
+  function sendComposer() {
+    if (!composer?.text.trim()) return
+    setMessages(prev => [...prev, { agent_response: composer.text.trim(), created_at: new Date().toISOString(), _manual: true }])
+    setComposer(null)
+    showToast('ההודעה נשלחה לוואטסאפ של הלקוח ✓')
+    if (composer.mode === 'followup' && selected && !selected._sample) {
+      setLeads(prev => prev.map(l => l.id === selected.id ? { ...l, status: 'followup_sent' } : l))
+      setSelected(prev => ({ ...prev, status: 'followup_sent' }))
+    }
+  }
+
+  async function markHandled() {
+    if (!selected) return
+    const updated = { ...selected, status: 'closed' }
+    setSelected(updated)
+    setLeads(prev => prev.map(l => l.id === selected.id ? updated : l))
+    showToast('הליד סומן כטופל ✓')
+    if (!selected._sample) {
+      try {
+        await fetch(`${AGENT}/contacts/${selected.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'closed' }),
+        })
+      } catch { /* optimistic UI keeps the change */ }
+    }
+  }
+
+  const activeCount = leads.filter(l => ['in_conversation'].includes(l.status)).length
   const totalMessages = leads.reduce((sum, l) => sum + (l.message_count || 0), 0)
 
   return (
@@ -182,12 +300,68 @@ export default function ClientDashboard() {
           <section className="cd-inbox" aria-label="תיבת לידים">
             <div className="cd-section-head">
               <h2>תיבת לידים</h2>
-              {isSample && <span className="cd-sample-chip">נתוני הדגמה</span>}
+              <div className="cd-head-tools">
+                {isSample && <span className="cd-sample-chip">נתוני הדגמה</span>}
+                <button
+                  className={`cd-search-toggle ${searchOpen || filtersActive ? 'on' : ''}`}
+                  onClick={() => setSearchOpen(o => !o)}
+                  aria-expanded={searchOpen}
+                >
+                  🔍 חיפוש מתקדם{filtersActive ? ` · ${filtered.length}` : ''}
+                </button>
+              </div>
             </div>
+
+            {searchOpen && (
+              <div className="cd-search-panel">
+                <input
+                  className="cd-search-input"
+                  type="search"
+                  placeholder="חיפוש לפי שם או טלפון…"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                />
+                <div className="cd-filter-group">
+                  <div className="cd-filter-label">תגיות חכמות</div>
+                  <div className="cd-filter-chips">
+                    {TAG_DEFS.filter(t => tagCounts[t.key]).map(t => (
+                      <button
+                        key={t.key}
+                        className={`cd-ftag ${activeTags.includes(t.key) ? 'on' : ''}`}
+                        onClick={() => setActiveTags(prev => prev.includes(t.key) ? prev.filter(x => x !== t.key) : [...prev, t.key])}
+                      >
+                        {t.label} <i>{tagCounts[t.key]}</i>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="cd-filter-group">
+                  <div className="cd-filter-label">סטטוס</div>
+                  <div className="cd-filter-chips">
+                    {Object.entries(statusCounts).map(([label, n]) => (
+                      <button
+                        key={label}
+                        className={`cd-ftag ${statusFilter === label ? 'on' : ''}`}
+                        onClick={() => setStatusFilter(s => s === label ? null : label)}
+                      >
+                        {label} <i>{n}</i>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {filtersActive && (
+                  <button className="cd-clear-filters" onClick={() => { setQuery(''); setActiveTags([]); setStatusFilter(null) }}>
+                    ניקוי הסינון · מציג {filtered.length} מתוך {leads.length}
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="cd-lead-list">
-              {leads.map(lead => {
+              {filtered.map(lead => {
                 const st = STATUS_LABELS[lead.status] || { label: lead.status, cls: 'chip-done' }
                 const isSel = selected?.id === lead.id
+                const tags = leadTags(lead).slice(0, 3)
                 return (
                   <button
                     key={lead.id}
@@ -200,7 +374,9 @@ export default function ClientDashboard() {
                     </div>
                     <div className="cd-lead-mid">
                       <span className={`cd-chip ${st.cls}`}>{st.label}</span>
-                      <span className="cd-lead-count">{lead.message_count} הודעות</span>
+                      {tags.map(t => (
+                        <span key={t} className="cd-minitag">{TAG_DEFS.find(d => d.key === t)?.label}</span>
+                      ))}
                     </div>
                     {lead.ai_summary && (
                       <div className="cd-lead-summary">
@@ -211,6 +387,9 @@ export default function ClientDashboard() {
                   </button>
                 )
               })}
+              {filtered.length === 0 && leads.length > 0 && (
+                <div className="cd-empty">אין לידים שמתאימים לסינון — נסו לנקות את החיפוש</div>
+              )}
               {leads.length === 0 && (
                 <div className="cd-empty">כשלקוחות יכתבו לוואטסאפ של העסק — הלידים יופיעו כאן</div>
               )}
@@ -227,7 +406,8 @@ export default function ClientDashboard() {
                     <div>
                       <div className="cd-customer-name">{selected.name || formatPhone(selected.phone)}</div>
                       <div className="cd-customer-meta">
-                        לקוח מאז {new Date(selected.created_at || Date.now()).toLocaleDateString('he-IL')}
+                        {formatPhone(selected.phone)}
+                        {' · '}לקוח מאז {new Date(selected.created_at || Date.now()).toLocaleDateString('he-IL')}
                         {' · '}{selected.message_count} הודעות
                       </div>
                     </div>
@@ -251,7 +431,42 @@ export default function ClientDashboard() {
                 </div>
 
                 <div className="cd-thread">
-                  <div className="cd-thread-head">השיחה האחרונה</div>
+                  <div className="cd-thread-head">
+                    <span>השיחה האחרונה</span>
+                    <div className="cd-quick-actions">
+                      <button className="cd-qa cd-qa-primary" onClick={() => setComposer({ mode: 'followup', text: followUpText(selected) })}>
+                        ↩ שליחת פולו-אפ
+                      </button>
+                      <button className="cd-qa" onClick={() => setComposer({ mode: 'free', text: '' })}>
+                        ✎ הודעה חופשית
+                      </button>
+                      <button className="cd-qa" onClick={markHandled}>
+                        ✓ סמן כטופל
+                      </button>
+                    </div>
+                  </div>
+
+                  {composer && (
+                    <div className="cd-composer">
+                      <div className="cd-composer-label">
+                        {composer.mode === 'followup' ? 'הודעת פולו-אפ (ניתן לערוך לפני שליחה)' : 'הודעה חופשית ללקוח'}
+                      </div>
+                      <textarea
+                        autoFocus
+                        rows={3}
+                        value={composer.text}
+                        placeholder="כתבו הודעה ללקוח…"
+                        onChange={e => setComposer(c => ({ ...c, text: e.target.value }))}
+                      />
+                      <div className="cd-composer-actions">
+                        <button className="cd-qa" onClick={() => setComposer(null)}>ביטול</button>
+                        <button className="cd-qa cd-qa-primary" onClick={sendComposer} disabled={!composer.text.trim()}>
+                          שליחה בוואטסאפ ←
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="cd-thread-body">
                     {loadingThread && <div className="cd-empty">טוען שיחה…</div>}
                     {!loadingThread && messages.length === 0 && (
@@ -267,6 +482,7 @@ export default function ClientDashboard() {
                         )}
                         {m.agent_response && (
                           <div className="cd-bubble cd-bubble-out">
+                            {m._manual && <span className="cd-manual-tag">נשלח ידנית</span>}
                             {m.agent_response}
                             <span className="cd-bubble-time">{msgTime(m.created_at)} ✓✓</span>
                           </div>
@@ -283,6 +499,8 @@ export default function ClientDashboard() {
         </div>
         </>}
       </main>
+
+      {toast && <div className="cd-toast">{toast}</div>}
 
       <footer className="cd-footer">
         הנתונים מתעדכנים אוטומטית מכל שיחה שהסוכן מנהל בוואטסאפ
