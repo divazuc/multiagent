@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import Overview from './Overview.jsx'
 
 const AGENT = '/api/agent'
 const DEFAULT_BIZ = '1037d6c1-e64f-4672-aa5c-19619ad6b821' // Leadz marketing
@@ -60,6 +61,7 @@ async function rpc(fn, ...args) {
 }
 
 export default function ClientDashboard() {
+  const [view, setView] = useState('overview')
   const [bizName, setBizName] = useState('העסק שלך')
   const [leads, setLeads] = useState([])
   const [billing, setBilling] = useState(null)
@@ -136,6 +138,14 @@ export default function ClientDashboard() {
               <div className="cd-biz-name">{bizName}</div>
             </div>
           </div>
+          <nav className="cd-tabs" aria-label="תצוגות">
+            <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}>
+              סקירה עסקית
+            </button>
+            <button className={view === 'inbox' ? 'active' : ''} onClick={() => setView('inbox')}>
+              מרכז הלידים
+            </button>
+          </nav>
           <div className="cd-agent-badge">
             <span className="cd-agent-dot" />
             הסוכן שלך פעיל · עונה ללקוחות 24/7
@@ -144,6 +154,9 @@ export default function ClientDashboard() {
       </header>
 
       <main className="cd-main">
+        {view === 'overview' && <Overview bizId={BIZ_ID} />}
+
+        {view === 'inbox' && <>
         {/* ── KPI strip ── */}
         <section className="cd-kpis" aria-label="נתונים עיקריים">
           <div className="cd-kpi">
@@ -268,6 +281,7 @@ export default function ClientDashboard() {
             )}
           </section>
         </div>
+        </>}
       </main>
 
       <footer className="cd-footer">

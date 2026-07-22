@@ -272,6 +272,137 @@ const ops = {
     if (error) throw error;
     return data?.steps ?? [];
   },
+
+  // ── Business overview (client dashboard) ───────────────────────────────────
+  async getOverviewStats(businessId, days = 30) {
+    if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
+    days = Math.min(Math.max(Number(days) || 30, 7), 120);
+    const since = new Date(Date.now() - days * 86400000);
+    const sinceIso = since.toISOString();
+
+    const [profileRes, contactsRes, runsRes] = await Promise.all([
+      supabase.from('business_profiles')
+        .select('working_hours, draft_setup_data')
+        .eq('business_id', businessId).maybeSingle(),
+      supabase.from('contacts')
+        .select('id, created_at', { count: 'exact' })
+        .eq('business_id', businessId),
+      supabase.from('agent_runs')
+        .select('total_duration_ms')
+        .eq('business_id', businessId)
+        .eq('status', 'success')
+        .eq('session_mode', 'live')
+        .not('total_duration_ms', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(200),
+    ]);
+
+    // PostgREST caps a response at 1000 rows — page through the range.
+    const messages = [];
+    for (let page = 0; page < 12; page++) {
+      const { data, error } = await supabase.from('conversation_messages')
+        .select('session_id, created_at, escalate, cta_triggered, user_message')
+        .eq('business_id', businessId)
+        .gte('created_at', sinceIso)
+        .order('created_at', { ascending: true })
+        .range(page * 1000, page * 1000 + 999);
+      if (error) throw error;
+      messages.push(...(data ?? []));
+      if (!data || data.length < 1000) break;
+    }
+
+    const profile = profileRes.data ?? {};
+    const wh = profile.working_hours ?? null;
+
+    // Hebrew keyword buckets mirroring the three business domains. Doctors
+    // first: "קורס הזרקות" must not fall into treatments via "הזרק".
+    const DOMAIN_TESTS = [
+      ['doctors', /קורס|רופא|הכשר|סילבוס|השתלמ|בי.?ה.?ס/],
+      ['hair', /שיער|גבות|זקן|השתל|קרקפת|נשיר|FUE/i],
+    ];
+
+    const jerusalem = (iso) => new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+    const isAfterHours = (iso) => {
+      const d = jerusalem(iso);
+      const day = wh?.days?.[d.getDay()];
+      if (!day) return d.getDay() === 6 || d.getHours() < 9 || d.getHours() >= 19;
+      if (!day.active) return true;
+      const cur = d.getHours() * 60 + d.getMinutes();
+      const [fH, fM] = (day.from || '09:00').split(':').map(Number);
+      const [tH, tM] = (day.to || '18:00').split(':').map(Number);
+      return cur < fH * 60 + fM || cur > tH * 60 + tM;
+    };
+
+    const localDateKey = (d) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+
+    const daily = new Map();
+    for (let i = days - 1; i >= 0; i--) {
+      const key = localDateKey(new Date(Date.now() - i * 86400000));
+      daily.set(key, { date: key, messages: 0, after_hours: 0, sessions: new Set() });
+    }
+
+    const sessions = new Map(); // session_id -> {text, escalated, cta, after_hours_first}
+    let afterHoursMessages = 0;
+
+    for (const m of messages) {
+      const bucket = daily.get(localDateKey(new Date(m.created_at)));
+      const ah = isAfterHours(m.created_at);
+      if (ah) afterHoursMessages++;
+      if (bucket) {
+        bucket.messages++;
+        if (ah) bucket.after_hours++;
+        bucket.sessions.add(m.session_id);
+      }
+      let s = sessions.get(m.session_id);
+      if (!s) { s = { text: '', escalated: false, cta: false, after_hours_first: ah }; sessions.set(m.session_id, s); }
+      s.text += ' ' + (m.user_message || '');
+      if (m.escalate) s.escalated = true;
+      if (m.cta_triggered) s.cta = true;
+    }
+
+    const domains = { treatments: 0, hair: 0, doctors: 0 };
+    let escalated = 0, cta = 0, afterHoursSessions = 0;
+    for (const s of sessions.values()) {
+      const hit = DOMAIN_TESTS.find(([, re]) => re.test(s.text));
+      domains[hit ? hit[0] : 'treatments']++;
+      if (s.escalated) escalated++;
+      if (s.cta) cta++;
+      if (s.after_hours_first) afterHoursSessions++;
+    }
+
+    const runs = runsRes.data ?? [];
+    const avgReplyMs = runs.length
+      ? Math.round(runs.reduce((sum, r) => sum + r.total_duration_ms, 0) / runs.length)
+      : null;
+
+    const contactsNew = (contactsRes.data ?? []).filter(c => c.created_at >= sinceIso).length;
+
+    const config = {
+      minutes_per_reply: 3.5,
+      hourly_cost_ils: 60,
+      monthly_cost_ils: 2000,
+      ...(profile.draft_setup_data?.dashboard_config ?? {}),
+    };
+
+    return {
+      days,
+      since: sinceIso,
+      daily: [...daily.values()].map(d => ({ date: d.date, messages: d.messages, after_hours: d.after_hours, conversations: d.sessions.size })),
+      totals: {
+        conversations: sessions.size,
+        messages: messages.length,
+        after_hours_messages: afterHoursMessages,
+        after_hours_sessions: afterHoursSessions,
+        escalations: escalated,
+        cta_sessions: cta,
+        contacts_new: contactsNew,
+        contacts_total: contactsRes.count ?? 0,
+      },
+      domains,
+      avg_reply_ms: avgReplyMs,
+      config,
+    };
+  },
 };
 
 export async function runStudioOp(fn, args) {
