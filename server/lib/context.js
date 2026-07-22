@@ -5,7 +5,7 @@ import { supabase } from './supabase.js';
 const HISTORY_LIMIT = 50;
 const QUALIFICATION_FIELDS = ['need', 'scope', 'budget', 'timeline', 'urgency'];
 
-export async function loadContext({ message, session_id }) {
+export async function loadContext({ message, session_id, phone_number_id = null }) {
   try {
     const { data: session, error: sessionErr } = await supabase
       .from('sessions')
@@ -17,15 +17,28 @@ export async function loadContext({ message, session_id }) {
 
     // Brand-new session — no DB row exists at all
     if (!session) {
+      // Identify business by the receiving WA phone number
+      let business_id = null;
+      if (phone_number_id) {
+        const { data: biz } = await supabase
+          .from('businesses')
+          .select('id')
+          .eq('wa_phone_number_id', phone_number_id)
+          .maybeSingle();
+        business_id = biz?.id ?? null;
+      }
+
+      if (!business_id) return err(`No business found for phone_number_id: ${phone_number_id}`);
+
       await supabase.from('sessions').upsert(
-        { session_id, session_mode: 'setup', current_stage: 'business_type', current_setup_stage: 'business_type', setup_completed: false },
+        { session_id, business_id, session_mode: 'live', current_stage: 'greeting', setup_completed: true },
         { onConflict: 'session_id', ignoreDuplicates: true }
       );
       return ok({
-        business_id: null,
-        session_mode: 'setup',
-        setup_completed: false,
-        current_stage: 'business_type',
+        business_id,
+        session_mode: 'live',
+        setup_completed: true,
+        current_stage: 'greeting',
         draft_setup_data: {},
         business_profile: {},
         persona: {},

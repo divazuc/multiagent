@@ -3,6 +3,8 @@ import { normalizeMessage } from './lib/normalize.js';
 import { loadContext } from './lib/context.js';
 import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
+import { sendWhatsAppMessage } from './lib/wa-send.js';
+import dataRouter from './routes/data.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
   .split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '')); // strip quotes + trailing slash
@@ -38,6 +40,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Data proxy (replaces direct anon Supabase calls from the frontend) ────────
+app.use('/data', dataRouter);
+
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -72,6 +77,17 @@ app.post('/log/error', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── WhatsApp webhook verification (Meta calls this GET to confirm the URL) ────
+app.get('/wa-inbound', (req, res) => {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    return res.send(challenge);
+  }
+  res.status(403).send('Forbidden');
+});
+
 // ── Inbound WhatsApp webhook ──────────────────────────────────────────────────
 app.post('/wa-inbound', async (req, res) => {
   const run = await startRun({ session_id: 'unknown', inbound_message: '[pending]' });
@@ -87,12 +103,12 @@ app.post('/wa-inbound', async (req, res) => {
       return res.status(400).json({ status: 'error', message: normalized.error });
     }
 
-    const { message, session_id } = normalized.result;
+    const { message, session_id, phone_number_id } = normalized.result;
     run.session_id = session_id;
 
     // Step 2 — Load context
     h = stepStart(run, 'load_context', { session_id });
-    const ctx = await loadContext({ message, session_id });
+    const ctx = await loadContext({ message, session_id, phone_number_id });
     await stepDone(h, ctx);
 
     if (ctx.status !== 'success') {
@@ -204,6 +220,13 @@ app.post('/wa-inbound', async (req, res) => {
       // Fire FAQ suggest check asynchronously — non-blocking
       if (business_id && message && final_response) {
         checkAndSuggestFaq({ business_id, question: message, answer: final_response }).catch(() => {});
+      }
+
+      // Send reply back to WhatsApp user
+      if (final_response && session_id && business_id) {
+        sendWhatsAppMessage({ to: session_id, text: final_response, businessId: business_id }).catch(e =>
+          console.error('[wa-send] non-blocking send failed:', e.message)
+        );
       }
 
       // Non-blocking contact upsert + AI summary

@@ -36,7 +36,7 @@ probe() {
     -H "Range-Unit: items" \
     -H "Prefer: count=exact" \
     "$URL/rest/v1/$target?select=*&limit=0" \
-    | grep -i 'content-range' | tr -d '\r' | awk -F'/' '{print $2}')
+    | grep -i 'content-range' | tr -d '\r' | awk -F'/' '{print $2}' || true)
   status=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "apikey: $KEY" \
     -H "Authorization: Bearer $KEY" \
