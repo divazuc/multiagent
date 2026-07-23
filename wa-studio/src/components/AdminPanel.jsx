@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
+import BotPolicyEditor from './BotPolicyEditor.jsx'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const api = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
@@ -26,6 +27,7 @@ export default function AdminPanel() {
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving]   = useState(false)
   const [filter, setFilter]   = useState('all') // all | red | yellow | green | test
+  const [policyBiz, setPolicyBiz] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -166,6 +168,7 @@ export default function AdminPanel() {
                 <Fragment key={biz.id}>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '12px 10px', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => setPolicyBiz(biz)} title="מדיניות הבוט" style={{ background: 'none', border: '1px solid var(--accent)', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--accent)', marginLeft: 4 }}>⚙️</button>
                       <button onClick={() => handleEdit(biz)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--text-muted)', marginLeft: 4 }}>✏️</button>
                       <button onClick={() => handleDelete(biz)} style={{ background: 'none', border: '1px solid #f87171', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#f87171' }}>🗑️</button>
                     </td>
@@ -246,6 +249,14 @@ export default function AdminPanel() {
       <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>
         * עלויות Meta משוערות — החשבון המדויק ב-Meta Business Manager. תעריפים: UI $0.015 (אחרי 1,000 חינם), BI $0.055.
       </div>
+
+      {policyBiz && (
+        <BotPolicyEditor
+          business={policyBiz}
+          onClose={() => setPolicyBiz(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   )
 }

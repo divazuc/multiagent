@@ -22,7 +22,7 @@ export async function runConversation({ message, session_id, context }) {
     // ── Step 1: Detect intent ─────────────────────────────────────────────────
     const intent = await detectIntent({
       message, business_profile, missing_qualification_data,
-      conversation_history, current_stage, agent_mode,
+      conversation_history, current_stage, agent_mode, guardrails,
     });
 
     // Hard escalation — all modes
@@ -41,11 +41,11 @@ export async function runConversation({ message, session_id, context }) {
     let candidate;
 
     if (agent_mode === 'support') {
-      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent });
+      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails });
     } else if (agent_mode === 'hybrid') {
-      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal });
+      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails });
     } else {
-      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal });
+      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails });
     }
 
     // ── Step 3: Validate + rewrite loop ───────────────────────────────────────
@@ -83,7 +83,20 @@ export async function runConversation({ message, session_id, context }) {
 
 // ── Intent detection ──────────────────────────────────────────────────────────
 
-async function detectIntent({ message, business_profile, missing_qualification_data, conversation_history, current_stage, agent_mode }) {
+// Per-business policy (admin-managed): named escalation triggers and
+// forbidden topics, stored in business_profiles.guardrails.
+function policyText(guardrails) {
+  const esc = [...(guardrails?.escalation_points ?? [])];
+  if (guardrails?.escalation_custom?.trim()) esc.push(guardrails.escalation_custom.trim());
+  const forb = [...(guardrails?.forbidden_topics ?? [])];
+  if (guardrails?.forbidden_custom?.trim()) forb.push(guardrails.forbidden_custom.trim());
+  let out = '';
+  if (esc.length) out += `\nEscalation policy — if the customer's message falls under any of these, escalate to a human (escalate=true): ${esc.join(' · ')}.`;
+  if (forb.length) out += `\nStrictly forbidden — the bot must NEVER answer, promise or commit on: ${forb.join(' · ')}. If asked about these, politely say a human representative will handle it.`;
+  return out;
+}
+
+async function detectIntent({ message, business_profile, missing_qualification_data, conversation_history, current_stage, agent_mode, guardrails }) {
   const modeInstruction = {
     sales:   'Bias toward CTA opportunities. Identify qualification gaps and push toward conversion.',
     support: 'Bias toward resolution. Focus on what the customer needs answered or resolved.',
@@ -91,7 +104,7 @@ async function detectIntent({ message, business_profile, missing_qualification_d
   }[agent_mode] ?? '';
 
   const system = `You are an intent detection engine for a WhatsApp business agent.
-${modeInstruction}
+${modeInstruction}${policyText(guardrails)}
 Return ONLY valid JSON:
 {
   "detected_intent": "high_intent|info_seeking|complaint|objection|unclear|human_request|ready_to_buy",
@@ -137,13 +150,13 @@ const MISSING_DETAILS_RULE = `Missing-details rule: if you offer or promise an a
 
 // ── Sales mode response ───────────────────────────────────────────────────────
 
-async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal }) {
+async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails }) {
   const lang = intent.language ?? 'hebrew';
   const system = `You are a sales representative for this business. Sound 100% human — NEVER like AI.
 Mode: SALES. Your goal is to qualify the lead and push toward: ${cta_goal}.
 Use the persona's language patterns EXACTLY. Ask ONE question max. Keep it SHORT (1-4 sentences).
 CTA decision: ${intent.cta_decision}.
-${MISSING_DETAILS_RULE}
+${MISSING_DETAILS_RULE}${policyText(guardrails)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
 
@@ -152,13 +165,13 @@ Persona: ${JSON.stringify(persona)}`;
 
 // ── Support mode response ─────────────────────────────────────────────────────
 
-async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent }) {
+async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails }) {
   const lang = intent.language ?? 'hebrew';
   const system = `You are a customer support representative for this business. Sound 100% human — NEVER like AI.
 Mode: SUPPORT. Your goal is to resolve the customer's question or issue fully.
 Do NOT push sales or CTA. Focus entirely on helping them.
 Be warm, clear, and concise. 1-4 sentences.
-${MISSING_DETAILS_RULE}
+${MISSING_DETAILS_RULE}${policyText(guardrails)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -168,7 +181,7 @@ Business info: ${JSON.stringify(business_profile)}`;
 
 // ── Hybrid mode response ──────────────────────────────────────────────────────
 
-async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal }) {
+async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails }) {
   const lang = intent.language ?? 'hebrew';
   const isFrustrated = ['frustrated', 'angry'].includes(intent.sentiment);
   const isHighIntent = ['high_intent', 'ready_to_buy'].includes(intent.detected_intent);
@@ -184,7 +197,7 @@ ${isFrustrated
     : 'Part 2 — Add ONE soft forward-moving statement or gentle question (never a hard push)'}
 
 Keep total response SHORT (2-5 sentences max). Sound natural.
-${MISSING_DETAILS_RULE}
+${MISSING_DETAILS_RULE}${policyText(guardrails)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;

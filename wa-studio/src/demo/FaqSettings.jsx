@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 
 const CATEGORY_LABELS = {
   general: 'כללי', services: 'טיפולים', pricing: 'מחירים', booking: 'תיאום',
@@ -164,199 +164,143 @@ export function DemoFaq({ api, showToast }) {
   )
 }
 
-// ════ Settings tab — schedule, master switch, read-only boundaries ═══════════
+// ════ Settings tab — read-only view; policy is managed by the operator ═══════
 
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
 
-const BOUNDARIES = [
-  { icon: '💰', text: 'לא מוסר מחירים, הנחות, מבצעים או תנאי תשלום — כל שאלת מחיר עוברת לנציגה אנושית שחוזרת טלפונית' },
-  { icon: '🩺', text: 'לא נותן ייעוץ רפואי אישי — הריון, הנקה, תרופות ומצבים רפואיים מופנים תמיד לרופא' },
-  { icon: '🤝', text: 'לא מתחייב לתוצאות טיפול, לזמינות תור או לתנאים מסחריים' },
-  { icon: '📷', text: 'לא שולח תמונות לפני/אחרי בצ׳אט — הצגה רק בפגישת ייעוץ, מטעמי פרטיות מטופלים' },
-  { icon: '🔐', text: 'לא אוסף מידע רפואי רגיש מעבר לנדרש לתיאום הפגישה' },
-  { icon: '📞', text: 'תלונה, לקוח כועס או בקשה לנציג — העברה מיידית לגורם אנושי ועצירת השיחה' },
-]
-
-const DEFAULT_DAY = { active: false, from: '09:00', to: '19:00' }
+function fmtRange(d) {
+  if (!d?.active) return 'סגור'
+  let s = (d.from || '09:00') + '–' + (d.to || '19:00')
+  if (d.from2 && d.to2) s += '  ·  ' + d.from2 + '–' + d.to2
+  return s
+}
 
 export function DemoSettings({ api, showToast }) {
   const [settings, setSettings] = useState(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    api.getBotSettings().then(s => {
-      const days = Array.from({ length: 7 }, (_, i) => ({ ...DEFAULT_DAY, ...(s.working_hours?.days?.[i] ?? {}) }))
-      setSettings({
-        agent_active: s.agent_active !== false,
-        answer_after_hours: s.answer_after_hours !== false,
-        jewish_holidays: s.working_hours?.jewish_holidays !== false,
-        days,
-        after_hours_message: s.after_hours_message ?? '',
-        followup_enabled: s.followup_enabled === true,
-        followup_delay_days: s.followup_delay_days ?? 2,
-        followup_message: s.followup_message ?? '',
-      })
-    }).catch(() => setSettings(null))
+    api.getBotSettings().then(s => setSettings({
+      agent_active: s.agent_active !== false,
+      answer_after_hours: s.answer_after_hours !== false,
+      jewish_holidays: s.working_hours?.jewish_holidays !== false,
+      days: Array.from({ length: 7 }, (_, i) => s.working_hours?.days?.[i] ?? { active: false }),
+      after_hours_message: s.after_hours_message ?? '',
+      followup_enabled: s.followup_enabled === true,
+      followup_delay_days: s.followup_delay_days ?? 2,
+      followup_message: s.followup_message ?? '',
+      guardrails: s.guardrails ?? {},
+    })).catch(() => setSettings(null))
   }, [api])
 
   if (!settings) return <div className="ov-empty-card ov-loading">טוען הגדרות…</div>
 
   const mode = !settings.agent_active ? 'off' : (settings.answer_after_hours ? 'always' : 'schedule')
 
-  function setMode(m) {
-    setSettings(s => ({
-      ...s,
-      agent_active: m !== 'off',
-      answer_after_hours: m === 'always',
-    }))
-  }
-
-  function setDay(i, patch) {
-    setSettings(s => ({ ...s, days: s.days.map((d, j) => j === i ? { ...d, ...patch } : d) }))
-  }
-
-  async function save() {
+  async function setMode(m) {
+    const next = { agent_active: m !== 'off', answer_after_hours: m === 'always' }
+    setSettings(s => ({ ...s, ...next }))
     setSaving(true)
     try {
-      const working_hours = {
-        jewish_holidays: settings.jewish_holidays,
-        days: settings.days.map(d => {
-          const out = { active: d.active, from: d.from, to: d.to }
-          if (d.from2 && d.to2) { out.from2 = d.from2; out.to2 = d.to2 }
-          return out
-        }),
-      }
-      await api.updateBotSettings({
-        working_hours,
-        agent_active: settings.agent_active,
-        answer_after_hours: settings.answer_after_hours,
-        after_hours_message: settings.after_hours_message.trim() || null,
-        followup_enabled: settings.followup_enabled,
-        followup_delay_days: Math.min(Math.max(Number(settings.followup_delay_days) || 2, 1), 14),
-        followup_message: settings.followup_message.trim() || null,
-      })
-      showToast('ההגדרות נשמרו — נכנסות לתוקף מיד ✓')
+      await api.updateBotSettings(next)
+      showToast('מצב הסוכן עודכן ✓')
     } catch {
-      showToast('שמירת ההגדרות נכשלה — נסו שוב')
+      showToast('העדכון נכשל — נסו שוב')
     } finally {
       setSaving(false)
     }
   }
 
+  const esc = [...(settings.guardrails.escalation_points ?? [])]
+  if (settings.guardrails.escalation_custom) esc.push(settings.guardrails.escalation_custom)
+  const forb = [...(settings.guardrails.forbidden_topics ?? [])]
+  if (settings.guardrails.forbidden_custom) forb.push(settings.guardrails.forbidden_custom)
+
   return (
     <div className="st-page">
-      {/* master switch */}
+      {/* master switch — the one control in the client's hands */}
       <section className="st-card">
         <h3>מצב הסוכן</h3>
         <div className="st-mode" role="radiogroup" aria-label="מצב הסוכן">
-          <button className={`st-mode-btn ${mode === 'always' ? 'on' : ''}`} onClick={() => setMode('always')}>
+          <button className={mode === 'always' ? 'st-mode-btn on' : 'st-mode-btn'} disabled={saving} onClick={() => setMode('always')}>
             <b>פעיל תמיד</b>
             <span>עונה 24/7, מתעלם משעות הפעילות</span>
           </button>
-          <button className={`st-mode-btn ${mode === 'schedule' ? 'on' : ''}`} onClick={() => setMode('schedule')}>
+          <button className={mode === 'schedule' ? 'st-mode-btn on' : 'st-mode-btn'} disabled={saving} onClick={() => setMode('schedule')}>
             <b>לפי שעות פעילות</b>
             <span>עונה רק בשעות שמוגדרות למטה</span>
           </button>
-          <button className={`st-mode-btn st-mode-off ${mode === 'off' ? 'on' : ''}`} onClick={() => setMode('off')}>
+          <button className={mode === 'off' ? 'st-mode-btn st-mode-off on' : 'st-mode-btn st-mode-off'} disabled={saving} onClick={() => setMode('off')}>
             <b>כבוי</b>
             <span>הסוכן לא עונה כלל</span>
           </button>
         </div>
       </section>
 
-      {/* schedule */}
-      <section className={`st-card ${mode !== 'schedule' ? 'st-muted' : ''}`}>
-        <div className="st-sched-head">
+      {/* working hours — read only */}
+      <section className="st-card st-locked">
+        <div className="st-locked-head">
           <h3>שעות פעילות</h3>
-          {mode === 'always' && <span className="st-note">הסוכן במצב "פעיל תמיד" — השעות שמורות אך לא פעילות</span>}
-          {mode === 'off' && <span className="st-note">הסוכן כבוי — השעות שמורות אך לא פעילות</span>}
+          <span>מנוהל על ידינו · לקריאה בלבד</span>
         </div>
-        <div className="st-days">
+        <div className="st-ro-days">
           {settings.days.map((d, i) => (
-            <div key={i} className={`st-day ${!d.active ? 'st-day-off' : ''}`}>
-              <label className="st-day-name">
-                <input type="checkbox" checked={d.active} onChange={e => setDay(i, { active: e.target.checked })} />
-                {DAY_NAMES[i]}
-              </label>
-              {d.active ? (
-                <div className="st-ranges">
-                  <span className="st-range">
-                    <input type="time" value={d.from} onChange={e => setDay(i, { from: e.target.value })} />
-                    –
-                    <input type="time" value={d.to} onChange={e => setDay(i, { to: e.target.value })} />
-                  </span>
-                  {d.from2 !== undefined ? (
-                    <span className="st-range">
-                      <input type="time" value={d.from2 || '16:00'} onChange={e => setDay(i, { from2: e.target.value })} />
-                      –
-                      <input type="time" value={d.to2 || '19:00'} onChange={e => setDay(i, { to2: e.target.value })} />
-                      <button className="st-range-x" title="הסרת טווח" onClick={() => setDay(i, { from2: undefined, to2: undefined })}>✕</button>
-                    </span>
-                  ) : (
-                    <button className="st-add-range" onClick={() => setDay(i, { from2: '16:00', to2: '19:00' })}>+ טווח נוסף</button>
-                  )}
-                </div>
-              ) : (
-                <span className="st-closed">סגור</span>
-              )}
+            <div key={i} className="st-ro-day">
+              <span className="st-ro-name">{DAY_NAMES[i]}</span>
+              <span className={d.active ? 'st-ro-range' : 'st-ro-range st-ro-closed'}>{fmtRange(d)}</span>
             </div>
           ))}
         </div>
-        <label className="st-holidays">
-          <input type="checkbox" checked={settings.jewish_holidays} onChange={e => setSettings(s => ({ ...s, jewish_holidays: e.target.checked }))} />
-          סגור בחגי ישראל (הסוכן מזהה את מועדי החגים אוטומטית)
-        </label>
-        <label className="st-field-label" htmlFor="st-ahm">הודעה אוטומטית מחוץ לשעות הפעילות</label>
-        <textarea id="st-ahm" className="st-textarea" rows={2}
-                  placeholder="למשל: תודה שפניתם! נחזור אליכם מיד עם פתיחת הקליניקה 🤍"
-                  value={settings.after_hours_message}
-                  onChange={e => setSettings(s => ({ ...s, after_hours_message: e.target.value }))} />
+        <div className="st-ro-line">🕎 חגי ישראל: {settings.jewish_holidays ? 'סגור (מזוהה אוטומטית)' : 'פתוח כרגיל'}</div>
+        {settings.after_hours_message && (
+          <div className="st-ro-line">💬 הודעה מחוץ לשעות: "{settings.after_hours_message}"</div>
+        )}
       </section>
 
-      {/* follow-up automation */}
-      <section className="st-card">
-        <div className="st-fu-head">
-          <h3>פולו-אפ אוטומטי</h3>
-          <label className="fq-switch">
-            <input type="checkbox" checked={settings.followup_enabled}
-                   onChange={e => setSettings(s => ({ ...s, followup_enabled: e.target.checked }))} />
-            <i />
-          </label>
-        </div>
-        <div className={settings.followup_enabled ? '' : 'st-muted-block'}>
-          <div className="st-fu-row">
-            ליד שהתעניין ולא השלים תיאום — הסוכן חוזר אליו אחרי
-            <input type="number" className="st-fu-days" min="1" max="14"
-                   value={settings.followup_delay_days}
-                   onChange={e => setSettings(s => ({ ...s, followup_delay_days: e.target.value }))} />
-            ימים
-          </div>
-          <label className="st-field-label" htmlFor="st-fum">נוסח הפולו-אפ (נשלח כתבנית מאושרת בוואטסאפ)</label>
-          <textarea id="st-fum" className="st-textarea" rows={2}
-                    placeholder="היי! רק רציתי לבדוק אם יש לך שאלות נוספות 😊"
-                    value={settings.followup_message}
-                    onChange={e => setSettings(s => ({ ...s, followup_message: e.target.value }))} />
-        </div>
-      </section>
-
-      <button className="st-save" onClick={save} disabled={saving}>
-        {saving ? 'שומר…' : 'שמירת הגדרות'}
-      </button>
-
-      {/* read-only boundaries */}
+      {/* follow-up — read only */}
       <section className="st-card st-locked">
         <div className="st-locked-head">
-          <h3>🔒 גבולות הסוכן</h3>
-          <span>מוגדר ברמת המערכת · לקריאה בלבד</span>
+          <h3>פולו-אפ אוטומטי</h3>
+          <span>מנוהל על ידינו · לקריאה בלבד</span>
         </div>
-        <ul className="st-rules">
-          {BOUNDARIES.map((b, i) => (
-            <li key={i}><i>{b.icon}</i>{b.text}</li>
-          ))}
-        </ul>
+        <div className="st-ro-line">
+          {settings.followup_enabled
+            ? '✅ פעיל — ליד שלא השלים תיאום מקבל פנייה חוזרת אחרי ' + settings.followup_delay_days + ' ימים'
+            : '⏸ כבוי כרגע'}
+        </div>
+        {settings.followup_enabled && settings.followup_message && (
+          <div className="st-ro-line">💬 נוסח: "{settings.followup_message}"</div>
+        )}
+      </section>
+
+      {/* bot policy — read only */}
+      <section className="st-card st-locked">
+        <div className="st-locked-head">
+          <h3>🔒 מדיניות הבוט</h3>
+          <span>מנוהל על ידינו · לקריאה בלבד</span>
+        </div>
+
+        <div className="st-ro-subtitle">מתי הבוט מעביר לנציג אנושי</div>
+        {esc.length > 0 ? (
+          <ul className="st-rules">
+            {esc.map((e, i) => <li key={i}><i>📞</i>{e}</li>)}
+          </ul>
+        ) : (
+          <div className="st-ro-line">לפי שיקול הסוכן — בקשת נציג, תלונה או שאלה מורכבת</div>
+        )}
+
+        <div className="st-ro-subtitle">על מה הבוט לא עונה</div>
+        {forb.length > 0 ? (
+          <ul className="st-rules">
+            {forb.map((f, i) => <li key={i}><i>🚫</i>{f}</li>)}
+          </ul>
+        ) : (
+          <div className="st-ro-line">טרם הוגדרו נושאים חסומים ייעודיים לעסק</div>
+        )}
+
         <div className="st-locked-note">
-          הכללים האלה נאכפים בכל שיחה, בכל שעה, בלי תלות בהגדרות שלמעלה — ואינם ניתנים לשינוי מהדשבורד.
-          לעדכון גבולות הסוכן פנו אלינו.
+          ההגדרות בעמוד זה מנוהלות על ידינו כדי לשמור על עקביות ואיכות השיחות —
+          כך שינוי בזרימת השיחה לעולם לא קורה בלי שנדע. לעדכון — דברו איתנו.
         </div>
       </section>
     </div>

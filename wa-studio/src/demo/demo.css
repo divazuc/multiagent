@@ -795,3 +795,14 @@ body {
 .cd-lead-edit textarea { resize: vertical; }
 .cd-lead-edit input:focus, .cd-lead-edit textarea:focus { outline: 2px solid var(--green); border-color: transparent; }
 .cd-lead-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+/* ══ Read-only settings display ══════════════════════════════════════════ */
+
+.st-ro-days { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 18px; }
+.st-ro-day { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.st-ro-name { font-weight: 700; }
+.st-ro-range { color: var(--ink-soft); font-variant-numeric: tabular-nums; direction: ltr; }
+.st-ro-closed { color: var(--ink-faint); }
+.st-ro-line { margin-top: 10px; font-size: 13.5px; color: var(--ink-soft); line-height: 1.5; }
+.st-ro-subtitle { margin-top: 14px; font-size: 13px; font-weight: 800; color: var(--ink); }
+.st-mode-btn:disabled { opacity: .6; cursor: default; }
