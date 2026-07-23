@@ -657,3 +657,50 @@ body {
 }
 
 @media (max-width: 700px) { .st-mode { grid-template-columns: 1fr; } }
+
+/* ══ FAQ edit modal + mobile input-zoom fix ══════════════════════════════ */
+
+.fq-modal-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(11, 20, 26, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+}
+.fq-modal {
+  background: var(--card); border-radius: 16px;
+  box-shadow: 0 18px 60px rgba(11, 20, 26, 0.35);
+  width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto;
+  padding: 22px 24px;
+  display: flex; flex-direction: column;
+}
+.fq-modal h3 { font-size: 17px; font-weight: 800; margin-bottom: 6px; }
+.fq-modal-label {
+  font-size: 12px; font-weight: 700; color: var(--ink-faint);
+  margin: 12px 0 5px;
+}
+.fq-modal select, .fq-modal input, .fq-modal textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; font: inherit; font-size: 15px; line-height: 1.5;
+  background: var(--paper); color: var(--ink);
+}
+.fq-modal select { width: auto; align-self: flex-start; }
+.fq-modal textarea { resize: vertical; }
+.fq-modal select:focus, .fq-modal input:focus, .fq-modal textarea:focus {
+  outline: 2px solid var(--green); border-color: transparent;
+}
+.fq-modal-actions {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;
+}
+.fq-modal-actions .cd-qa { font-size: 14px; padding: 8px 20px; }
+
+@media (max-width: 640px) {
+  /* bottom-sheet feel on phones */
+  .fq-modal-overlay { align-items: flex-end; padding: 0; }
+  .fq-modal { max-width: none; border-radius: 18px 18px 0 0; max-height: 88vh; }
+}
+
+/* iOS Safari auto-zooms on focus when a form control is under 16px —
+   force 16px on touch/small screens across the whole demo page. */
+@media (max-width: 900px), (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}

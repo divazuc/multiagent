@@ -22,10 +22,9 @@ const CATEGORY_LABELS = {
 
 export function DemoFaq({ bizId, showToast }) {
   const [items, setItems] = useState(null)
-  const [editing, setEditing] = useState(null)   // item id being edited
-  const [draft, setDraft] = useState({ question: '', answer: '' })
-  const [adding, setAdding] = useState(false)
-  const [addDraft, setAddDraft] = useState({ category: 'general', question: '', answer: '' })
+  // modal: null | {mode:'add'} | {mode:'edit', id}
+  const [modal, setModal] = useState(null)
+  const [draft, setDraft] = useState({ category: 'general', question: '', answer: '' })
 
   useEffect(() => {
     rpc('loadFaqItems', bizId).then(setItems).catch(() => setItems([]))
@@ -48,30 +47,33 @@ export function DemoFaq({ bizId, showToast }) {
     showToast('ההצעה נדחתה')
   }
 
-  function startEdit(item) {
-    setEditing(item.id)
-    setDraft({ question: item.question, answer: item.answer })
+  function openEdit(item) {
+    setDraft({ category: item.category || 'general', question: item.question, answer: item.answer })
+    setModal({ mode: 'edit', id: item.id })
   }
 
-  async function saveEdit(item) {
-    await rpc('updateFaqItem', item.id, { question: draft.question, answer: draft.answer })
-    setItems(prev => prev.map(i => i.id === item.id ? { ...i, ...draft } : i))
-    setEditing(null)
-    showToast('השינויים נשמרו ✓')
+  function openAdd() {
+    setDraft({ category: 'general', question: '', answer: '' })
+    setModal({ mode: 'add' })
+  }
+
+  async function saveModal() {
+    if (!draft.question.trim() || !draft.answer.trim()) return
+    if (modal.mode === 'edit') {
+      await rpc('updateFaqItem', modal.id, { category: draft.category, question: draft.question, answer: draft.answer })
+      setItems(prev => prev.map(i => i.id === modal.id ? { ...i, ...draft } : i))
+      showToast('השינויים נשמרו ✓')
+    } else {
+      const row = await rpc('addFaqItem', bizId, draft)
+      setItems(prev => [...prev, { ...draft, id: row?.id ?? Math.random(), is_active: true, suggested: false }])
+      showToast('השאלה נוספה למאגר ✓')
+    }
+    setModal(null)
   }
 
   async function toggleActive(item) {
     await rpc('updateFaqItem', item.id, { is_active: !item.is_active })
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_active: !i.is_active } : i))
-  }
-
-  async function addNew() {
-    if (!addDraft.question.trim() || !addDraft.answer.trim()) return
-    const row = await rpc('addFaqItem', bizId, addDraft)
-    setItems(prev => [...prev, { ...addDraft, id: row?.id ?? Math.random(), is_active: true, suggested: false }])
-    setAdding(false)
-    setAddDraft({ category: 'general', question: '', answer: '' })
-    showToast('השאלה נוספה למאגר ✓')
   }
 
   return (
@@ -99,57 +101,61 @@ export function DemoFaq({ bizId, showToast }) {
         <div className="fq-list-head">
           <h3>מאגר השאלות והתשובות</h3>
           <span className="fq-count">{active.filter(i => i.is_active).length} שאלות פעילות</span>
-          <button className="cd-qa cd-qa-primary" style={{ marginInlineStart: 'auto' }} onClick={() => setAdding(a => !a)}>
+          <button className="cd-qa cd-qa-primary" style={{ marginInlineStart: 'auto' }} onClick={openAdd}>
             + שאלה חדשה
           </button>
         </div>
 
-        {adding && (
-          <div className="fq-item fq-editing">
-            <select value={addDraft.category} onChange={e => setAddDraft(d => ({ ...d, category: e.target.value }))}>
-              {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-            <input placeholder="השאלה — כפי שלקוחות שואלים אותה" value={addDraft.question}
-                   onChange={e => setAddDraft(d => ({ ...d, question: e.target.value }))} />
-            <textarea rows={3} placeholder="התשובה שהסוכן ייתן" value={addDraft.answer}
-                      onChange={e => setAddDraft(d => ({ ...d, answer: e.target.value }))} />
-            <div className="fq-edit-actions">
-              <button className="cd-qa" onClick={() => setAdding(false)}>ביטול</button>
-              <button className="cd-qa cd-qa-primary" onClick={addNew} disabled={!addDraft.question.trim() || !addDraft.answer.trim()}>שמירה</button>
-            </div>
-          </div>
-        )}
-
         {active.map(item => (
           <div key={item.id} className={`fq-item ${!item.is_active ? 'fq-off' : ''}`}>
-            {editing === item.id ? (
-              <>
-                <input value={draft.question} onChange={e => setDraft(d => ({ ...d, question: e.target.value }))} />
-                <textarea rows={4} value={draft.answer} onChange={e => setDraft(d => ({ ...d, answer: e.target.value }))} />
-                <div className="fq-edit-actions">
-                  <button className="cd-qa" onClick={() => setEditing(null)}>ביטול</button>
-                  <button className="cd-qa cd-qa-primary" onClick={() => saveEdit(item)}>שמירה</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="fq-item-top">
-                  <span className="fq-cat">{CATEGORY_LABELS[item.category] || item.category}</span>
-                  <div className="fq-item-tools">
-                    <button className="fq-tool" onClick={() => startEdit(item)}>עריכה</button>
-                    <label className="fq-switch">
-                      <input type="checkbox" checked={item.is_active} onChange={() => toggleActive(item)} />
-                      <i />
-                    </label>
-                  </div>
-                </div>
-                <div className="fq-q">{item.question}</div>
-                <div className="fq-a">{item.answer}</div>
-              </>
-            )}
+            <div className="fq-item-top">
+              <span className="fq-cat">{CATEGORY_LABELS[item.category] || item.category}</span>
+              <div className="fq-item-tools">
+                <button className="fq-tool" onClick={() => openEdit(item)}>עריכה</button>
+                <label className="fq-switch">
+                  <input type="checkbox" checked={item.is_active} onChange={() => toggleActive(item)} />
+                  <i />
+                </label>
+              </div>
+            </div>
+            <div className="fq-q">{item.question}</div>
+            <div className="fq-a">{item.answer}</div>
           </div>
         ))}
       </section>
+
+      {modal && (
+        <div className="fq-modal-overlay" onClick={() => setModal(null)}>
+          <div className="fq-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <h3>{modal.mode === 'edit' ? 'עריכת שאלה ותשובה' : 'שאלה חדשה'}</h3>
+            <label className="fq-modal-label">קטגוריה</label>
+            <select value={draft.category} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))}>
+              {!(draft.category in CATEGORY_LABELS) && <option value={draft.category}>{draft.category}</option>}
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <label className="fq-modal-label">השאלה</label>
+            <input
+              autoFocus={modal.mode === 'add'}
+              placeholder="כפי שלקוחות שואלים אותה"
+              value={draft.question}
+              onChange={e => setDraft(d => ({ ...d, question: e.target.value }))}
+            />
+            <label className="fq-modal-label">התשובה שהסוכן ייתן</label>
+            <textarea
+              rows={7}
+              placeholder="התשובה בסגנון ובטון של העסק"
+              value={draft.answer}
+              onChange={e => setDraft(d => ({ ...d, answer: e.target.value }))}
+            />
+            <div className="fq-modal-actions">
+              <button className="cd-qa" onClick={() => setModal(null)}>ביטול</button>
+              <button className="cd-qa cd-qa-primary" onClick={saveModal} disabled={!draft.question.trim() || !draft.answer.trim()}>
+                שמירה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
