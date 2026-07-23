@@ -157,6 +157,9 @@ Message: "${message}"`;
   }
 }
 
+// Anti-hallucination: the model may only answer from what it was given.
+const GROUNDING_RULE = `Grounding rule: answer ONLY from the Business info, the knowledge provided and this conversation. NEVER invent facts, services, prices, discounts, addresses or availability. If you don't have the information, say honestly that you'll check with the team, and ask for the customer's name and phone so a representative can follow up.`;
+
 // Shared rule: when the reply promises an action that needs a contact detail
 // we don't have yet (e-mail for a quote, phone for a callback), ask for it
 // inline, naturally, in the same reply — and never re-ask for details the
@@ -171,6 +174,8 @@ async function generateSalesResponse({ message, business_profile, persona, hebre
 Mode: SALES. Your goal is to qualify the lead and push toward: ${cta_goal}.
 Use the persona's language patterns EXACTLY. Ask ONE question max. Keep it SHORT (1-4 sentences).
 CTA decision: ${intent.cta_decision}.
+Business info: ${JSON.stringify(business_profile)}
+${GROUNDING_RULE}
 ${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
@@ -186,6 +191,7 @@ async function generateSupportResponse({ message, business_profile, persona, heb
 Mode: SUPPORT. Your goal is to resolve the customer's question or issue fully.
 Do NOT push sales or CTA. Focus entirely on helping them.
 Be warm, clear, and concise. 1-4 sentences.
+${GROUNDING_RULE}
 ${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
@@ -212,6 +218,7 @@ ${isFrustrated
     : 'Part 2 — Add ONE soft forward-moving statement or gentle question (never a hard push)'}
 
 Keep total response SHORT (2-5 sentences max). Sound natural.
+${GROUNDING_RULE}
 ${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
@@ -321,4 +328,5 @@ async function humanDelay(text, answerLength) {
 }
 
 function ok(result) { return { status: 'success', result, error: null }; }
+
 
