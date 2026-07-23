@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
         input: {
           main: 'index.html',
           demo: 'demo.html',
+          portal: 'portal.html',
         },
       },
     },

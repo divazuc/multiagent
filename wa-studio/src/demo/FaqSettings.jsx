@@ -1,18 +1,5 @@
 import { useState, useEffect } from 'react'
 
-const AGENT = import.meta.env.VITE_AGENT_URL || '/api/agent'
-
-async function rpc(fn, ...args) {
-  const res = await fetch(`${AGENT}/studio/rpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fn, args }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok || body.ok === false) throw new Error(body.error || `HTTP ${res.status}`)
-  return body.result
-}
-
 const CATEGORY_LABELS = {
   general: 'כללי', services: 'טיפולים', pricing: 'מחירים', booking: 'תיאום',
   scheduling: 'שעות', location: 'הגעה', trial: 'התנסות', safety: 'בטיחות',
@@ -20,15 +7,15 @@ const CATEGORY_LABELS = {
 
 // ════ FAQ tab — the shared knowledge_items entity, client-editable ═══════════
 
-export function DemoFaq({ bizId, showToast }) {
+export function DemoFaq({ api, showToast }) {
   const [items, setItems] = useState(null)
   // modal: null | {mode:'add'} | {mode:'edit', id}
   const [modal, setModal] = useState(null)
   const [draft, setDraft] = useState({ category: 'general', question: '', answer: '' })
 
   useEffect(() => {
-    rpc('loadFaqItems', bizId).then(setItems).catch(() => setItems([]))
-  }, [bizId])
+    api.loadFaqItems().then(setItems).catch(() => setItems([]))
+  }, [api])
 
   if (!items) return <div className="ov-empty-card ov-loading">טוען שאלות ותשובות…</div>
 
@@ -36,13 +23,13 @@ export function DemoFaq({ bizId, showToast }) {
   const active = items.filter(i => !i.suggested)
 
   async function approve(item) {
-    await rpc('updateFaqItem', item.id, { suggested: false, is_active: true })
+    await api.updateFaqItem(item.id, { suggested: false, is_active: true })
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, suggested: false, is_active: true } : i))
     showToast('השאלה נוספה למאגר — הסוכן יתחיל לענות איתה מיד ✓')
   }
 
   async function dismiss(item) {
-    await rpc('updateFaqItem', item.id, { suggested: false, is_active: false })
+    await api.updateFaqItem(item.id, { suggested: false, is_active: false })
     setItems(prev => prev.filter(i => i.id !== item.id))
     showToast('ההצעה נדחתה')
   }
@@ -60,11 +47,11 @@ export function DemoFaq({ bizId, showToast }) {
   async function saveModal() {
     if (!draft.question.trim() || !draft.answer.trim()) return
     if (modal.mode === 'edit') {
-      await rpc('updateFaqItem', modal.id, { category: draft.category, question: draft.question, answer: draft.answer })
+      await api.updateFaqItem(modal.id, { category: draft.category, question: draft.question, answer: draft.answer })
       setItems(prev => prev.map(i => i.id === modal.id ? { ...i, ...draft } : i))
       showToast('השינויים נשמרו ✓')
     } else {
-      const row = await rpc('addFaqItem', bizId, draft)
+      const row = await api.addFaqItem(draft)
       setItems(prev => [...prev, { ...draft, id: row?.id ?? Math.random(), is_active: true, suggested: false }])
       showToast('השאלה נוספה למאגר ✓')
     }
@@ -72,7 +59,7 @@ export function DemoFaq({ bizId, showToast }) {
   }
 
   async function toggleActive(item) {
-    await rpc('updateFaqItem', item.id, { is_active: !item.is_active })
+    await api.updateFaqItem(item.id, { is_active: !item.is_active })
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_active: !i.is_active } : i))
   }
 
@@ -175,12 +162,12 @@ const BOUNDARIES = [
 
 const DEFAULT_DAY = { active: false, from: '09:00', to: '19:00' }
 
-export function DemoSettings({ bizId, showToast }) {
+export function DemoSettings({ api, showToast }) {
   const [settings, setSettings] = useState(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    rpc('getBotSettings', bizId).then(s => {
+    api.getBotSettings().then(s => {
       const days = Array.from({ length: 7 }, (_, i) => ({ ...DEFAULT_DAY, ...(s.working_hours?.days?.[i] ?? {}) }))
       setSettings({
         agent_active: s.agent_active !== false,
@@ -189,7 +176,7 @@ export function DemoSettings({ bizId, showToast }) {
         days,
       })
     }).catch(() => setSettings(null))
-  }, [bizId])
+  }, [api])
 
   if (!settings) return <div className="ov-empty-card ov-loading">טוען הגדרות…</div>
 
@@ -218,15 +205,11 @@ export function DemoSettings({ bizId, showToast }) {
           return out
         }),
       }
-      const res = await fetch(`${AGENT}/business/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          business_id: bizId,
-          updates: { working_hours, agent_active: settings.agent_active, answer_after_hours: settings.answer_after_hours },
-        }),
+      await api.updateBotSettings({
+        working_hours,
+        agent_active: settings.agent_active,
+        answer_after_hours: settings.answer_after_hours,
       })
-      if (!res.ok) throw new Error()
       showToast('ההגדרות נשמרו — נכנסות לתוקף מיד ✓')
     } catch {
       showToast('שמירת ההגדרות נכשלה — נסו שוב')

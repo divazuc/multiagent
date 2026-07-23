@@ -704,3 +704,49 @@ body {
 @media (max-width: 900px), (pointer: coarse) {
   input, textarea, select { font-size: 16px !important; }
 }
+
+/* ══ Portal: login screen + logout ═══════════════════════════════════════ */
+
+.cd-header-side { display: flex; align-items: center; gap: 10px; }
+.cd-logout {
+  border: 1px solid rgba(255,255,255,0.35); background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 700;
+  padding: 7px 16px; border-radius: 999px; cursor: pointer;
+  transition: background .15s;
+}
+.cd-logout:hover { background: rgba(255,255,255,0.15); }
+.cd-logout:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.pt-login-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--brand);
+  background-image: radial-gradient(circle at 80% -30%, rgba(0,168,132,0.55), transparent 60%),
+                    radial-gradient(circle at 10% 110%, rgba(0,168,132,0.35), transparent 55%);
+  padding: 20px;
+}
+.pt-login-card {
+  background: var(--card); border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(11,20,26,0.4);
+  width: 100%; max-width: 400px; padding: 34px 32px 26px;
+  text-align: center;
+}
+.pt-login-mark {
+  width: 62px; height: 62px; border-radius: 18px; margin: 0 auto 14px;
+  background: var(--green-soft); display: flex; align-items: center; justify-content: center;
+  font-size: 30px;
+}
+.pt-login-card h1 { font-size: 24px; font-weight: 800; }
+.pt-login-sub { font-size: 14px; color: var(--ink-soft); margin: 4px 0 20px; }
+.pt-login-card form { text-align: right; display: flex; flex-direction: column; }
+.pt-login-card input {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 14px; font: inherit; font-size: 15px;
+  background: var(--paper); color: var(--ink);
+}
+.pt-login-card input:focus { outline: 2px solid var(--green); border-color: transparent; }
+.pt-login-error {
+  margin-top: 12px; font-size: 13.5px; font-weight: 600; color: #b91c1c;
+  background: #fee2e2; border-radius: 10px; padding: 9px 14px;
+}
+.pt-login-btn { margin-top: 18px; align-self: stretch; }
+.pt-login-foot { margin-top: 18px; font-size: 12.5px; color: var(--ink-faint); }

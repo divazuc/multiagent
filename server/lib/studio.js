@@ -273,6 +273,23 @@ const ops = {
     return data?.steps ?? [];
   },
 
+  // ── Portal account provisioning (operator-side) ────────────────────────────
+  async createPortalAccount(businessId, email, password) {
+    if (!businessId || !email || !password) { const e = new Error('businessId, email, password required'); e.status = 400; throw e; }
+    const { hashPassword } = await import('./portal.js');
+    const { data, error } = await supabase
+      .from('portal_accounts')
+      .upsert({
+        business_id: businessId,
+        email: String(email).trim().toLowerCase(),
+        password_hash: hashPassword(password),
+      }, { onConflict: 'email' })
+      .select('id, business_id, email')
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
   // ── Bot settings (client dashboard) ────────────────────────────────────────
   async getBotSettings(businessId) {
     if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }

@@ -168,7 +168,7 @@ function RoiMeter({ saved, cost }) {
   )
 }
 
-export default function Overview({ bizId }) {
+export default function Overview({ api }) {
   const [days, setDays] = useState(30)
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(false)
@@ -176,20 +176,11 @@ export default function Overview({ bizId }) {
   useEffect(() => {
     let dead = false
     setStats(null); setError(false)
-    ;(async () => {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_AGENT_URL || '/api/agent'}/studio/rpc`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fn: 'getOverviewStats', args: [bizId, days] }),
-        })
-        const body = await res.json()
-        if (!res.ok || body.ok === false) throw new Error(body.error)
-        if (!dead) setStats(body.result)
-      } catch { if (!dead) setError(true) }
-    })()
+    api.getOverviewStats(days)
+      .then(s => { if (!dead) setStats(s) })
+      .catch(() => { if (!dead) setError(true) })
     return () => { dead = true }
-  }, [bizId, days])
+  }, [api, days])
 
   const money = useMemo(() => {
     if (!stats) return null

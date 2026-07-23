@@ -61,6 +61,32 @@ app.post('/studio/rpc', async (req, res) => {
   }
 });
 
+// ── Client portal: login + business-scoped RPC ────────────────────────────────
+app.post('/portal/login', async (req, res) => {
+  try {
+    const { portalLogin } = await import('./lib/portal.js');
+    const result = await portalLogin(req.body?.email, req.body?.password);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(e.status ?? 500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/portal/rpc', async (req, res) => {
+  try {
+    const { verifyToken, runPortalOp } = await import('./lib/portal.js');
+    const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    const payload = verifyToken(token);
+    if (!payload) return res.status(401).json({ ok: false, error: 'unauthorized' });
+    const { fn, args } = req.body ?? {};
+    const result = await runPortalOp(payload.business_id, fn, args);
+    res.json({ ok: true, result: result ?? null });
+  } catch (e) {
+    console.error(`[portal] ${req.body?.fn} failed:`, e.message);
+    res.status(e.status ?? 500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── Client error logger ───────────────────────────────────────────────────────
 app.post('/log/error', async (req, res) => {
   const { message, source, stack, url, ts } = req.body ?? {};

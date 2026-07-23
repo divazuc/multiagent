@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Overview from './Overview.jsx'
 import { DemoFaq, DemoSettings } from './FaqSettings.jsx'
+import { createDemoApi } from './api.js'
 
-const AGENT = import.meta.env.VITE_AGENT_URL || '/api/agent'
 const DEFAULT_BIZ = '1037d6c1-e64f-4672-aa5c-19619ad6b821' // Leadz marketing
 const BIZ_ID = new URLSearchParams(window.location.search).get('biz') || DEFAULT_BIZ
 
@@ -79,17 +79,6 @@ function msgTime(ts) {
   return new Date(ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
 }
 
-async function rpc(fn, ...args) {
-  const res = await fetch(`${AGENT}/studio/rpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fn, args }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok || body.ok === false) throw new Error(body.error || `HTTP ${res.status}`)
-  return body.result
-}
-
 function followUpText(lead) {
   const name = lead.name ? lead.name.split(' ')[0] : ''
   const tag = TAG_DEFS.find(t => leadTags(lead).includes(t.key) && !['rep', 'pricing', 'medical'].includes(t.key))
@@ -97,9 +86,10 @@ function followUpText(lead) {
   return `היי${name ? ' ' + name : ''}, כאן אסתטיק קליניק 🤍 רצינו לוודא שקיבלת את כל המידע על ${topic}. נשמח לתאם לך פגישת ייעוץ עם ד״ר לביא — מתי נוח לך?`
 }
 
-export default function ClientDashboard() {
+export default function ClientDashboard({ api: apiProp = null, businessName = null, onLogout = null }) {
+  const api = useMemo(() => apiProp ?? createDemoApi(BIZ_ID), [apiProp])
   const [view, setView] = useState('overview')
-  const [bizName, setBizName] = useState('העסק שלך')
+  const [bizName, setBizName] = useState(businessName || 'העסק שלך')
   const [leads, setLeads] = useState([])
   const [billing, setBilling] = useState(null)
   const [selected, setSelected] = useState(null)
@@ -121,36 +111,35 @@ export default function ClientDashboard() {
   useEffect(() => {
     (async () => {
       try {
-        const list = await rpc('listBusinesses')
-        const biz = list.find(b => b.id === BIZ_ID)
-        if (biz) setBizName(biz.name)
+        const name = await api.getBusinessName()
+        if (name) setBizName(name)
       } catch { /* keep default */ }
 
       try {
-        const res = await fetch(`${AGENT}/contacts/${BIZ_ID}`)
-        const body = await res.json()
-        const contacts = (body.contacts || []).sort((a, b) => new Date(b.last_activity_at) - new Date(a.last_activity_at))
+        const contacts = (await api.listContacts()).sort((a, b) => new Date(b.last_activity_at) - new Date(a.last_activity_at))
         if (contacts.length) {
           setLeads(contacts)
           selectLead(contacts[0])
-        } else {
+        } else if (!onLogout) {
+          // sample fixtures are a demo-only affordance — the real portal shows an empty state
           setIsSample(true)
           setLeads(SAMPLE_LEADS)
           selectLead(SAMPLE_LEADS[0])
         }
       } catch {
-        setIsSample(true)
-        setLeads(SAMPLE_LEADS)
-        selectLead(SAMPLE_LEADS[0])
+        if (!onLogout) {
+          setIsSample(true)
+          setLeads(SAMPLE_LEADS)
+          selectLead(SAMPLE_LEADS[0])
+        }
       }
 
       try {
-        const res = await fetch(`${AGENT}/billing/${BIZ_ID}`)
-        setBilling(await res.json())
+        setBilling(await api.getBilling())
       } catch { /* KPI falls back */ }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [api])
 
   const selectLead = useCallback(async (lead) => {
     setSelected(lead)
@@ -160,7 +149,7 @@ export default function ClientDashboard() {
     setLoadingThread(true)
     try {
       // Live sessions are keyed by the customer's phone number
-      const state = await rpc('loadDBState', lead.phone)
+      const state = await api.loadThread(lead.phone)
       setMessages(state.messages || [])
       const qual = state.session?.qualification_progress
       if (qual && Object.values(qual).some(Boolean)) setQualification(qual)
@@ -169,7 +158,8 @@ export default function ClientDashboard() {
     } finally {
       setLoadingThread(false)
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api])
 
   // tag counts across all leads (for the filter chips)
   const tagCounts = useMemo(() => {
@@ -233,11 +223,7 @@ export default function ClientDashboard() {
     showToast('הליד סומן כטופל ✓')
     if (!selected._sample) {
       try {
-        await fetch(`${AGENT}/contacts/${selected.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'closed' }),
-        })
+        await api.updateContact(selected.id, { status: 'closed' })
       } catch { /* optimistic UI keeps the change */ }
     }
   }
@@ -271,17 +257,22 @@ export default function ClientDashboard() {
               הגדרות
             </button>
           </nav>
-          <div className="cd-agent-badge">
-            <span className="cd-agent-dot" />
-            הסוכן שלך פעיל · עונה ללקוחות 24/7
+          <div className="cd-header-side">
+            <div className="cd-agent-badge">
+              <span className="cd-agent-dot" />
+              הסוכן שלך פעיל · עונה ללקוחות 24/7
+            </div>
+            {onLogout && (
+              <button className="cd-logout" onClick={onLogout}>יציאה</button>
+            )}
           </div>
         </div>
       </header>
 
       <main className="cd-main">
-        {view === 'overview' && <Overview bizId={BIZ_ID} />}
-        {view === 'faq' && <DemoFaq bizId={BIZ_ID} showToast={showToast} />}
-        {view === 'settings' && <DemoSettings bizId={BIZ_ID} showToast={showToast} />}
+        {view === 'overview' && <Overview api={api} />}
+        {view === 'faq' && <DemoFaq api={api} showToast={showToast} />}
+        {view === 'settings' && <DemoSettings api={api} showToast={showToast} />}
 
         {view === 'inbox' && <>
         {/* ── KPI strip ── */}
