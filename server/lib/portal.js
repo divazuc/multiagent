@@ -86,10 +86,13 @@ async function assertOwned(table, id, businessId) {
 }
 
 // ── Business-scoped ops (business_id always injected from the token) ─────────
-// Clients may only flip the agent's on/off/schedule mode. Hours, messages,
-// follow-up and policy are admin-managed (operator side) so conversation
-// flow can't change without us knowing.
-const SETTINGS_COLUMNS = ['agent_active', 'answer_after_hours'];
+// Clients may edit operational settings (mode, hours, follow-up). The bot
+// POLICY (guardrails: escalation points / forbidden topics) stays admin-only
+// so conversation flow can't change without the operator knowing.
+const SETTINGS_COLUMNS = [
+  'agent_active', 'answer_after_hours', 'working_hours', 'after_hours_message',
+  'followup_enabled', 'followup_delay_days', 'followup_message',
+];
 const CONTACT_COLUMNS = ['name', 'notes', 'status'];
 const FAQ_COLUMNS = ['category', 'question', 'answer', 'is_active', 'suggested'];
 
