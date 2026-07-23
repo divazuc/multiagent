@@ -129,6 +129,12 @@ Message: "${message}"`;
   }
 }
 
+// Shared rule: when the reply promises an action that needs a contact detail
+// we don't have yet (e-mail for a quote, phone for a callback), ask for it
+// inline, naturally, in the same reply — and never re-ask for details the
+// customer already gave earlier in the conversation.
+const MISSING_DETAILS_RULE = `Missing-details rule: if you offer or promise an action that requires a contact detail (e-mail to send a quote/summary, phone number for a callback, full name for a booking), check the conversation history: if the customer already provided it — use it, never ask again. If it's missing — weave a short natural request for it into the SAME reply, e.g. "אעבוד על הצעת המחיר ואשלח לך במייל בהקדם — לאיזה מייל לשלוח?"`;
+
 // ── Sales mode response ───────────────────────────────────────────────────────
 
 async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal }) {
@@ -137,6 +143,7 @@ async function generateSalesResponse({ message, business_profile, persona, hebre
 Mode: SALES. Your goal is to qualify the lead and push toward: ${cta_goal}.
 Use the persona's language patterns EXACTLY. Ask ONE question max. Keep it SHORT (1-4 sentences).
 CTA decision: ${intent.cta_decision}.
+${MISSING_DETAILS_RULE}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
 
@@ -151,6 +158,7 @@ async function generateSupportResponse({ message, business_profile, persona, heb
 Mode: SUPPORT. Your goal is to resolve the customer's question or issue fully.
 Do NOT push sales or CTA. Focus entirely on helping them.
 Be warm, clear, and concise. 1-4 sentences.
+${MISSING_DETAILS_RULE}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -176,6 +184,7 @@ ${isFrustrated
     : 'Part 2 — Add ONE soft forward-moving statement or gentle question (never a hard push)'}
 
 Keep total response SHORT (2-5 sentences max). Sound natural.
+${MISSING_DETAILS_RULE}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
