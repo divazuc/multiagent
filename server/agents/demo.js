@@ -154,10 +154,33 @@ export async function runDemo({ message, session_id, context }) {
 
     const draft = draftRow?.draft_setup_data ?? {};
     const demoAnswers = draft.demo_answers ?? {};
-    const answeredKeys = Object.keys(demoAnswers);
     const total = DEMO_QUESTIONS.length;
 
-    // Find next unanswered question
+    if (message === 'start') {
+      // Initialize draft
+      await supabase.from('setup_drafts').upsert(
+        { session_id, business_id: context.business_id, draft_setup_data: { ...draft, demo_answers: demoAnswers }, updated_at: new Date().toISOString() },
+        { onConflict: 'session_id' }
+      );
+    } else if (message) {
+      // The user's message answers the first still-unanswered question
+      const current = DEMO_QUESTIONS.find(q => !demoAnswers[q.key]);
+      if (current) {
+        demoAnswers[current.key] = message;
+        await supabase.from('setup_drafts').upsert(
+          {
+            session_id,
+            business_id: context.business_id,
+            draft_setup_data: { ...draft, demo_answers: demoAnswers },
+            current_setup_stage: `demo_${current.key}`,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'session_id' }
+        );
+      }
+    }
+
+    // Next unanswered question — computed AFTER saving the current answer
     const nextQuestion = DEMO_QUESTIONS.find(q => !demoAnswers[q.key]);
 
     if (!nextQuestion) {
@@ -199,29 +222,6 @@ export async function runDemo({ message, session_id, context }) {
       };
     }
 
-    // Save current answer (message = answer to previous question)
-    const prevQuestion = DEMO_QUESTIONS[answeredKeys.length - 1] ?? null;
-    if (prevQuestion && message && message !== 'start') {
-      demoAnswers[prevQuestion.key] = message;
-      await supabase.from('setup_drafts').upsert(
-        {
-          session_id,
-          business_id: context.business_id,
-          draft_setup_data: { ...draft, demo_answers: demoAnswers },
-          current_setup_stage: `demo_${nextQuestion.key}`,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'session_id' }
-      );
-    } else if (message === 'start') {
-      // Initialize draft
-      await supabase.from('setup_drafts').upsert(
-        { session_id, business_id: context.business_id, draft_setup_data: { demo_answers: {} }, updated_at: new Date().toISOString() },
-        { onConflict: 'session_id' }
-      );
-    }
-
-    const currentIndex = answeredKeys.length + (message !== 'start' && prevQuestion ? 0 : 0);
     const displayIndex = DEMO_QUESTIONS.indexOf(nextQuestion) + 1;
 
     const response = `*שאלה ${displayIndex}/${total} — ${nextQuestion.category}*\n\n${nextQuestion.question}${nextQuestion.hint ? `\n\n_💡 ${nextQuestion.hint}_` : ''}`;
