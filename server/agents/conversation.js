@@ -1,4 +1,4 @@
-// WA_03 + WA_05 replacement — intent detection, response generation, validation
+﻿// WA_03 + WA_05 replacement — intent detection, response generation, validation
 // Supports three agent modes: sales / support / hybrid
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -83,6 +83,21 @@ export async function runConversation({ message, session_id, context }) {
 
 // ── Intent detection ──────────────────────────────────────────────────────────
 
+// Bot identity (admin-managed): the name the bot introduces itself with and
+// its grammatical gender — critical for Hebrew first-person forms.
+function identityText(persona) {
+  const parts = [];
+  if (persona?.bot_name) {
+    parts.push(`Your name is "${persona.bot_name}" — introduce yourself by this name when greeting or when asked who you are.`);
+  }
+  if (persona?.bot_gender === 'male') {
+    parts.push('Speak Hebrew in consistent MASCULINE first-person forms (שמח, מעביר, אשמח לעזור לך).');
+  } else if (persona?.bot_gender === 'female') {
+    parts.push('Speak Hebrew in consistent FEMININE first-person forms (שמחה, מעבירה, אשמח לעזור לך).');
+  }
+  return parts.length ? '\n' + parts.join(' ') : '';
+}
+
 // Per-business policy (admin-managed): named escalation triggers and
 // forbidden topics, stored in business_profiles.guardrails.
 function policyText(guardrails) {
@@ -156,7 +171,7 @@ async function generateSalesResponse({ message, business_profile, persona, hebre
 Mode: SALES. Your goal is to qualify the lead and push toward: ${cta_goal}.
 Use the persona's language patterns EXACTLY. Ask ONE question max. Keep it SHORT (1-4 sentences).
 CTA decision: ${intent.cta_decision}.
-${MISSING_DETAILS_RULE}${policyText(guardrails)}
+${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
 
@@ -171,7 +186,7 @@ async function generateSupportResponse({ message, business_profile, persona, heb
 Mode: SUPPORT. Your goal is to resolve the customer's question or issue fully.
 Do NOT push sales or CTA. Focus entirely on helping them.
 Be warm, clear, and concise. 1-4 sentences.
-${MISSING_DETAILS_RULE}${policyText(guardrails)}
+${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -197,7 +212,7 @@ ${isFrustrated
     : 'Part 2 — Add ONE soft forward-moving statement or gentle question (never a hard push)'}
 
 Keep total response SHORT (2-5 sentences max). Sound natural.
-${MISSING_DETAILS_RULE}${policyText(guardrails)}
+${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -306,3 +321,4 @@ async function humanDelay(text, answerLength) {
 }
 
 function ok(result) { return { status: 'success', result, error: null }; }
+

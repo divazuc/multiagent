@@ -54,6 +54,9 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
         const s = body.result ?? {}
         const g = s.guardrails ?? {}
         setState({
+          persona: s.persona ?? {},
+          bot_name: s.persona?.bot_name ?? '',
+          bot_gender: s.persona?.bot_gender ?? 'female',
           guardrails: g,
           escalation_points: g.escalation_points ?? [],
           escalation_custom: g.escalation_custom ?? '',
@@ -87,6 +90,11 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
     setSaving(true); setError(null)
     try {
       const updates = {
+        persona: {
+          ...state.persona,
+          bot_name: state.bot_name.trim(),
+          bot_gender: state.bot_gender,
+        },
         guardrails: {
           ...state.guardrails,
           escalation_points: state.escalation_points,
@@ -132,6 +140,26 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
         {!state && !error && <div style={{ marginTop: 20, color: 'var(--text-muted)', fontSize: 13 }}>טוען…</div>}
 
         {state && <>
+          <div style={box.sec}>
+            <div style={box.secTitle}>זהות הבוט</div>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>שם שהבוט מזדהה בו (ריק = בלי שם)</div>
+                <input style={box.input} value={state.bot_name} placeholder="למשל: ליבי"
+                       onChange={e => setState(s => ({ ...s, bot_name: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[{ v: 'female', l: 'לשון נקבה' }, { v: 'male', l: 'לשון זכר' }].map(o => (
+                  <button key={o.v}
+                          style={{ ...box.btn, ...(state.bot_gender === o.v ? { borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: 700 } : {}) }}
+                          onClick={() => setState(s => ({ ...s, bot_gender: o.v }))}>
+                    {o.l}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div style={box.sec}>
             <div style={box.secTitle}>נקודות אסקלציה — מתי הבוט מעביר לנציג אנושי</div>
             <CheckGroup

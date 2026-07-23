@@ -195,7 +195,15 @@ export async function runDemo({ message, session_id, context }) {
       const voice = await extractVoice(demoAnswers);
 
       if (voice && context.business_id) {
+        // Merge with the existing persona — admin-set fields like bot_name /
+        // bot_gender must survive the voice extraction.
+        const { data: existingProfile } = await supabase
+          .from('business_profiles')
+          .select('persona')
+          .eq('business_id', context.business_id)
+          .maybeSingle();
         const persona = {
+          ...(existingProfile?.persona ?? {}),
           tone: voice.tone ?? [],
           answer_length: voice.answer_length ?? 'medium',
           emoji_style: voice.emoji_style ?? 'light',

@@ -190,6 +190,8 @@ export function DemoSettings({ api, showToast }) {
       followup_delay_days: s.followup_delay_days ?? 2,
       followup_message: s.followup_message ?? '',
       guardrails: s.guardrails ?? {},
+      bot_name: s.persona?.bot_name ?? '',
+      bot_gender: s.persona?.bot_gender ?? '',
     })).catch(() => setSettings(null))
   }, [api])
 
@@ -279,6 +281,13 @@ export function DemoSettings({ api, showToast }) {
           <h3>🔒 מדיניות הבוט</h3>
           <span>מנוהל על ידינו · לקריאה בלבד</span>
         </div>
+
+        {(settings.bot_name || settings.bot_gender) && (
+          <div className="st-ro-line">
+            🤖 {settings.bot_name ? 'הבוט מזדהה בשם "' + settings.bot_name + '"' : 'הבוט ללא שם מוגדר'}
+            {settings.bot_gender ? ' · מדבר בלשון ' + (settings.bot_gender === 'male' ? 'זכר' : 'נקבה') : ''}
+          </div>
+        )}
 
         <div className="st-ro-subtitle">מתי הבוט מעביר לנציג אנושי</div>
         {esc.length > 0 ? (
