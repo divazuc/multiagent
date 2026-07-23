@@ -1,4 +1,7 @@
 import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { studioAuth } from './lib/auth.js';
 import { normalizeMessage } from './lib/normalize.js';
 import { loadContext } from './lib/context.js';
 import { saveConversation, saveSetupState } from './lib/db.js';
@@ -26,8 +29,19 @@ async function loadAgents() {
 }
 
 const app = express();
+app.set('trust proxy', 1); // Railway sits behind a proxy — needed for real client IPs
+app.use(helmet());
 // rawBody is needed for Meta's X-Hub-Signature-256 HMAC validation
-app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
+
+// Rate limiting (SECURITY_AUDIT_SPEC D-02): generous global ceiling, a
+// higher lane for the Meta webhook, and strict brute-force protection on
+// the portal login.
+app.use('/wa-inbound', rateLimit({ windowMs: 15 * 60 * 1000, max: 1800, standardHeaders: true, legacyHeaders: false }));
+app.use('/portal/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: { ok: false, error: 'יותר מדי ניסיונות התחברות — נסו שוב בעוד רבע שעה' } }));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false,
+  skip: (req) => req.path === '/wa-inbound' }));
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -41,6 +55,10 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+// Operator auth — everything below except the declared public surface
+// (flag-gated via STUDIO_AUTH_REQUIRED; see lib/auth.js)
+app.use(studioAuth);
 
 // ── Data proxy (replaces direct anon Supabase calls from the frontend) ────────
 app.use('/data', dataRouter);
