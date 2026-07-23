@@ -418,6 +418,9 @@ ${convoText}
 // Israeli Yom Tov dates — businesses closed (5785–5786 / 2024–2026)
 async function upsertContact({ business_id, phone, status, incrementMessage = false }) {
   if (!business_id || !phone) return;
+  // Studio/test sessions use synthetic session ids — only real phone numbers
+  // become contacts in the client-facing lead inbox.
+  if (!/^\d{10,15}$/.test(String(phone))) return;
   try {
     const { supabase } = await import('./lib/supabase.js');
     const now = new Date().toISOString();

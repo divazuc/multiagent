@@ -806,3 +806,23 @@ body {
 .st-ro-line { margin-top: 10px; font-size: 13.5px; color: var(--ink-soft); line-height: 1.5; }
 .st-ro-subtitle { margin-top: 14px; font-size: 13px; font-weight: 800; color: var(--ink); }
 .st-mode-btn:disabled { opacity: .6; cursor: default; }
+
+/* ══ Mobile layout: no horizontal shift, calm scrolling ══════════════════ */
+
+html { -webkit-text-size-adjust: 100%; }
+html, body { overflow-x: hidden; }
+.cd-page { max-width: 100vw; overflow-x: clip; }
+
+@media (max-width: 900px) {
+  /* the inbox grid has a fixed 400px column — stack it on phones */
+  .cd-grid { grid-template-columns: 1fr; }
+  .cd-lead-list { max-height: 420px; }
+}
+
+@media (max-width: 700px) {
+  .cd-kpis { grid-template-columns: repeat(2, 1fr); }
+  .cd-main { padding: 0 14px 24px; }
+  .cd-header-inner { padding: 0 14px; }
+  .ov-hero { padding: 22px 18px 20px; }
+  .cd-thread-body { max-height: 380px; }
+}
