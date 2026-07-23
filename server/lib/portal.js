@@ -86,7 +86,10 @@ async function assertOwned(table, id, businessId) {
 }
 
 // ── Business-scoped ops (business_id always injected from the token) ─────────
-const SETTINGS_COLUMNS = ['working_hours', 'agent_active', 'answer_after_hours', 'after_hours_message'];
+const SETTINGS_COLUMNS = [
+  'working_hours', 'agent_active', 'answer_after_hours', 'after_hours_message',
+  'followup_enabled', 'followup_delay_days', 'followup_message',
+];
 const CONTACT_COLUMNS = ['name', 'notes', 'status'];
 const FAQ_COLUMNS = ['category', 'question', 'answer', 'is_active', 'suggested'];
 
@@ -110,6 +113,11 @@ const ops = {
     const clean = {};
     for (const k of FAQ_COLUMNS) if (k in (updates ?? {})) clean[k] = updates[k];
     return runStudioOp('updateFaqItem', [id, clean]);
+  },
+
+  async deleteFaqItem(bizId, id) {
+    await assertOwned('knowledge_items', id, bizId);
+    return runStudioOp('deleteFaqItem', [id]);
   },
 
   async updateBotSettings(bizId, updates) {

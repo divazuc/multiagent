@@ -12,6 +12,7 @@ export function DemoFaq({ api, showToast }) {
   // modal: null | {mode:'add'} | {mode:'edit', id}
   const [modal, setModal] = useState(null)
   const [draft, setDraft] = useState({ category: 'general', question: '', answer: '' })
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     api.loadFaqItems().then(setItems).catch(() => setItems([]))
@@ -36,12 +37,22 @@ export function DemoFaq({ api, showToast }) {
 
   function openEdit(item) {
     setDraft({ category: item.category || 'general', question: item.question, answer: item.answer })
+    setConfirmDelete(false)
     setModal({ mode: 'edit', id: item.id })
   }
 
   function openAdd() {
     setDraft({ category: 'general', question: '', answer: '' })
+    setConfirmDelete(false)
     setModal({ mode: 'add' })
+  }
+
+  async function deleteItem() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    await api.deleteFaqItem(modal.id)
+    setItems(prev => prev.filter(i => i.id !== modal.id))
+    setModal(null)
+    showToast('השאלה נמחקה מהמאגר')
   }
 
   async function saveModal() {
@@ -135,6 +146,12 @@ export function DemoFaq({ api, showToast }) {
               onChange={e => setDraft(d => ({ ...d, answer: e.target.value }))}
             />
             <div className="fq-modal-actions">
+              {modal.mode === 'edit' && (
+                <button className={`cd-qa fq-delete ${confirmDelete ? 'confirm' : ''}`} onClick={deleteItem}>
+                  {confirmDelete ? 'לאשר מחיקה?' : 'מחיקה'}
+                </button>
+              )}
+              <span className="fq-modal-spacer" />
               <button className="cd-qa" onClick={() => setModal(null)}>ביטול</button>
               <button className="cd-qa cd-qa-primary" onClick={saveModal} disabled={!draft.question.trim() || !draft.answer.trim()}>
                 שמירה
@@ -174,6 +191,10 @@ export function DemoSettings({ api, showToast }) {
         answer_after_hours: s.answer_after_hours !== false,
         jewish_holidays: s.working_hours?.jewish_holidays !== false,
         days,
+        after_hours_message: s.after_hours_message ?? '',
+        followup_enabled: s.followup_enabled === true,
+        followup_delay_days: s.followup_delay_days ?? 2,
+        followup_message: s.followup_message ?? '',
       })
     }).catch(() => setSettings(null))
   }, [api])
@@ -209,6 +230,10 @@ export function DemoSettings({ api, showToast }) {
         working_hours,
         agent_active: settings.agent_active,
         answer_after_hours: settings.answer_after_hours,
+        after_hours_message: settings.after_hours_message.trim() || null,
+        followup_enabled: settings.followup_enabled,
+        followup_delay_days: Math.min(Math.max(Number(settings.followup_delay_days) || 2, 1), 14),
+        followup_message: settings.followup_message.trim() || null,
       })
       showToast('ההגדרות נשמרו — נכנסות לתוקף מיד ✓')
     } catch {
@@ -281,6 +306,37 @@ export function DemoSettings({ api, showToast }) {
           <input type="checkbox" checked={settings.jewish_holidays} onChange={e => setSettings(s => ({ ...s, jewish_holidays: e.target.checked }))} />
           סגור בחגי ישראל (הסוכן מזהה את מועדי החגים אוטומטית)
         </label>
+        <label className="st-field-label" htmlFor="st-ahm">הודעה אוטומטית מחוץ לשעות הפעילות</label>
+        <textarea id="st-ahm" className="st-textarea" rows={2}
+                  placeholder="למשל: תודה שפניתם! נחזור אליכם מיד עם פתיחת הקליניקה 🤍"
+                  value={settings.after_hours_message}
+                  onChange={e => setSettings(s => ({ ...s, after_hours_message: e.target.value }))} />
+      </section>
+
+      {/* follow-up automation */}
+      <section className="st-card">
+        <div className="st-fu-head">
+          <h3>פולו-אפ אוטומטי</h3>
+          <label className="fq-switch">
+            <input type="checkbox" checked={settings.followup_enabled}
+                   onChange={e => setSettings(s => ({ ...s, followup_enabled: e.target.checked }))} />
+            <i />
+          </label>
+        </div>
+        <div className={settings.followup_enabled ? '' : 'st-muted-block'}>
+          <div className="st-fu-row">
+            ליד שהתעניין ולא השלים תיאום — הסוכן חוזר אליו אחרי
+            <input type="number" className="st-fu-days" min="1" max="14"
+                   value={settings.followup_delay_days}
+                   onChange={e => setSettings(s => ({ ...s, followup_delay_days: e.target.value }))} />
+            ימים
+          </div>
+          <label className="st-field-label" htmlFor="st-fum">נוסח הפולו-אפ (נשלח כתבנית מאושרת בוואטסאפ)</label>
+          <textarea id="st-fum" className="st-textarea" rows={2}
+                    placeholder="היי! רק רציתי לבדוק אם יש לך שאלות נוספות 😊"
+                    value={settings.followup_message}
+                    onChange={e => setSettings(s => ({ ...s, followup_message: e.target.value }))} />
+        </div>
       </section>
 
       <button className="st-save" onClick={save} disabled={saving}>

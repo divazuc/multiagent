@@ -108,6 +108,10 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
   const [composer, setComposer] = useState(null) // null | {mode:'followup'|'free', text}
   const [toast, setToast] = useState(null)
 
+  // lead detail editing
+  const [editingLead, setEditingLead] = useState(false)
+  const [leadDraft, setLeadDraft] = useState({ name: '', notes: '' })
+
   useEffect(() => {
     (async () => {
       try {
@@ -145,6 +149,7 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
     setSelected(lead)
     setQualification(null)
     setComposer(null)
+    setEditingLead(false)
     if (lead._sample) { setMessages(SAMPLE_MESSAGES); return }
     setLoadingThread(true)
     try {
@@ -212,6 +217,23 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
     if (composer.mode === 'followup' && selected && !selected._sample) {
       setLeads(prev => prev.map(l => l.id === selected.id ? { ...l, status: 'followup_sent' } : l))
       setSelected(prev => ({ ...prev, status: 'followup_sent' }))
+    }
+  }
+
+  function startLeadEdit() {
+    setLeadDraft({ name: selected?.name || '', notes: selected?.notes || '' })
+    setEditingLead(true)
+  }
+
+  async function saveLeadEdit() {
+    const updates = { name: leadDraft.name.trim() || null, notes: leadDraft.notes.trim() || null }
+    const updated = { ...selected, ...updates }
+    setSelected(updated)
+    setLeads(prev => prev.map(l => l.id === selected.id ? updated : l))
+    setEditingLead(false)
+    showToast('פרטי הליד עודכנו ✓')
+    if (!selected._sample) {
+      try { await api.updateContact(selected.id, updates) } catch { /* optimistic */ }
     }
   }
 
@@ -414,7 +436,28 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
                     <span className={`cd-chip ${(STATUS_LABELS[selected.status] || {}).cls || 'chip-done'}`} style={{ marginRight: 'auto' }}>
                       {(STATUS_LABELS[selected.status] || {}).label || selected.status}
                     </span>
+                    <button className="fq-tool" onClick={startLeadEdit}>עריכה</button>
                   </div>
+
+                  {selected.notes && !editingLead && (
+                    <div className="cd-lead-notes">📝 {selected.notes}</div>
+                  )}
+
+                  {editingLead && (
+                    <div className="cd-lead-edit">
+                      <label className="st-field-label" htmlFor="cd-le-name">שם הליד</label>
+                      <input id="cd-le-name" value={leadDraft.name} placeholder="שם מלא"
+                             onChange={e => setLeadDraft(d => ({ ...d, name: e.target.value }))} />
+                      <label className="st-field-label" htmlFor="cd-le-notes">הערות פנימיות (לא נשלחות ללקוח)</label>
+                      <textarea id="cd-le-notes" rows={2} value={leadDraft.notes}
+                                placeholder="למשל: ביקשה שיחזרו אחרי 17:00"
+                                onChange={e => setLeadDraft(d => ({ ...d, notes: e.target.value }))} />
+                      <div className="cd-lead-edit-actions">
+                        <button className="cd-qa" onClick={() => setEditingLead(false)}>ביטול</button>
+                        <button className="cd-qa cd-qa-primary" onClick={saveLeadEdit}>שמירה</button>
+                      </div>
+                    </div>
+                  )}
 
                   {qualification && (
                     <div className="cd-qual">

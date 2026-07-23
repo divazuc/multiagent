@@ -295,11 +295,17 @@ const ops = {
     if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
     const { data, error } = await supabase
       .from('business_profiles')
-      .select('agent_active, answer_after_hours, working_hours, after_hours_message')
+      .select('agent_active, answer_after_hours, working_hours, after_hours_message, followup_enabled, followup_delay_days, followup_message')
       .eq('business_id', businessId)
       .maybeSingle();
     if (error) throw error;
     return data ?? {};
+  },
+
+  async deleteFaqItem(id) {
+    if (!id) { const e = new Error('id is required'); e.status = 400; throw e; }
+    const { error } = await supabase.from('knowledge_items').delete().eq('id', id);
+    if (error) throw error;
   },
 
   // ── Business overview (client dashboard) ───────────────────────────────────

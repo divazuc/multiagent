@@ -750,3 +750,48 @@ body {
 }
 .pt-login-btn { margin-top: 18px; align-self: stretch; }
 .pt-login-foot { margin-top: 18px; font-size: 12.5px; color: var(--ink-faint); }
+
+/* ══ Settings v2 (after-hours msg, follow-up), FAQ delete, lead edit ═════ */
+
+.st-field-label {
+  display: block; font-size: 12px; font-weight: 700; color: var(--ink-faint);
+  margin: 14px 0 5px;
+}
+.st-textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; font: inherit; font-size: 14.5px; line-height: 1.5;
+  background: var(--paper); color: var(--ink); resize: vertical;
+}
+.st-textarea:focus { outline: 2px solid var(--green); border-color: transparent; }
+
+.st-fu-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-fu-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 14.5px; color: var(--ink); margin-top: 12px;
+}
+.st-fu-days {
+  width: 64px; border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; font: inherit; font-size: 14px; text-align: center;
+  background: var(--paper); color: var(--ink);
+}
+.st-fu-days:focus { outline: 2px solid var(--green); border-color: transparent; }
+.st-muted-block { opacity: .45; pointer-events: none; }
+
+.fq-modal-spacer { flex: 1; }
+.fq-delete { color: #b91c1c; border-color: #fecaca; }
+.fq-delete:hover { background: #fee2e2; border-color: #fca5a5; }
+.fq-delete.confirm { background: #b91c1c; border-color: #b91c1c; color: #fff; font-weight: 800; }
+
+.cd-lead-notes {
+  margin-top: 12px; font-size: 13.5px; color: var(--ink-soft);
+  background: var(--amber-soft); border-radius: 10px; padding: 9px 13px; line-height: 1.5;
+}
+.cd-lead-edit { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--line); }
+.cd-lead-edit input, .cd-lead-edit textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  padding: 9px 13px; font: inherit; font-size: 14.5px;
+  background: var(--paper); color: var(--ink);
+}
+.cd-lead-edit textarea { resize: vertical; }
+.cd-lead-edit input:focus, .cd-lead-edit textarea:focus { outline: 2px solid var(--green); border-color: transparent; }
+.cd-lead-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }

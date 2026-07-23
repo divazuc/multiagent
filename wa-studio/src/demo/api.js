@@ -30,6 +30,7 @@ export function createDemoApi(bizId) {
     getOverviewStats: (days) => rpc('getOverviewStats', bizId, days),
     loadFaqItems: () => rpc('loadFaqItems', bizId),
     updateFaqItem: (id, updates) => rpc('updateFaqItem', id, updates),
+    deleteFaqItem: (id) => rpc('deleteFaqItem', id),
     addFaqItem: (fields) => rpc('addFaqItem', bizId, fields),
     getBotSettings: () => rpc('getBotSettings', bizId),
     async updateBotSettings(updates) {
@@ -77,6 +78,7 @@ export function createPortalApi(token, business, onAuthExpired) {
     getOverviewStats: (days) => rpc('getOverviewStats', days),
     loadFaqItems: () => rpc('loadFaqItems'),
     updateFaqItem: (id, updates) => rpc('updateFaqItem', id, updates),
+    deleteFaqItem: (id) => rpc('deleteFaqItem', id),
     addFaqItem: (fields) => rpc('addFaqItem', fields),
     getBotSettings: () => rpc('getBotSettings'),
     updateBotSettings: (updates) => rpc('updateBotSettings', updates),
