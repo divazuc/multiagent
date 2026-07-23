@@ -368,8 +368,13 @@ export default function App() {
             <DemoWizard
               session={activeSession}
               onCompleted={async () => {
+                // Keep the wizard mounted so the completion card + activation
+                // CTA stay visible; the server already set the session live.
                 await refreshSessions()
-                setActiveSession(prev => prev ? { ...prev, session_mode: 'live', setup_completed: true } : prev)
+              }}
+              onActivate={async () => {
+                setActiveSession(prev => prev ? { ...prev, setup_completed: true } : prev)
+                await handleActivateLive()
               }}
               onSkipToLive={async () => {
                 await handleActivateLive()

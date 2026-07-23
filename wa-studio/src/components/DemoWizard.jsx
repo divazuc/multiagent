@@ -14,7 +14,7 @@ const CATEGORY_ICONS = {
 
 const MIN_QUESTIONS = 3
 
-export default function DemoWizard({ session, onCompleted, onSkipToLive }) {
+export default function DemoWizard({ session, onCompleted, onSkipToLive, onActivate }) {
   const [messages, setMessages] = useState([])
   const [input, setInput]       = useState('')
   const [sending, setSending]   = useState(false)
@@ -134,6 +134,24 @@ export default function DemoWizard({ session, onCompleted, onSkipToLive }) {
                   {voiceProfile.voice_summary && <div style={{ marginBottom:4 }}>📝 {voiceProfile.voice_summary}</div>}
                   {voiceProfile.tone?.length > 0 && <div style={{ color:'var(--text-muted)' }}>טון: {voiceProfile.tone.join(', ')}</div>}
                   {voiceProfile.emoji_style && <div style={{ color:'var(--text-muted)' }}>אימוג\'י: {voiceProfile.emoji_style}</div>}
+                </div>
+              )}
+              {onActivate && (
+                <button
+                  onClick={onActivate}
+                  style={{
+                    width:'100%', marginTop:14, padding:'13px',
+                    borderRadius:10, border:'none', cursor:'pointer',
+                    background:'var(--accent)', color:'#fff',
+                    fontSize:14, fontWeight:800, fontFamily:'inherit',
+                  }}
+                >
+                  🚀 להפעלת הבוט שלכם
+                </button>
+              )}
+              {onActivate && (
+                <div style={{ marginTop:6, fontSize:11, color:'var(--text-muted)', textAlign:'center' }}>
+                  הבוט ייכנס לעבודה ויתחיל לענות ללקוחות בקול שלמד
                 </div>
               )}
             </div>
