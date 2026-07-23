@@ -7,7 +7,7 @@ const QUALIFICATION_FIELDS = ['need', 'scope', 'budget', 'timeline', 'urgency'];
 
 export async function loadContext({ message, session_id, phone_number_id = null }) {
   try {
-    const { data: session, error: sessionErr } = await supabase
+    let { data: session, error: sessionErr } = await supabase
       .from('sessions')
       .select('session_id, business_id, session_mode, current_stage, current_setup_stage, setup_completed, qualification_progress')
       .eq('session_id', session_id)
@@ -15,9 +15,10 @@ export async function loadContext({ message, session_id, phone_number_id = null 
 
     if (sessionErr) return err(`Session lookup failed: ${sessionErr.message}`);
 
-    // Brand-new session — no DB row exists at all
+    // Brand-new session — no DB row exists at all. Resolve the business by the
+    // receiving WA phone number, create the session, then fall through so the
+    // FIRST reply already has the full business profile + knowledge loaded.
     if (!session) {
-      // Identify business by the receiving WA phone number
       let business_id = null;
       if (phone_number_id) {
         const { data: biz } = await supabase
@@ -34,20 +35,14 @@ export async function loadContext({ message, session_id, phone_number_id = null 
         { session_id, business_id, session_mode: 'live', current_stage: 'greeting', setup_completed: true },
         { onConflict: 'session_id', ignoreDuplicates: true }
       );
-      return ok({
-        business_id,
+      session = {
+        session_id, business_id,
         session_mode: 'live',
-        setup_completed: true,
         current_stage: 'greeting',
-        draft_setup_data: {},
-        business_profile: {},
-        persona: {},
-        guardrails: {},
-        hebrew_patterns: {},
-        conversation_history: [],
-        missing_qualification_data: [...QUALIFICATION_FIELDS],
+        current_setup_stage: null,
+        setup_completed: true,
         qualification_progress: {},
-      });
+      };
     }
 
     // Existing setup session — load draft; existing live session — load profile + history
