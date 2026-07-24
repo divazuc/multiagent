@@ -8,6 +8,7 @@ import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from './lib/wa-send.js';
 import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedFallback } from './lib/wa-webhook.js';
+import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import dataRouter from './routes/data.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
@@ -460,20 +461,7 @@ async function upsertContact({ business_id, phone, status, incrementMessage = fa
   }
 }
 
-const JEWISH_HOLIDAYS = new Set([
-  '2024-10-02','2024-10-03',                         // Rosh Hashana
-  '2024-10-11','2024-10-12',                         // Yom Kippur eve + day
-  '2024-10-16','2024-10-17',                         // Sukkot I–II
-  '2024-10-23','2024-10-24',                         // Shmini Atzeret + Simchat Torah
-  '2025-04-12','2025-04-13','2025-04-18','2025-04-19', // Passover
-  '2025-06-01','2025-06-02',                         // Shavuot
-  '2025-09-22','2025-09-23',                         // Rosh Hashana
-  '2025-10-01','2025-10-02',                         // Yom Kippur eve + day
-  '2025-10-06','2025-10-07',                         // Sukkot I–II
-  '2025-10-13','2025-10-14',                         // Shmini Atzeret + Simchat Torah
-  '2026-04-01','2026-04-02','2026-04-07','2026-04-08', // Passover
-  '2026-05-21','2026-05-22',                         // Shavuot
-]);
+// (moved to lib/holidays.js — shared with the calendar module)
 
 function isWithinWorkingHours(working_hours) {
   if (!working_hours?.days) return true;
