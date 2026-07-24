@@ -66,6 +66,11 @@ app.use('/data', dataRouter);
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+// Sits behind studioAuth (not in PUBLIC_PATHS) — the frontend login screen
+// calls it with a candidate key to validate before storing it.
+app.get('/auth/check', (_req, res) =>
+  res.json({ ok: true, enforced: process.env.STUDIO_AUTH_REQUIRED === 'true' }));
+
 // ── Studio RPC — whitelisted DB ops for the wa-studio frontend ────────────────
 app.post('/studio/rpc', async (req, res) => {
   const { fn, args } = req.body ?? {};

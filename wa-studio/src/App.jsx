@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import Login from './components/Login.jsx'
+import { getAdminKey, clearAdminKey, installAdminFetch } from './lib/adminAuth.js'
 import { logError } from './components/ErrorBoundary.jsx'
 import SessionPanel from './components/SessionPanel.jsx'
 import ChatInterface from './components/ChatInterface.jsx'
@@ -17,8 +18,7 @@ const WEBHOOK_PATH = AGENT_BASE ? `${AGENT_BASE}/wa-inbound` : '/api/agent/wa-in
 
 export default function App() {
   const isDev = import.meta.env.DEV
-  // TODO: re-enable login when auth issue is resolved
-  const [authed, setAuthed] = useState(() => true)
+  const [authed, setAuthed] = useState(() => !!getAdminKey())
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [messages, setMessages] = useState([])
@@ -33,6 +33,9 @@ export default function App() {
   const [showSessions, setShowSessions] = useState(false)
   const [showRight, setShowRight] = useState(false)
   const [agentOnline, setAgentOnline] = useState(null)
+
+  // Must be registered before any data-loading effect fires its first fetch
+  installAdminFetch(() => { clearAdminKey(); setAuthed(false) })
 
   useEffect(() => {
     let alive = true
