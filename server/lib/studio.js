@@ -438,6 +438,49 @@ const ops = {
       config,
     };
   },
+
+  // ── Modules ────────────────────────────────────────────────────────────────
+  async getModules(businessId) {
+    const { MODULES } = await import('./modules/registry.js');
+    const { data, error } = await supabase.from('business_modules')
+      .select('module_key, enabled, settings, status, status_detail, updated_at')
+      .eq('business_id', businessId);
+    if (error) throw error;
+    const rows = data ?? [];
+    return Object.values(MODULES).map(def => {
+      const row = rows.find(r => r.module_key === def.key);
+      return {
+        key: def.key, name: def.name, adminUI: def.adminUI,
+        enabled: row?.enabled ?? false,
+        settings: { ...def.defaultSettings, ...(row?.settings ?? {}) },
+        status: row?.status ?? 'disconnected', status_detail: row?.status_detail ?? null,
+      };
+    });
+  },
+
+  async updateModule(businessId, moduleKey, { enabled, settings } = {}) {
+    const { MODULES } = await import('./modules/registry.js');
+    const def = MODULES[moduleKey];
+    if (!def) { const e = new Error('unknown module'); e.status = 400; throw e; }
+    const parsed = def.settingsSchema.safeParse(settings ?? {});
+    if (!parsed.success) {
+      const e = new Error('invalid settings: ' + parsed.error.issues.map(i => i.path.join('.') + ' ' + i.message).join('; '));
+      e.status = 400; throw e;
+    }
+    const { error } = await supabase.from('business_modules').upsert({
+      business_id: businessId, module_key: moduleKey,
+      enabled: !!enabled, settings: parsed.data, updated_at: new Date().toISOString(),
+    }, { onConflict: 'business_id,module_key' });
+    if (error) throw error;
+    const { logModuleEvent } = await import('./modules/engine.js');
+    logModuleEvent(businessId, moduleKey, enabled ? 'enabled' : 'disabled', null);
+  },
+
+  async createConnectLink(businessId, moduleKey) {
+    const { signConnectState } = await import('../routes/oauth.js');
+    const base = process.env.PUBLIC_BASE_URL ?? 'https://wagent.divdev.co';
+    return { url: `${base}/oauth/google/start?state=${signConnectState(businessId, moduleKey)}` };
+  },
 };
 
 export async function runStudioOp(fn, args) {

@@ -8,7 +8,7 @@
 import crypto from 'node:crypto';
 
 const PUBLIC_PATHS = ['/health', '/wa-inbound'];
-const PUBLIC_PREFIXES = ['/portal/'];
+const PUBLIC_PREFIXES = ['/portal/', '/oauth/'];
 
 let warnedOff = false;
 

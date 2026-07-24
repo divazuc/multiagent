@@ -26,6 +26,20 @@ export async function listBusinesses() {
   return (await rpc('listBusinesses')) || []
 }
 
+// ── Modules ─────────────────────────────────────────────────────────────────
+
+export async function getModules(businessId) {
+  return (await rpc('getModules', businessId)) || []
+}
+
+export async function updateModule(businessId, moduleKey, payload) {
+  await rpc('updateModule', businessId, moduleKey, payload)
+}
+
+export async function createConnectLink(businessId, moduleKey) {
+  return rpc('createConnectLink', businessId, moduleKey)
+}
+
 export async function createBusiness({ name, slug, archetype, planType = 'basic', phone, isTest = false }) {
   return rpc('createBusiness', { name, slug, archetype, planType, phone, isTest })
 }

@@ -11,6 +11,7 @@ import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedF
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
 import dataRouter from './routes/data.js';
+import oauthRouter from './routes/oauth.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
   .split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '')); // strip quotes + trailing slash
@@ -64,6 +65,7 @@ app.use(studioAuth);
 
 // ── Data proxy (replaces direct anon Supabase calls from the frontend) ────────
 app.use('/data', dataRouter);
+app.use(oauthRouter);
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ ok: true }));
