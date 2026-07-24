@@ -2,6 +2,7 @@
 // Supports three agent modes: sales / support / hybrid
 
 import Anthropic from '@anthropic-ai/sdk';
+import { extractModuleAction } from '../lib/modules/actions.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL  = 'claude-sonnet-4-6';
@@ -40,13 +41,20 @@ export async function runConversation({ message, session_id, context }) {
     // ── Step 2: Generate response based on mode ───────────────────────────────
     let candidate;
 
+    const modules_context = context.modules_context ?? null;
+
     if (agent_mode === 'support') {
-      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails });
+      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context });
     } else if (agent_mode === 'hybrid') {
-      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails });
+      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context });
     } else {
-      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails });
+      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context });
     }
+
+    // Modules: the model may append an ACTION marker — extract it BEFORE
+    // validation so the rewrite loop never sees or mangles the marker.
+    const extracted = extractModuleAction(candidate);
+    candidate = extracted.text;
 
     // ── Step 3: Validate + rewrite loop ───────────────────────────────────────
     const validated = await validateAndFix({ candidate, persona, guardrails, intent, agent_mode });
@@ -74,6 +82,7 @@ export async function runConversation({ message, session_id, context }) {
       qualification_progress: intent.qualification_progress ?? {},
       language: intent.language ?? 'hebrew',
       rewrite_applied: validated.rewrite_applied,
+      module_action: extracted.action,
     });
 
   } catch (e) {
@@ -168,7 +177,7 @@ const MISSING_DETAILS_RULE = `Missing-details rule: if you offer or promise an a
 
 // ── Sales mode response ───────────────────────────────────────────────────────
 
-async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails }) {
+async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context }) {
   const lang = intent.language ?? 'hebrew';
   const system = `You are a sales representative for this business. Sound 100% human — NEVER like AI.
 Mode: SALES. Your goal is to qualify the lead and push toward: ${cta_goal}.
@@ -176,6 +185,7 @@ Use the persona's language patterns EXACTLY. Ask ONE question max. Keep it SHORT
 CTA decision: ${intent.cta_decision}.
 Business info: ${JSON.stringify(business_profile)}
 ${GROUNDING_RULE}
+${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
@@ -185,13 +195,14 @@ Persona: ${JSON.stringify(persona)}`;
 
 // ── Support mode response ─────────────────────────────────────────────────────
 
-async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails }) {
+async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context }) {
   const lang = intent.language ?? 'hebrew';
   const system = `You are a customer support representative for this business. Sound 100% human — NEVER like AI.
 Mode: SUPPORT. Your goal is to resolve the customer's question or issue fully.
 Do NOT push sales or CTA. Focus entirely on helping them.
 Be warm, clear, and concise. 1-4 sentences.
 ${GROUNDING_RULE}
+${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
@@ -202,7 +213,7 @@ Business info: ${JSON.stringify(business_profile)}`;
 
 // ── Hybrid mode response ──────────────────────────────────────────────────────
 
-async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails }) {
+async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context }) {
   const lang = intent.language ?? 'hebrew';
   const isFrustrated = ['frustrated', 'angry'].includes(intent.sentiment);
   const isHighIntent = ['high_intent', 'ready_to_buy'].includes(intent.detected_intent);
@@ -219,6 +230,7 @@ ${isFrustrated
 
 Keep total response SHORT (2-5 sentences max). Sound natural.
 ${GROUNDING_RULE}
+${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}

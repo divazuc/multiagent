@@ -9,6 +9,7 @@ import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from './lib/wa-send.js';
 import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedFallback } from './lib/wa-webhook.js';
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
+import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
 import dataRouter from './routes/data.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
@@ -250,6 +251,13 @@ async function runAgentPipeline(body) {
       }
     }
 
+    // Step 2c — Modules context (live mode only, non-fatal)
+    if (session_mode === 'live' && business_id) {
+      try {
+        context.modules_context = await buildModulesContext({ id: business_id, name: context.business_profile?.business_name ?? '' });
+      } catch (e) { console.error('[modules] context failed:', e.message); }
+    }
+
     // Step 3 — Route by session mode
     let agentResult;
 
@@ -284,12 +292,27 @@ async function runAgentPipeline(body) {
     const r = agentResult.result;
     const final_response = r?.response ?? r?.setup_response ?? '';
 
+    // Execute a module action the model requested (live mode only). The
+    // server is the only side-effect executor — the model just asks.
+    let moduleText = null;
+    if (session_mode === 'live' && business_id && r?.module_action) {
+      h = stepStart(run, 'module_action', { action: r.module_action });
+      const exec = await executeModuleAction(
+        { id: business_id, name: context.business_profile?.business_name ?? '' },
+        r.module_action,
+        { session_id },
+      );
+      moduleText = exec.text;
+      await stepDone(h, { text: moduleText });
+    }
+    const outbound_response = moduleText ? `${final_response}\n${moduleText}`.trim() : final_response;
+
     // Step 4 — Persist state
     if (session_mode === 'live') {
       h = stepStart(run, 'save_conversation', {});
       const saved = await saveConversation({
         session_id, business_id,
-        user_message: message, agent_response: final_response,
+        user_message: message, agent_response: outbound_response,
         stage: r.next_stage, action: r.action,
         qualification_progress: r.qualification_progress,
         cta_triggered: r.cta_triggered, escalate: r.escalate,
@@ -298,19 +321,22 @@ async function runAgentPipeline(body) {
       await stepDone(h, saved);
 
       // Fire FAQ suggest check asynchronously — non-blocking
-      if (business_id && message && final_response) {
-        checkAndSuggestFaq({ business_id, question: message, answer: final_response }).catch(() => {});
+      if (business_id && message && outbound_response) {
+        checkAndSuggestFaq({ business_id, question: message, answer: outbound_response }).catch(() => {});
       }
 
       // Send reply back to WhatsApp user
-      if (final_response && session_id && business_id) {
-        sendWhatsAppMessage({ to: session_id, text: final_response, businessId: business_id }).catch(e =>
+      if (outbound_response && session_id && business_id) {
+        sendWhatsAppMessage({ to: session_id, text: outbound_response, businessId: business_id }).catch(e =>
           console.error('[wa-send] non-blocking send failed:', e.message)
         );
       }
 
       // Non-blocking contact upsert + AI summary
-      const _contactStatus = r?.cta_triggered ? 'cta_triggered' : 'in_conversation';
+      const _bookingSucceeded = r?.module_action?.module === 'calendar' && moduleText
+        && !moduleText.includes('נתפס') && !moduleText.includes('לא זמין');
+      const _contactStatus = _bookingSucceeded ? 'meeting_booked'
+        : r?.cta_triggered ? 'cta_triggered' : 'in_conversation';
       upsertContact({ business_id, phone: session_id, status: _contactStatus, incrementMessage: true }).catch(() => {});
       generateContactSummary({ business_id, phone: session_id, session_id }).catch(() => {});
       logBillingEvent({ business_id, session_id, type: 'user_initiated' }).catch(() => {});
@@ -328,13 +354,13 @@ async function runAgentPipeline(body) {
       await stepDone(h, saved);
     }
 
-    await completeRun(run, { final_response, session_mode });
+    await completeRun(run, { final_response: outbound_response, session_mode });
 
     return {
       http: 200,
       body: {
         status: 'success',
-        message: final_response,
+        message: outbound_response,
         state: {
           session_id,
           stage: r?.next_setup_stage ?? r?.next_stage ?? context.current_stage,
@@ -443,7 +469,7 @@ async function upsertContact({ business_id, phone, status, incrementMessage = fa
       const updates = { last_activity_at: now, updated_at: now };
       if (incrementMessage) updates.message_count = (existing.message_count || 0) + 1;
       // Only upgrade status, never downgrade (new_lead → in_conversation → cta_triggered etc.)
-      const statusOrder = ['new_lead','in_conversation','cta_triggered','followup_sent','converted','cold','not_relevant'];
+      const statusOrder = ['new_lead','in_conversation','cta_triggered','meeting_booked','followup_sent','converted','cold','not_relevant'];
       const currentIdx = statusOrder.indexOf(existing.status);
       const newIdx = statusOrder.indexOf(status);
       if (status && newIdx > currentIdx) updates.status = status;
