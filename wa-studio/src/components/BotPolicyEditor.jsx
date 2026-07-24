@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ModulesSection from './ModulesSection.jsx'
 import { ESCALATION_OPTIONS, FORBIDDEN_OPTIONS, DAY_NAMES } from '../lib/botPolicy.js'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
@@ -249,6 +250,8 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
                       placeholder="נוסח הפולו-אפ (ריק = ברירת מחדל)"
                       onChange={e => setState(s => ({ ...s, followup_message: e.target.value }))} />
           </div>
+
+          <ModulesSection business={business} />
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
             <button style={box.btn} onClick={onClose}>ביטול</button>
