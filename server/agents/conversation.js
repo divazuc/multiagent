@@ -24,6 +24,7 @@ export async function runConversation({ message, session_id, context }) {
     const intent = await detectIntent({
       message, business_profile, missing_qualification_data,
       conversation_history, current_stage, agent_mode, guardrails,
+      has_modules: !!context.modules_context,
     });
 
     // Hard escalation — all modes
@@ -120,15 +121,22 @@ function policyText(guardrails) {
   return out;
 }
 
-async function detectIntent({ message, business_profile, missing_qualification_data, conversation_history, current_stage, agent_mode, guardrails }) {
+async function detectIntent({ message, business_profile, missing_qualification_data, conversation_history, current_stage, agent_mode, guardrails, has_modules }) {
   const modeInstruction = {
     sales:   'Bias toward CTA opportunities. Identify qualification gaps and push toward conversion.',
     support: 'Bias toward resolution. Focus on what the customer needs answered or resolved.',
     hybrid:  'Balance resolution with opportunity. Note if customer seems interested after their question.',
   }[agent_mode] ?? '';
 
+  // When automated capabilities (e.g. calendar booking) are active, a customer
+  // completing that flow — picking a slot, leaving name/phone for a booking —
+  // must NOT be routed to a human; the bot finishes the job itself.
+  const modulesHint = has_modules
+    ? '\nThe bot has ACTIVE automated capabilities it completes by itself (e.g. booking meetings from real calendar availability). A customer asking to schedule, choosing an offered slot, or giving their name/phone to complete a booking is a NORMAL bot flow: escalate=false for it. Escalate only on the escalation policy above or an explicit demand for a human.'
+    : '';
+
   const system = `You are an intent detection engine for a WhatsApp business agent.
-${modeInstruction}${policyText(guardrails)}
+${modeInstruction}${policyText(guardrails)}${modulesHint}
 Return ONLY valid JSON:
 {
   "detected_intent": "high_intent|info_seeking|complaint|objection|unclear|human_request|ready_to_buy",
