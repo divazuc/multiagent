@@ -367,6 +367,11 @@ async function runAgentPipeline(body) {
           session_id,
           stage: r?.next_setup_stage ?? r?.next_stage ?? context.current_stage,
         },
+        // The operator-facing wizards drive their progress, completion and
+        // activation UI off the agent's own result. Live replies deliberately
+        // do not carry it — /wa-inbound is the public Meta webhook and the
+        // conversation result holds internal qualification/escalation state.
+        ...(session_mode === 'live' ? {} : { result: r }),
       },
     };
 

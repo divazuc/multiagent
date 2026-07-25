@@ -369,6 +369,7 @@ export default function App() {
           ) : activeSession?.session_mode === 'learning'
           ? (
             <DemoWizard
+              key={activeSession.session_id}
               session={activeSession}
               onCompleted={async () => {
                 // Keep the wizard mounted so the completion card + activation
@@ -386,6 +387,7 @@ export default function App() {
           ) : activeSession?.session_mode === 'setup' && !activeSession?.setup_completed
           ? (
             <SetupWizard
+              key={activeSession.session_id}
               session={activeSession}
               draft={dbState.draft?.draft_setup_data ?? null}
               sending={sending}
