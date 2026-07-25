@@ -61,27 +61,59 @@ create index escalations_open_idx on escalations (business_id, status, created_a
 create index escalations_rep_msg_idx on escalations (rep_message_id);
 ```
 
-DDL committed as `wa-studio/docs/sql/2026-07-25-escalations.sql`; applied via the Supabase Management API (the `sbp_` token used for the modules DDL) or the SQL Editor. There is no automated migration runner in this repo.
+DDL for both new tables (`escalations` here and `business_contacts` in §1.2) is committed as `wa-studio/docs/sql/2026-07-25-relay.sql`, together with the non-destructive owner backfill; applied via the Supabase Management API (the `sbp_` token used for the modules DDL) or the SQL Editor. There is no automated migration runner in this repo.
 
-### 1.2 Configuration
+### 1.2 People — `business_contacts` (new table)
 
-Reuse the module-settings precedent rather than inventing a new surface.
+The relay needs to know two humans: the **owner** (the client) and the **rep** who actually answers escalations. Often the same person; sometimes someone running the sales and leads operation on the business's behalf.
 
-**Do not use `businesses.owner_notification_phone`.** The column exists but is verified dead — no server code reads it. The only working owner-notification path in the codebase is the calendar module's own `settings.owner_notify_phone` (`server/lib/modules/calendar/index.js:120-127`), which is the send precedent this feature copies.
+**Why a table and not `rep_*` columns.** Contact details are already duplicated across two tables under three names, and the copies have drifted — verified in production:
 
-New columns on `business_profiles`:
+| Concept | `businesses` | `business_profiles` |
+|---|---|---|
+| name | `contact_name` = "דיוה", `owner_name` = "Sally Wong" | `contact_name` = "סאלי וונג" |
+| email | `contact_email` | `contact_email` |
+| phone | `phone` = `054-8139333` | `contact_phone` = `054-8139333` |
+
+Adding `rep_name` / `rep_phone` / `rep_email` would create a third overlapping set — the same failure mode as `archetype` / `business_type` / `business_model` / `business_category`, which now cost more to untangle than they ever saved.
+
+**Do not use `businesses.owner_notification_phone`.** It sounds like the answer and is not: empty on all 5 businesses and read by zero lines of code. The only working owner-notification path is the calendar module's own `settings.owner_notify_phone` (`server/lib/modules/calendar/index.js:120-127`), which is the *send* precedent this feature copies.
+
+```sql
+create table business_contacts (
+  id           uuid primary key default gen_random_uuid(),
+  business_id  uuid not null references businesses(id),
+  role         text not null check (role in ('owner','rep')),
+  name         text,
+  phone        text,          -- digits only, normalised on write
+  email        text,
+  notes        text,          -- e.g. "מנהל מכירות, זמין א׳–ה׳ בבוקר"
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (business_id, role)
+);
+
+create index business_contacts_phone_idx on business_contacts (phone);
+```
+
+Service-role only; anon/authenticated REVOKEd, like `business_modules`.
+
+**Resolution rule.** The relay sends to `role='rep'`. If no rep row exists, it falls back to `role='owner'`. If neither has a phone, the relay is **disabled** for that business and escalation keeps today's behaviour.
+
+**Phone normalisation is mandatory on write**, using the rule already applied to lead phones (`server/index.js:457`, `/^\d{10,15}$/`). Production holds `054-8139333` unnormalised in *both* legacy columns; that is exactly why every tenant needed a manual WhatsApp-number fix. The backfill must normalise, not copy.
+
+**Backfill** (one-off, non-destructive): create an `owner` row per business from the best available of `businesses.contact_name` / `owner_name` / `business_profiles.contact_name`, plus email and phone. **Leave every legacy column in place and untouched** — the setup wizard still writes several of them and the clinic carries 98% of production traffic. Retiring the duplicates is real work and is deliberately *not* in this spec.
+
+Nudge settings stay on `business_profiles`, because they are bot behaviour rather than a person:
 
 | Column | Default | Meaning |
 |---|---|---|
-| `rep_phone` | null | E.164 digits. Null disables the relay entirely — escalation falls back to today's behaviour |
 | `rep_nudge_hours` | 2 | Hours between nudges |
 | `rep_nudge_max` | 4 | Ceiling on nudges per escalation (see §5) |
 
-`rep_phone` must be normalised on write with the same rule already applied to lead phones (`server/index.js:457`, `/^\d{10,15}$/`). The setup wizard's failure to normalise `contact_phone` is why every tenant needed a manual phone fix; do not repeat it.
-
 ## 2. Flow
 
-1. **Escalation raised.** `conversation.js` detects `intent.escalate`. If the business has a `rep_phone`, instead of returning the dead-end sentence it:
+1. **Escalation raised.** `conversation.js` detects `intent.escalate`. If the business resolves to a rep phone (§1.2), instead of returning the dead-end sentence it:
    - inserts an `escalations` row with the next `short_code` for that business,
    - snapshots the conversation summary — `contacts.ai_summary` when present. It is generated asynchronously and non-blocking (`index.js:343`), so on a first-message escalation it will be **null or stale**; fall back to the last few turns of `conversation_messages` rather than sending the rep an empty summary,
    - returns a **holding line** to the lead, generated in the bot's configured voice and gender rather than hardcoded.
@@ -106,7 +138,7 @@ New columns on `business_profiles`:
 
 ## 3. Correlation
 
-Resolved in this order, on any inbound message from a known `rep_phone`:
+Resolved in this order, on any inbound message from a phone listed in that business's `business_contacts` (either role — see §4):
 
 1. **Quoted message.** Meta's inbound payload carries `context.id` when a message is a reply. Match it against `escalations.rep_message_id`. Exact, no user discipline required.
 2. **Leading short code.** Message begins with `#N` (optionally followed by punctuation). Match on `(business_id, short_code, status='open')`.
@@ -120,12 +152,14 @@ Resolved in this order, on any inbound message from a known `rep_phone`:
 
 Rep messages arrive at the **same WABA number** as every lead's. Without a check, the client's answer is treated as a lead message and the bot replies to its own client as if they were a prospect.
 
-In `server/lib/wa-webhook.js`, before the normal pipeline: look up the sender against `business_profiles.rep_phone` **scoped to the business that owns the receiving `phone_number_id`**. A match routes to the relay handler and returns; the conversation agent is never invoked and no `contacts` row is touched.
+In `server/lib/wa-webhook.js`, before the normal pipeline: look up the sender against `business_contacts.phone` for **any** role, **scoped to the business that owns the receiving `phone_number_id`**. A match routes to the relay handler and returns; the conversation agent is never invoked and no `contacts` row is touched.
+
+Matching on *any* role, not just the resolved rep, is deliberate: if a business has both rows and the owner messages the bot, they must not be answered as if they were a prospect. Answers are accepted from either role — the owner is the ultimate authority for their own business.
 
 Consequences to accept deliberately:
 
-- A rep who is also genuinely a lead of the same business cannot chat with the bot from that number. Acceptable, and it must be stated in the admin UI next to the field.
-- The rep lookup must be scoped per business. A global lookup would let one client's rep number intercept another client's traffic if both are onboarded to the same number.
+- A person listed in `business_contacts` cannot chat with the bot as a lead from that number. Acceptable, and it must be stated in the admin UI next to the fields.
+- The lookup must be scoped per business. A global lookup would let one client's rep number intercept another client's traffic, since several businesses are onboarded behind the same WABA number.
 
 ## 5. Nudges
 
@@ -164,9 +198,14 @@ The reply *to the lead* is inside their 24-hour window (they just messaged), so 
 
 ## 8. Surfaces
 
-**Admin (Studio, `BotPolicyEditor.jsx`)** — a "נציג אנושי" block beside the existing policy controls: rep phone, nudge interval, nudge ceiling, and a note that this number cannot also be used as a lead.
+**Admin (Studio, `BotPolicyEditor.jsx`)** — an "אנשי קשר" block beside the existing policy controls, with two rows backed by `business_contacts`:
 
-**Client dashboard** — read-only display of the rep phone. Changing who receives escalations is an operator action; a client silently redirecting their own escalations to a wrong number is a support incident.
+- **בעל העסק** — name, phone, email, notes.
+- **נציג אנושי** — name, phone, email, notes, plus the line "אם ריק, האסקלציות יגיעו לבעל העסק".
+
+Below them, nudge interval and nudge ceiling, and a warning that a number listed here cannot also be used as a lead from the same phone.
+
+**Client dashboard** — read-only display of both contacts. Changing who receives escalations is an operator action; a client silently redirecting their own escalations to a wrong number is a support incident.
 
 **Inbox** — open escalations surface as a state on the lead's row so a human can see who is waiting. This reuses the existing status vocabulary; it does **not** introduce a new `contacts.status` value, because `upsertContact`'s ladder currently clobbers any value outside `statusOrder` (`index.js:474-477`) — 9 of 14 production contacts are affected today. Adding a status before that bug is fixed would be adding a value that silently erases itself.
 
