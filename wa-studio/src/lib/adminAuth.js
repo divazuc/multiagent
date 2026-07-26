@@ -7,6 +7,8 @@
 // portal client signs its own requests) or the path is /portal/* (client
 // tokens, never the admin key).
 
+import { buildHeaders } from './request-headers.js'
+
 const STORAGE_KEY = 'wa_admin_key'
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const DEV_BASE = '/api/agent'
@@ -56,9 +58,7 @@ export function installAdminFetch(onUnauthorized) {
       : input?.url ?? ''
     if (!isAgentUrl(url) || isPortalPath(url)) return orig(input, init)
 
-    const headers = new Headers(
-      init.headers ?? (typeof input === 'object' && input?.headers) ?? undefined,
-    )
+    const headers = buildHeaders(input, init)
     if (!headers.has('Authorization')) {
       const key = getAdminKey()
       if (key) headers.set('Authorization', `Bearer ${key}`)
