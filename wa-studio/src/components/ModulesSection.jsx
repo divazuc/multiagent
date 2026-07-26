@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getModules, updateModule, createConnectLink } from '../lib/supabase.js'
+import { addWindow, setWindow, removeWindow, toggleDay } from '../lib/weekly-windows.js'
 
 const DAY_LABELS = { sun: 'א׳', mon: 'ב׳', tue: 'ג׳', wed: 'ד׳', thu: 'ה׳', fri: 'ו׳', sat: 'ש׳' }
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
@@ -37,16 +38,35 @@ function CalendarSettings({ mod, onChange }) {
         <div style={{ ...st.label, marginBottom: 6 }}>שעות פנויות לפגישות (נפרד משעות המענה של הבוט):</div>
         {DAYS.map(day => {
           const w = s.weekly?.[day] ?? []
-          const first = w[0]
           return (
-            <div key={day} style={{ ...st.row, marginBottom: 4 }}>
-              <span style={{ width: 20 }}>{DAY_LABELS[day]}</span>
-              <input type="checkbox" checked={!!first} onChange={e => setDay(day, e.target.checked ? [{ from: '09:00', to: '17:00' }] : [])} />
-              {first && (<>
-                <input type="time" style={st.time} value={first.from} onChange={e => setDay(day, [{ ...first, from: e.target.value }])} />
-                <span>–</span>
-                <input type="time" style={st.time} value={first.to} onChange={e => setDay(day, [{ ...first, to: e.target.value }])} />
-              </>)}
+            <div key={day} style={{ ...st.row, marginBottom: 4, alignItems: 'flex-start' }}>
+              <label style={{ ...st.row, width: 62, gap: 6, flexShrink: 0 }}>
+                <input type="checkbox" checked={w.length > 0} onChange={e => setDay(day, toggleDay(w, e.target.checked))} />
+                <span>{DAY_LABELS[day]}</span>
+              </label>
+              {w.length === 0
+                ? <span style={{ ...st.label, alignSelf: 'center' }}>סגור</span>
+                : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {w.map((win, i) => (
+                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <input type="time" style={st.time} value={win.from}
+                          onChange={e => setDay(day, setWindow(w, i, { from: e.target.value }))} />
+                        <span>–</span>
+                        <input type="time" style={st.time} value={win.to}
+                          onChange={e => setDay(day, setWindow(w, i, { to: e.target.value }))} />
+                        <button type="button" title="הסרת טווח"
+                          style={{ ...st.btn, padding: '2px 8px', fontSize: 11 }}
+                          onClick={() => setDay(day, removeWindow(w, i))}>✕</button>
+                        {i === w.length - 1 && (
+                          <button type="button"
+                            style={{ ...st.btn, padding: '2px 10px', fontSize: 11 }}
+                            onClick={() => setDay(day, addWindow(w))}>+ טווח</button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
             </div>
           )
         })}
