@@ -8,7 +8,9 @@
 import crypto from 'node:crypto';
 
 const PUBLIC_PATHS = ['/health', '/wa-inbound'];
-const PUBLIC_PREFIXES = ['/portal/', '/oauth/'];
+// '/c/' is the short connect link a CLIENT opens — same public surface as
+// '/oauth/', and it only redirects to a signed state that is validated there.
+const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/'];
 
 let warnedOff = false;
 

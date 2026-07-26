@@ -28,6 +28,20 @@ export function verifyConnectState(state) {
 
 const page = (title, body) => `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f4f6fb}div{background:#fff;padding:32px 40px;border-radius:12px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08)}</style></head><body><div><h2>${title}</h2><p>${body}</p></div></body></html>`;
 
+// Short connect link: /c/K7M2QX → the signed state. Deliberately not under
+// /oauth so it stays short enough to type or read aloud.
+router.get('/c/:code', async (req, res) => {
+  try {
+    const { resolveConnectCode } = await import('../lib/modules/connect.js');
+    const row = await resolveConnectCode(req.params.code);
+    if (!row) return res.status(400).send(page('קוד לא תקין', 'הקוד פג תוקף או שגוי — בקשו קוד חדש.'));
+    return res.redirect(`/oauth/google/start?state=${encodeURIComponent(row.state)}`);
+  } catch (e) {
+    console.error('[connect]', e.message);
+    return res.status(500).send(page('משהו השתבש', 'נסו שוב עוד רגע.'));
+  }
+});
+
 router.get('/oauth/google/start', (req, res) => {
   const st = verifyConnectState(req.query.state);
   if (!st) return res.status(400).send(page('קישור לא תקין', 'הקישור פג תוקף או שגוי — בקשו קישור חדש.'));

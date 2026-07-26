@@ -478,8 +478,21 @@ const ops = {
 
   async createConnectLink(businessId, moduleKey) {
     const { signConnectState } = await import('../routes/oauth.js');
+    const { createConnectCode } = await import('./modules/connect.js');
     const base = process.env.PUBLIC_BASE_URL ?? 'https://wagent.divdev.co';
-    return { url: `${base}/oauth/google/start?state=${signConnectState(businessId, moduleKey)}` };
+    const state = signConnectState(businessId, moduleKey);
+
+    // Short code is the link we hand a human. The long signed state is kept as
+    // a fallback because it still works and needs no table lookup.
+    try {
+      const code = await createConnectCode({
+        businessId, moduleKey, state, ttlMs: 48 * 3600 * 1000,
+      });
+      return { url: `${base}/c/${code}`, code, long_url: `${base}/oauth/google/start?state=${state}` };
+    } catch (e) {
+      console.error('[connect] short code unavailable, falling back to the long link:', e.message);
+      return { url: `${base}/oauth/google/start?state=${state}`, code: null };
+    }
   },
 };
 
