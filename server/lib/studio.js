@@ -295,11 +295,15 @@ const ops = {
     if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
     const { data, error } = await supabase
       .from('business_profiles')
-      .select('agent_active, answer_after_hours, working_hours, after_hours_message, followup_enabled, followup_delay_days, followup_message, guardrails, persona')
+      .select('agent_active, answer_after_hours, working_hours, after_hours_message, followup_enabled, followup_delay_days, followup_message, guardrails, persona, agent_mode, cta_goal, push_speed')
       .eq('business_id', businessId)
       .maybeSingle();
     if (error) throw error;
-    return data ?? {};
+    // The policy lock is a property of the business, not the profile — the
+    // client UI needs it here to know whether to render the policy editable.
+    const { data: biz } = await supabase
+      .from('businesses').select('portal_full_edit').eq('id', businessId).maybeSingle();
+    return { ...(data ?? {}), portal_full_edit: biz?.portal_full_edit === true };
   },
 
   async deleteFaqItem(id) {

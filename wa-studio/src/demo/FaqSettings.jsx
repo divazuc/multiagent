@@ -188,6 +188,10 @@ export function DemoSettings({ api, showToast }) {
         guardrails: s.guardrails ?? {},
         bot_name: s.persona?.bot_name ?? '',
         bot_gender: s.persona?.bot_gender ?? '',
+        persona: s.persona ?? {},
+        agent_mode: s.agent_mode ?? 'hybrid',
+        // Evaluation accounts may edit the policy; real clients never can.
+        fullEdit: s.portal_full_edit === true,
       })
     }).catch(() => setSettings(null))
   }, [api])
@@ -219,7 +223,7 @@ export function DemoSettings({ api, showToast }) {
           return out
         }),
       }
-      await api.updateBotSettings({
+      const payload = {
         working_hours,
         agent_active: settings.agent_active,
         answer_after_hours: settings.answer_after_hours,
@@ -227,7 +231,19 @@ export function DemoSettings({ api, showToast }) {
         followup_enabled: settings.followup_enabled,
         followup_delay_days: Math.min(Math.max(Number(settings.followup_delay_days) || 2, 1), 14),
         followup_message: settings.followup_message.trim() || null,
-      })
+      }
+      // Sent only on evaluation accounts. The server re-checks the flag and
+      // drops these keys anyway — this just avoids a pointless round trip.
+      if (settings.fullEdit) {
+        payload.guardrails = settings.guardrails
+        payload.agent_mode = settings.agent_mode
+        payload.persona = {
+          ...settings.persona,
+          bot_name: settings.bot_name.trim(),
+          bot_gender: settings.bot_gender || undefined,
+        }
+      }
+      await api.updateBotSettings(payload)
       showToast('ההגדרות נשמרו — נכנסות לתוקף מיד ✓')
     } catch {
       showToast('שמירת ההגדרות נכשלה — נסו שוב')
@@ -341,7 +357,76 @@ export function DemoSettings({ api, showToast }) {
         {saving ? 'שומר…' : 'שמירת הגדרות'}
       </button>
 
-      {/* bot policy — read only, admin-managed */}
+      {/* bot policy — editable on evaluation accounts, read-only for real clients */}
+      {settings.fullEdit ? (
+      <section className="st-card">
+        <div className="st-sched-head">
+          <h3>מדיניות הבוט</h3>
+          <span className="st-note">סביבת התנסות — שינויים כאן משפיעים על הבוט מיד</span>
+        </div>
+
+        <div className="st-ro-subtitle">זהות הבוט</div>
+        <input
+          className="st-input"
+          placeholder="שם הבוט (אפשר להשאיר ריק)"
+          value={settings.bot_name}
+          onChange={e => setSettings(s => ({ ...s, bot_name: e.target.value }))}
+        />
+        <div className="st-mode" role="radiogroup" aria-label="לשון הבוט">
+          <button className={settings.bot_gender === 'female' ? 'st-mode-btn on' : 'st-mode-btn'}
+            onClick={() => setSettings(s => ({ ...s, bot_gender: 'female' }))}><b>לשון נקבה</b></button>
+          <button className={settings.bot_gender === 'male' ? 'st-mode-btn on' : 'st-mode-btn'}
+            onClick={() => setSettings(s => ({ ...s, bot_gender: 'male' }))}><b>לשון זכר</b></button>
+        </div>
+
+        <div className="st-ro-subtitle">מתי הבוט מעביר לנציג אנושי — שורה לכל כלל</div>
+        <textarea
+          className="st-textarea" rows={4}
+          placeholder={'בקשה מפורשת לדבר עם נציג\nתלונה או לקוח כועס'}
+          value={esc.join('\n')}
+          onChange={e => setSettings(s => ({
+            ...s,
+            guardrails: {
+              ...s.guardrails,
+              escalation_points: e.target.value.split('\n').map(v => v.trim()).filter(Boolean),
+              escalation_custom: '',
+            },
+          }))}
+        />
+
+        <div className="st-ro-subtitle">על מה הבוט לא עונה — שורה לכל נושא</div>
+        <textarea
+          className="st-textarea" rows={4}
+          placeholder={'מסירת מחירים, הנחות ותנאי תשלום\nייעוץ רפואי אישי'}
+          value={forb.join('\n')}
+          onChange={e => setSettings(s => ({
+            ...s,
+            guardrails: {
+              ...s.guardrails,
+              forbidden_topics: e.target.value.split('\n').map(v => v.trim()).filter(Boolean),
+              forbidden_custom: '',
+            },
+          }))}
+        />
+
+        <div className="st-ro-subtitle">אופי השיחה</div>
+        <div className="st-mode" role="radiogroup" aria-label="אופי השיחה">
+          <button className={settings.agent_mode === 'hybrid' ? 'st-mode-btn on' : 'st-mode-btn'}
+            onClick={() => setSettings(s => ({ ...s, agent_mode: 'hybrid' }))}>
+            <b>מכירות ושירות</b><span>עונה במלואו ואז מקדם צעד אחד קדימה</span>
+          </button>
+          <button className={settings.agent_mode === 'support' ? 'st-mode-btn on' : 'st-mode-btn'}
+            onClick={() => setSettings(s => ({ ...s, agent_mode: 'support' }))}>
+            <b>שירות בלבד</b><span>עונה ופותר, בלי לדחוף לפעולה</span>
+          </button>
+        </div>
+
+        <div className="st-locked-note">
+          נסו לשנות משהו, לשמור, ואז לכתוב לבוט — ההתנהגות משתנה מיד. למשל: הסירו
+          את השורה על מסירת מחירים, ושאלו אותו כמה עולה טיפול.
+        </div>
+      </section>
+      ) : (
       <section className="st-card st-locked">
         <div className="st-locked-head">
           <h3>🔒 מדיניות הבוט</h3>
@@ -378,6 +463,7 @@ export function DemoSettings({ api, showToast }) {
           השיחה לא קורה בלי שנדע. לעדכון המדיניות — דברו איתנו.
         </div>
       </section>
+      )}
     </div>
   )
 }

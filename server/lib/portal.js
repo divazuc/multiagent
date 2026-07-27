@@ -89,18 +89,22 @@ async function assertOwned(table, id, businessId) {
 // Clients may edit operational settings (mode, hours, follow-up). The bot
 // POLICY (guardrails: escalation points / forbidden topics) stays admin-only
 // so conversation flow can't change without the operator knowing.
-const SETTINGS_COLUMNS = [
-  'agent_active', 'answer_after_hours', 'working_hours', 'after_hours_message',
-  'followup_enabled', 'followup_delay_days', 'followup_message',
-];
 const CONTACT_COLUMNS = ['name', 'notes', 'status'];
 const FAQ_COLUMNS = ['category', 'question', 'answer', 'is_active', 'suggested'];
+
+// Evaluation accounts opt out of the policy lock. Read fresh on every write —
+// revoking access must take effect immediately, not at the next login.
+async function isFullEdit(bizId) {
+  const { data } = await supabase
+    .from('businesses').select('portal_full_edit').eq('id', bizId).maybeSingle();
+  return data?.portal_full_edit === true;
+}
 
 const ops = {
   async getBusiness(bizId) {
     const { data, error } = await supabase
       .from('businesses')
-      .select('id, name, business_category, whatsapp_number')
+      .select('id, name, business_category, whatsapp_number, portal_full_edit')
       .eq('id', bizId).maybeSingle();
     if (error) throw error;
     return data;
@@ -124,8 +128,9 @@ const ops = {
   },
 
   async updateBotSettings(bizId, updates) {
-    const clean = {};
-    for (const k of SETTINGS_COLUMNS) if (k in (updates ?? {})) clean[k] = updates[k];
+    const { settingsColumnsFor, pickSettings } = await import('./portal-permissions.js');
+    const clean = pickSettings(updates, settingsColumnsFor(await isFullEdit(bizId)));
+    if (!Object.keys(clean).length) return;
     const { error } = await supabase
       .from('business_profiles')
       .update({ ...clean, updated_at: new Date().toISOString() })
