@@ -9,3 +9,6 @@ wa-studio/wa0?_put.json
 .claude/
 wa-studio/.vite/
 server/scripts/*.png
+
+# Business config snapshots — local safety net, may contain client prompt text
+server/snapshots/
