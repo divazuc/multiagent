@@ -224,7 +224,9 @@ body {
   --money:      #047857;
   --money-deep: #065f46;
   --money-soft: #ecfdf5;
-  --serif:      'Frank Ruhl Libre', Georgia, serif;
+  /* Used for the big money/stat numerals and section headings. Named --display
+     rather than --serif because it is a sans — the whole dashboard is Assistant. */
+  --display:    'Assistant', system-ui, sans-serif;
 }
 
 /* header tabs */
@@ -266,7 +268,7 @@ body {
 }
 .ov-hero-label { font-size: 15px; font-weight: 600; color: var(--ink-soft); }
 .ov-hero-number {
-  font-family: var(--serif); font-weight: 800; font-variant-numeric: tabular-nums;
+  font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums;
   font-size: clamp(46px, 7vw, 72px); line-height: 1.1; color: var(--money-deep);
   letter-spacing: -1px; margin: 2px 0 4px;
 }
@@ -278,7 +280,7 @@ body {
   padding: 10px 16px;
 }
 .ov-hero-chip b {
-  font-family: var(--serif); font-size: 30px; font-weight: 800; color: var(--money-deep);
+  font-family: var(--display); font-size: 30px; font-weight: 800; color: var(--money-deep);
   min-width: 44px; text-align: center;
 }
 .ov-hero-chip span { font-size: 13px; color: var(--ink-soft); line-height: 1.4; }
@@ -328,7 +330,7 @@ body {
   padding: 18px 20px 16px;
 }
 .ov-tile-val {
-  font-family: var(--serif); font-size: 34px; font-weight: 800;
+  font-family: var(--display); font-size: 34px; font-weight: 800;
   font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1.15;
 }
 .ov-tile-label { font-size: 14px; font-weight: 700; color: var(--ink); margin-top: 2px; }
@@ -369,7 +371,7 @@ body {
 .ov-donut-svg { width: 158px; flex-shrink: 0; }
 .ov-donut-svg svg { width: 100%; height: auto; }
 .ov-donut-num {
-  font-family: var(--serif); font-size: 30px; font-weight: 800; fill: var(--ink);
+  font-family: var(--display); font-size: 30px; font-weight: 800; fill: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .ov-donut-sub { font-size: 11px; fill: var(--ink-faint); }
