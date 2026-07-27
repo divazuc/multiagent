@@ -19,6 +19,10 @@ const settingsSchema = z.object({
   horizon_days: z.number().int().min(1).max(60).default(14),
   min_notice_hours: z.number().min(0).max(168).default(3),
   weekly: z.record(z.string(), z.array(windowSchema)).default(weeklyDefault),
+  // Extra calendars consulted for AVAILABILITY only — never booked into.
+  // Adding a calendar to your Google view does not merge it into primary, so
+  // without this its commitments are invisible and get double-booked.
+  busy_calendar_ids: z.array(z.string()).default([]),
   overrides: z.record(z.string(), z.array(windowSchema)).default({}),
   jewish_holidays_closed: z.boolean().default(true),
   event_title: z.string().default('פגישה — {name}'),
@@ -47,7 +51,7 @@ async function busyWall(row, settings) {
   const to = new Date(now); to.setDate(to.getDate() + settings.horizon_days + 1);
   const fromUtc = new Date().toISOString();
   const toUtc = ilWallToUtc(`${to.getFullYear()}-${pad(to.getMonth() + 1)}-${pad(to.getDate())}`, '23:59').toISOString();
-  const busy = await provider(settings).freeBusy(secrets, fromUtc, toUtc);
+  const busy = await provider(settings).freeBusy(secrets, fromUtc, toUtc, settings.busy_calendar_ids);
   return busy.map(b => ({ start: utcToIlWall(new Date(b.start)), end: utcToIlWall(new Date(b.end)) }));
 }
 
@@ -136,7 +140,7 @@ const calendarModule = {
 
   adminUI: {
     connectType: 'google_oauth',
-    fields: ['mode', 'duration_min', 'buffer_min', 'min_notice_hours', 'horizon_days', 'weekly', 'jewish_holidays_closed', 'owner_notify_phone'],
+    fields: ['mode', 'duration_min', 'buffer_min', 'min_notice_hours', 'horizon_days', 'weekly', 'busy_calendar_ids', 'jewish_holidays_closed', 'owner_notify_phone'],
   },
 };
 

@@ -71,6 +71,21 @@ function CalendarSettings({ mod, onChange }) {
           )
         })}
       </div>
+      <div>
+        <div style={{ ...st.label, marginBottom: 4 }}>
+          יומנים נוספים לבדיקת זמינות (מופרדים בפסיק — נבדקים בלבד, הפגישה נקבעת תמיד ביומן הראשי):
+        </div>
+        <input
+          style={{ ...st.time, width: '100%', boxSizing: 'border-box' }}
+          dir="ltr"
+          placeholder="you@gmail.com, team@company.com"
+          value={(s.busy_calendar_ids ?? []).join(', ')}
+          onChange={e => set({ busy_calendar_ids: e.target.value.split(',').map(v => v.trim()).filter(Boolean) })}
+        />
+        <div style={{ ...st.label, marginTop: 4 }}>
+          שימו לב: הוספת יומן לתצוגה ב-Google לא מספיקה — יומן שלא מופיע כאן לא ייבדק, ואפשר יהיה לקבוע פגישה על גביו.
+        </div>
+      </div>
       <div style={st.row}>
         <label style={st.label}>
           <input type="checkbox" checked={s.jewish_holidays_closed} onChange={e => set({ jewish_holidays_closed: e.target.checked })} /> סגור בחגים

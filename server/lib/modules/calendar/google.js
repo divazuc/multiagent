@@ -1,7 +1,9 @@
 // Google Calendar REST v3 — no googleapis dep, plain fetch.
 // secrets shape (decrypted): { refresh_token, account_email }
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const API = 'https://www.googleapis.com/calendar/v3';
+import { freeBusyItems, mergeBusy } from './freebusy.js';
+
+const API ='https://www.googleapis.com/calendar/v3';
 export const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly';
 
 const accessCache = new Map(); // refresh_token -> {token, exp}
@@ -54,15 +56,15 @@ async function accessToken(secrets) {
   return body.access_token;
 }
 
-export async function freeBusy(secrets, fromUtcISO, toUtcISO) {
+export async function freeBusy(secrets, fromUtcISO, toUtcISO, extraCalendarIds = []) {
   const token = await accessToken(secrets);
   const res = await fetch(`${API}/freeBusy`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ timeMin: fromUtcISO, timeMax: toUtcISO, items: [{ id: 'primary' }] }),
+    body: JSON.stringify({ timeMin: fromUtcISO, timeMax: toUtcISO, items: freeBusyItems(extraCalendarIds) }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(`freeBusy failed: ${body.error?.message ?? res.status}`);
-  return (body.calendars?.primary?.busy ?? []).map(b => ({ start: b.start, end: b.end }));
+  return mergeBusy(body);
 }
 
 export async function createEvent(secrets, { startUtcISO, endUtcISO, title, description }) {
