@@ -808,15 +808,25 @@ Expected: PASS, 3 tests
 
 In `server/agents/conversation.js`, the escalate branch currently returns a hardcoded sentence. Replace the body of `if (intent.escalate) { … }` so it first attempts the relay:
 
+> **Corrected at final review.** This snippet originally guarded on
+> `business_profile?.business_id` and passed `summary: context.contact_summary`.
+> Neither key exists: `loadContext` (`lib/context.js:100-125`) puts
+> `business_id` at the TOP level and builds `business_profile` as an explicit
+> literal without it, and nothing in the repo ever sets `contact_summary`. The
+> guard made the whole feature a production no-op while every unit test passed,
+> because they all call `raiseEscalation` directly. The relay resolves the
+> lead's name and summary itself now; the caller only supplies the history for
+> the fallback.
+
 ```js
 if (intent.escalate) {
   const { raiseEscalation } = await import('../lib/relay/index.js');
-  const relayed = business_profile?.business_id
+  const relayed = business_id
     ? await raiseEscalation({
-        business: { id: business_profile.business_id, name: business_profile.business_name ?? '' },
+        business: { id: business_id, name: business_profile?.business_name ?? '' },
         session_id, question: message,
         reason: intent.escalation_reason ?? null,
-        summary: context.contact_summary ?? null,
+        history: conversation_history,
         persona,
       })
     : null;

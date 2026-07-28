@@ -23,7 +23,16 @@ Executed successfully 2026-07-28 against the `is_test` tenant **Leadz marketing*
 > Same for the rep: `972500000001` is a throwaway. Note that Leadz's own
 > `businesses.whatsapp_number` is `972559489893`, a live WABA line — if you ever set
 > the rep contact to that number, `raiseEscalation` refuses to send (own-number guard),
-> which is correct but will look like a broken run.
+> which is correct but will look like a broken run. The same refusal now applies to
+> **any** business's `whatsapp_number`, not just this one's (the bot-to-bot loop
+> breaker), and it fails closed — a run that cannot read the `businesses` table sends
+> nothing at all.
+
+> **2b. Re-running the script twice without cleanup is a no-op the second time.**
+> `raiseEscalation` dedupes on `(business_id, session_id)`: an existing `open` row
+> returns the holding line without messaging the rep again. Rerun step 4 (the rep's
+> reply) or clean up first, otherwise the second run's empty outbox looks like a
+> regression.
 
 > **3. Never overwrite a real rep contact.** `upsertContact` keys on
 > `(business_id, role)`, so seeding a throwaway rep on a tenant that already has one
