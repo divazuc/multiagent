@@ -25,6 +25,7 @@ function seed({ rep = { business_id: 'b1', role: 'rep', name: 'סאלי', phone:
   relay._setDbForTest({
     async getBusiness() { return { whatsapp_number: businessWhatsapp }; },
   });
+  relay._setHistorySaverForTest(async () => ({ status: 'success', result: { saved: true }, error: null }));
   return rows;
 }
 
@@ -147,4 +148,73 @@ test('a whole-message stop closes the escalation without answering the lead', as
 
   assert.equal(rows[0].status, 'stopped');
   assert.ok(!sent.some(m => m.to === '97250000009'), 'the lead must not be messaged on stop');
+});
+
+// ── Fix round 1 — covering tests ─────────────────────────────────────────────
+// sendWhatsAppMessage never throws: a Graph error or a fetch failure comes
+// back as `undefined` or a truthy-but-message-less body. These tests assert
+// observable state (row status/answer, who got messaged), not the send call.
+
+test('a failed delivery to the lead does not mark the escalation answered', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const sent = [];
+  relay._setSenderForTest(async (m) => {
+    sent.push(m);
+    // Graph rejects delivery to the lead (e.g. the 24h window expired) —
+    // sendWhatsAppMessage itself never throws for this, it just returns
+    // a body with no message id (or undefined on a fetch failure).
+    if (m.to === '97250000009') return { error: { code: 131047 } };
+    return { messages: [{ id: 'wamid.ACK' }] };
+  });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: 'כן, אפשר לפרוס', contextId: 'wamid.X',
+  });
+
+  assert.equal(consumed, true);
+  assert.equal(rows[0].status, 'open', 'must stay open so nudges keep working — it was never actually answered');
+  assert.equal(rows[0].answer, undefined);
+  assert.ok(!sent.some(m => m.to === '972500000001' && m.text === 'נשלח ✓'), 'must not ack success to the rep');
+  assert.ok(sent.some(m => m.to === '972500000001' && m.text !== 'נשלח ✓'), 'the rep must be told delivery failed');
+});
+
+test('a mid-flight failure after the sender is recognised is still consumed, never falling through to the agent', async () => {
+  seed();
+  // findContactByPhone already succeeded by the time this throws — a
+  // transient DB error here must not hand the rep's message to the
+  // conversation agent.
+  store._setDbForTest({
+    async listOpen() { throw new Error('transient db error'); },
+    async listAllOpen() { return []; },
+    async insert() { throw new Error('unused in this test'); },
+    async update() { throw new Error('unused in this test'); },
+  });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: 'כן', contextId: null,
+  });
+
+  assert.equal(consumed, true, 'a recognised contact must never fall through to the conversation agent');
+});
+
+test('an empty body (e.g. a button tap that failed to extract text) is never relayed and leaves the escalation open', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.ACK' }] }; });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: '', contextId: 'wamid.X',
+  });
+
+  assert.equal(consumed, true);
+  assert.equal(rows[0].status, 'open', 'an empty body must not close the escalation');
+  assert.equal(rows[0].answer, undefined);
+  assert.ok(!sent.some(m => m.to === '97250000009'), 'the lead must never receive an empty relayed message');
+  assert.ok(sent.some(m => m.to === '972500000001'), 'the rep is told the message was not understood');
 });

@@ -1,5 +1,19 @@
 // WA_01 replacement — extract message + session_id from any inbound payload
 
+// Shared with the relay wiring (server/index.js) so a rep's button/interactive
+// tap is read the same way a lead's is — text/interactive/button are all
+// `kind:'message'` per classifyMetaPayload, but each type stores its text in
+// a different place. Always returns a string (never undefined) so a caller
+// can safely check for "" without an extra String(...) ?? '' step.
+export function extractMessageText(msg) {
+  const raw = msg?.type === 'interactive'
+    ? msg?.interactive?.button_reply?.title ?? msg?.interactive?.list_reply?.title
+    : msg?.type === 'button' // quick-reply tap on a template message
+      ? msg?.button?.text
+      : msg?.text?.body;
+  return raw ?? '';
+}
+
 export function normalizeMessage(data) {
   try {
     // WhatsApp Cloud API format
@@ -7,11 +21,7 @@ export function normalizeMessage(data) {
       const msg = data.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
       if (!msg) return err('No message found in Cloud API payload');
 
-      const text = msg.type === 'interactive'
-        ? msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title
-        : msg.type === 'button' // quick-reply tap on a template message
-          ? msg.button?.text
-          : msg.text?.body;
+      const text = extractMessageText(msg);
 
       const session_id     = data.entry[0].changes[0].value.contacts?.[0]?.wa_id ?? msg.from;
       const phone_number_id = data.entry[0].changes[0].value.metadata?.phone_number_id ?? null;

@@ -13,6 +13,14 @@ export function _setSenderForTest(fn) { sender = fn; }
 let db = null;
 export function _setDbForTest(fake) { db = fake; }
 
+// Test seam for persisting the relayed exchange into conversation history
+// (server/lib/db.js#saveConversation). Same lazy-import discipline as
+// everywhere else in this file — db.js imports supabase.js at module top
+// level, which throws when SUPABASE_URL/SERVICE_KEY aren't set, so tests
+// must be able to stub this rather than hit the real thing.
+let historySaver = null;
+export function _setHistorySaverForTest(fn) { historySaver = fn; }
+
 async function realDb() {
   const { supabase } = await import('../supabase.js');
   return {
@@ -97,14 +105,45 @@ async function voiceRewrite(answer /*, persona */) {
   return answer; // Task 7 replaces this with a model call
 }
 
+// Records the relayed exchange in the bot's own conversation history so a
+// later turn sees what the lead was actually told, instead of a gap where
+// the holding line was the last thing said. Best-effort bookkeeping: this
+// runs AFTER the answer is confirmed delivered and the row is marked, so a
+// failure here must never undo (or be allowed to look like it undoes) work
+// that already happened — log and swallow.
+async function recordHistory({ business, row, reply }) {
+  try {
+    const save = historySaver ?? (await import('../db.js')).saveConversation;
+    const result = await save({
+      session_id: row.session_id,
+      business_id: business.id,
+      user_message: row.question,
+      agent_response: reply,
+      stage: 'escalation_answered',
+      escalate: false,
+      escalation_reason: null,
+    });
+    if (result?.status === 'error') console.error('[relay] history save failed:', result.error);
+  } catch (e) {
+    console.error('[relay] history save failed:', e.message);
+  }
+}
+
 // Recognises a message from ANY listed contact (rep or owner) — not only the
 // resolved rep — so an owner who writes in is never mistaken for a lead and
 // sold to. Scoped to the business that owns the receiving number: the lookup
 // is by (business.id, from), never a global phone search.
 export async function handleContactMessage({ business, from, text, contextId, persona = null }) {
+  // Once findContactByPhone below has identified the sender as a contact,
+  // this message belongs to the relay — full stop. A later throw (e.g. a
+  // transient DB error) must still be consumed here, never fall through to
+  // the conversation agent, which would sell to the business's own rep and
+  // create a contacts row for them in the client's lead inbox.
+  let recognized = false;
   try {
     const contact = await findContactByPhone(business.id, from);
     if (!contact) return false;
+    recognized = true;
 
     const open = await store.listOpen(business.id);
     const { row, matchedBy, body, isStop } = resolveEscalation({ contextId, text, openRows: open });
@@ -120,9 +159,32 @@ export async function handleContactMessage({ business, from, text, contextId, pe
       return true;
     }
 
+    // A button/interactive tap whose text failed to extract, or a bare
+    // "#3" with nothing after the code, must never be relayed as a blank
+    // WhatsApp message — and must not be treated as an answer.
+    if (!body) {
+      await send({ to: from, text: 'לא הבנתי — אפשר לכתוב את התשובה במילים?', businessId: business.id });
+      return true;
+    }
+
     const reply = await voiceRewrite(body, persona);
-    await send({ to: row.session_id, text: reply, businessId: business.id });
+    const sendRes = await send({ to: row.session_id, text: reply, businessId: business.id });
+    const delivered = !!sendRes?.messages?.[0]?.id;
+
+    // sendWhatsAppMessage never throws on a Graph error or a fetch failure —
+    // it logs and returns the Graph error body (or undefined). Never mark
+    // the question answered, and never tell the rep it's done, unless
+    // delivery to the LEAD actually succeeded — otherwise the row goes
+    // silently 'answered' while the lead heard nothing and the nudges
+    // (Task 8) stop chasing a question that was never really resolved.
+    if (!delivered) {
+      console.error(`[relay] failed to deliver answer to the lead for escalation ${row.id}`);
+      await send({ to: from, text: 'לא הצלחתי לשלוח את התשובה ללקוח — ננסה שוב.', businessId: business.id });
+      return true;
+    }
+
     await store.markAnswered(row.id, body);
+    await recordHistory({ business, row, reply });
 
     // When we had to guess, name the thread so a mis-route is visible at once.
     const ack = matchedBy === 'recent' ? `נשלח ✓ (${row.session_id})` : 'נשלח ✓';
@@ -130,6 +192,6 @@ export async function handleContactMessage({ business, from, text, contextId, pe
     return true;
   } catch (e) {
     console.error('[relay] contact message failed:', e.message);
-    return false;
+    return recognized;
   }
 }

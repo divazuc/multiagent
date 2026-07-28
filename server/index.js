@@ -2,7 +2,7 @@ import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { studioAuth } from './lib/auth.js';
-import { normalizeMessage } from './lib/normalize.js';
+import { normalizeMessage, extractMessageText } from './lib/normalize.js';
 import { loadContext } from './lib/context.js';
 import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
@@ -170,16 +170,21 @@ app.post('/wa-inbound', async (req, res) => {
       const phoneNumberId = value?.metadata?.phone_number_id;
       if (phoneNumberId) {
         const { supabase } = await import('./lib/supabase.js');
-        const { data: biz } = await supabase.from('businesses')
+        const { data: biz, error: bizErr } = await supabase.from('businesses')
           .select('id, name').eq('wa_phone_number_id', phoneNumberId).maybeSingle();
+        if (bizErr) console.error('[wa-inbound] business lookup failed:', bizErr.message);
         if (biz) {
           const { handleContactMessage } = await import('./lib/relay/index.js');
-          const { data: relayProfile } = await supabase.from('business_profiles')
+          const { data: relayProfile, error: profileErr } = await supabase.from('business_profiles')
             .select('persona').eq('business_id', biz.id).maybeSingle();
+          if (profileErr) console.error('[wa-inbound] persona lookup failed:', profileErr.message);
           const consumed = await handleContactMessage({
             business: { id: biz.id, name: biz.name ?? '' },
             from: value.messages[0].from,
-            text: value.messages[0].text?.body ?? '',
+            // text/interactive/button all classify as kind:'message' — read
+            // it the same way normalizeMessage does so a rep's button tap
+            // (Task 10 moves the rep hop to templates) doesn't relay as "".
+            text: extractMessageText(value.messages[0]),
             contextId: value.messages[0].context?.id ?? null,
             persona: relayProfile?.persona ?? null,
           });
