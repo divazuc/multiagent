@@ -106,11 +106,41 @@ export async function raiseEscalation({ business, session_id, question, reason =
   }
 }
 
+// Test seam for the rewrite call — same lazy-import discipline as the rest of
+// this file (contacts.js/store.js/db.js): the Anthropic SDK is imported inside
+// voiceRewrite, never at module top level, so relay tests keep running with
+// no ANTHROPIC_API_KEY set at all.
+let rewriter = null;
+export function _setRewriterForTest(fn) { rewriter = fn; }
+
+const REWRITE_PROMPT = `אתה מנסח מחדש תשובה של בעל העסק כך שתישמע בקול של הבוט.
+חוקים מוחלטים:
+- אל תשנה, תוסיף או תוריד שום עובדה, מספר, מחיר, תאריך או שם.
+- אל תרכך ואל תסייג. התשובה של בעל העסק היא הקובעת.
+- שמור על אורך דומה, בעברית, בגוף ראשון.
+החזר את הטקסט בלבד.`;
+
 // Rewrites the human's answer into the bot's voice WITHOUT passing it through
-// validate() or the forbidden-phrase check: the rep IS the business, so their
-// answer is authoritative. Content must survive verbatim — only tone changes.
-async function voiceRewrite(answer /*, persona */) {
-  return answer; // Task 7 replaces this with a model call
+// validate() or the forbidden-phrase check (conversation.js): the rep IS the
+// business, so their answer is authoritative. Content must survive verbatim —
+// only tone/gender/length may change. Fails soft: any error here, at any
+// step, returns the raw answer — the rep's actual words always beat silence.
+async function voiceRewrite(answer, persona) {
+  if (rewriter) return rewriter(answer, persona);
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const gender = persona?.bot_gender === 'male' ? 'זכר' : 'נקבה';
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: `${REWRITE_PROMPT}\nמגדר הבוט: ${gender}\n\nהתשובה:\n${answer}` }],
+    });
+    return res.content?.[0]?.text?.trim() || answer;
+  } catch (e) {
+    console.error('[relay] rewrite failed, sending the raw answer:', e.message);
+    return answer; // the human's words are always better than nothing
+  }
 }
 
 // Records the relayed exchange in the bot's own conversation history so a

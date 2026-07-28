@@ -232,6 +232,28 @@ test('an empty body (e.g. a button tap that failed to extract text) is never rel
 // progress through, every relayed answer silently blanks it — the bot then
 // re-asks the lead things they already answered, on the very next turn.
 
+// ── Task 7 — voice rewrite ───────────────────────────────────────────────────
+// The rep's answer is authoritative: the rewrite may change tone/gender/length
+// but every figure, price, date, name and commitment must survive verbatim.
+
+test('the rewriter is given the raw human answer and its output is what the lead gets', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const seenByRewriter = [];
+  relay._setRewriterForTest(async (answer) => { seenByRewriter.push(answer); return `בשמחה! ${answer}` });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Y' }] }; });
+
+  await relay.handleContactMessage({ business: BIZ, from: '972500000001', text: '400 ₪ לחודש', contextId: 'wamid.X' });
+
+  assert.deepEqual(seenByRewriter, ['400 ₪ לחודש']);
+  const toLead = sent.find(m => m.to === '97250000009');
+  assert.match(toLead.text, /400 ₪ לחודש/, 'the human figure must survive verbatim');
+  assert.equal(rows[0].answer, '400 ₪ לחודש', 'the audit trail stores the raw human text');
+});
+
 test('a relayed answer preserves the session\'s existing qualification_progress rather than blanking it', async () => {
   const progress = { need: 'טיפול פנים', scope: null, budget: null, timeline: 'החודש', urgency: null };
   seed({ sessionQualificationProgress: progress });
