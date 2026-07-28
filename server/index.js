@@ -10,6 +10,7 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate } from './lib/wa-send.js';
 import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedFallback } from './lib/wa-webhook.js';
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
+import { runFollowUpsAndNudges } from './lib/followup-orchestrator.js';
 import dataRouter from './routes/data.js';
 import oauthRouter from './routes/oauth.js';
 
@@ -852,104 +853,115 @@ app.post('/follow-up/process', async (req, res) => {
       .eq('agent_active', true);
     if (target) q = q.eq('business_id', target);
     const { data: businesses } = await q;
-    if (!businesses?.length) return res.json({ status: 'success', processed: 0, results: [] });
 
-    const results = [];
+    // The stale-lead follow-up sweep (gated by followup_enabled, per business)
+    // and the rep-nudge pass (human-rep-relay Task 8, gated only by an open
+    // escalation existing) are unrelated features sharing this scheduling
+    // slot. followup_enabled must never gate nudges — see
+    // runFollowUpsAndNudges for why this is structured as two independent
+    // halves rather than the nudge call sitting after a follow-up early
+    // return. Nothing schedules /follow-up/process today (no cron, no
+    // setInterval; see CLAUDE.md / the relay design doc §9) — this is where
+    // a future scheduler attaches, and it must not gain a second one of its
+    // own.
+    const { results, nudges } = await runFollowUpsAndNudges({
+      businesses,
+      runFollowUps: async (list) => {
+        const results = [];
+        for (const biz of list) {
+          const delayDays = biz.followup_delay_days ?? 2;
+          const cutoff = new Date(now);
+          cutoff.setDate(cutoff.getDate() - delayDays);
 
-    for (const biz of businesses) {
-      const delayDays = biz.followup_delay_days ?? 2;
-      const cutoff = new Date(now);
-      cutoff.setDate(cutoff.getDate() - delayDays);
+          // Get live sessions for this business
+          const { data: sessions } = await supabase
+            .from('sessions')
+            .select('session_id')
+            .eq('business_id', biz.business_id)
+            .eq('session_mode', 'live')
+            .eq('setup_completed', true);
 
-      // Get live sessions for this business
-      const { data: sessions } = await supabase
-        .from('sessions')
-        .select('session_id')
-        .eq('business_id', biz.business_id)
-        .eq('session_mode', 'live')
-        .eq('setup_completed', true);
+          for (const { session_id } of sessions ?? []) {
+            // Skip if follow-up already recorded
+            const { data: existing } = await supabase
+              .from('lead_followups')
+              .select('id')
+              .eq('business_id', biz.business_id)
+              .eq('session_id', session_id)
+              .maybeSingle();
+            if (existing) { results.push({ session_id, skipped: 'already_processed' }); continue; }
 
-      for (const { session_id } of sessions ?? []) {
-        // Skip if follow-up already recorded
-        const { data: existing } = await supabase
-          .from('lead_followups')
-          .select('id')
-          .eq('business_id', biz.business_id)
-          .eq('session_id', session_id)
-          .maybeSingle();
-        if (existing) { results.push({ session_id, skipped: 'already_processed' }); continue; }
+            // Get last user message
+            const { data: lastMsg } = await supabase
+              .from('conversation_messages')
+              .select('created_at')
+              .eq('session_id', session_id)
+              .eq('business_id', biz.business_id)
+              .not('user_message', 'is', null)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (!lastMsg) { results.push({ session_id, skipped: 'no_user_messages' }); continue; }
 
-        // Get last user message
-        const { data: lastMsg } = await supabase
-          .from('conversation_messages')
-          .select('created_at')
-          .eq('session_id', session_id)
-          .eq('business_id', biz.business_id)
-          .not('user_message', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (!lastMsg) { results.push({ session_id, skipped: 'no_user_messages' }); continue; }
+            // Skip if CTA already triggered
+            const { count: ctaCount } = await supabase
+              .from('conversation_messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('session_id', session_id)
+              .eq('business_id', biz.business_id)
+              .eq('cta_triggered', true);
+            if (ctaCount > 0) { results.push({ session_id, skipped: 'cta_triggered' }); continue; }
 
-        // Skip if CTA already triggered
-        const { count: ctaCount } = await supabase
-          .from('conversation_messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('session_id', session_id)
-          .eq('business_id', biz.business_id)
-          .eq('cta_triggered', true);
-        if (ctaCount > 0) { results.push({ session_id, skipped: 'cta_triggered' }); continue; }
+            // Skip if last message is too recent
+            if (new Date(lastMsg.created_at) > cutoff) {
+              results.push({ session_id, skipped: 'too_recent' }); continue;
+            }
 
-        // Skip if last message is too recent
-        if (new Date(lastMsg.created_at) > cutoff) {
-          results.push({ session_id, skipped: 'too_recent' }); continue;
+            // Eligible — log follow-up
+            const message = biz.followup_message?.trim() || 'היי! רק רציתי לבדוק אם יש לך שאלות נוספות 😊';
+            const scheduledFor = new Date(lastMsg.created_at);
+            scheduledFor.setDate(scheduledFor.getDate() + delayDays);
+
+            // A follow-up is by definition outside the 24h customer-service window,
+            // so business-initiated sends must use an approved template.
+            const templateName = process.env.WHATSAPP_FOLLOWUP_TEMPLATE || null;
+            let wa_send = 'not_configured';
+            if (templateName) {
+              const sent = await sendWhatsAppTemplate({ to: session_id, templateName, businessId: biz.business_id });
+              wa_send = sent?.messages?.[0]?.id ? 'sent' : 'send_failed';
+            }
+
+            await supabase.from('lead_followups').upsert({
+              business_id:   biz.business_id,
+              session_id,
+              status:        'sent',
+              message,
+              scheduled_for: scheduledFor.toISOString(),
+              sent_at:       now.toISOString(),
+            }, { onConflict: 'business_id,session_id' });
+
+            upsertContact({ business_id: biz.business_id, phone: session_id, status: 'followup_sent' }).catch(() => {});
+            logBillingEvent({ business_id: biz.business_id, session_id, type: 'business_initiated' }).catch(() => {});
+
+            results.push({ session_id, status: 'sent', wa_send, message });
+          }
         }
-
-        // Eligible — log follow-up
-        const message = biz.followup_message?.trim() || 'היי! רק רציתי לבדוק אם יש לך שאלות נוספות 😊';
-        const scheduledFor = new Date(lastMsg.created_at);
-        scheduledFor.setDate(scheduledFor.getDate() + delayDays);
-
-        // A follow-up is by definition outside the 24h customer-service window,
-        // so business-initiated sends must use an approved template.
-        const templateName = process.env.WHATSAPP_FOLLOWUP_TEMPLATE || null;
-        let wa_send = 'not_configured';
-        if (templateName) {
-          const sent = await sendWhatsAppTemplate({ to: session_id, templateName, businessId: biz.business_id });
-          wa_send = sent?.messages?.[0]?.id ? 'sent' : 'send_failed';
-        }
-
-        await supabase.from('lead_followups').upsert({
-          business_id:   biz.business_id,
-          session_id,
-          status:        'sent',
-          message,
-          scheduled_for: scheduledFor.toISOString(),
-          sent_at:       now.toISOString(),
-        }, { onConflict: 'business_id,session_id' });
-
-        upsertContact({ business_id: biz.business_id, phone: session_id, status: 'followup_sent' }).catch(() => {});
-        logBillingEvent({ business_id: biz.business_id, session_id, type: 'business_initiated' }).catch(() => {});
-
-        results.push({ session_id, status: 'sent', wa_send, message });
-      }
-    }
+        return results;
+      },
+      runNudges: async () => {
+        const { nudgePass } = await import('./lib/relay/index.js');
+        return nudgePass({
+          isOpenNow: async (businessId) => {
+            const { data } = await supabase.from('business_profiles')
+              .select('working_hours').eq('business_id', businessId).maybeSingle();
+            return isWithinWorkingHours(data?.working_hours);
+          },
+        });
+      },
+    });
 
     const sent    = results.filter(r => r.status === 'sent').length;
     const skipped = results.filter(r => r.skipped).length;
-
-    // Rep nudges (human-rep-relay Task 8) ride this same pass — nothing
-    // schedules /follow-up/process today (no cron, no setInterval; see
-    // CLAUDE.md / the relay design doc §9), so this is where a future
-    // scheduler attaches, and it must not gain a second one of its own.
-    const { nudgePass } = await import('./lib/relay/index.js');
-    const nudges = await nudgePass({
-      isOpenNow: async (businessId) => {
-        const { data } = await supabase.from('business_profiles')
-          .select('working_hours').eq('business_id', businessId).maybeSingle();
-        return isWithinWorkingHours(data?.working_hours);
-      },
-    });
 
     return res.json({ status: 'success', processed: results.length, sent, skipped, results, nudges });
   } catch (e) {
