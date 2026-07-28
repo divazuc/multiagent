@@ -113,6 +113,13 @@ export async function raiseEscalation({ business, session_id, question, reason =
 let rewriter = null;
 export function _setRewriterForTest(fn) { rewriter = fn; }
 
+// Narrower seam than _setRewriterForTest above: that one bypasses the model
+// call entirely, so it can't exercise the response-handling branch below
+// (the max_tokens/truncation guard). This stubs just `client.messages.create`
+// — same lazy-import discipline, never touches the SDK when set.
+let messagesCreate = null;
+export function _setMessagesCreateForTest(fn) { messagesCreate = fn; }
+
 const REWRITE_PROMPT = `אתה מנסח מחדש תשובה של בעל העסק כך שתישמע בקול של הבוט.
 חוקים מוחלטים:
 - אל תשנה, תוסיף או תוריד שום עובדה, מספר, מחיר, תאריך או שם.
@@ -120,22 +127,42 @@ const REWRITE_PROMPT = `אתה מנסח מחדש תשובה של בעל העסק
 - שמור על אורך דומה, בעברית, בגוף ראשון.
 החזר את הטקסט בלבד.`;
 
+// Hebrew is token-dense and the input is a rep's real WhatsApp message (which
+// can run long, e.g. a price plus conditions) — 1200 comfortably fits a
+// rewritten answer without truncating it. See the stop_reason guard below:
+// even with headroom, a truncated response must never reach the lead.
+const REWRITE_MAX_TOKENS = 1200;
+
 // Rewrites the human's answer into the bot's voice WITHOUT passing it through
 // validate() or the forbidden-phrase check (conversation.js): the rep IS the
 // business, so their answer is authoritative. Content must survive verbatim —
 // only tone/gender/length may change. Fails soft: any error here, at any
 // step, returns the raw answer — the rep's actual words always beat silence.
+// That includes a truncated-but-not-erroring response (stop_reason ===
+// 'max_tokens'): the API returns a normal 200 with non-empty, cut-off text in
+// that case, so it must be checked explicitly — a truncated sentence can
+// silently drop a trailing price condition just as badly as a fabrication.
 async function voiceRewrite(answer, persona) {
   if (rewriter) return rewriter(answer, persona);
   try {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const gender = persona?.bot_gender === 'male' ? 'זכר' : 'נקבה';
-    const res = await client.messages.create({
+    const params = {
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 400,
+      max_tokens: REWRITE_MAX_TOKENS,
       messages: [{ role: 'user', content: `${REWRITE_PROMPT}\nמגדר הבוט: ${gender}\n\nהתשובה:\n${answer}` }],
-    });
+    };
+    let res;
+    if (messagesCreate) {
+      res = await messagesCreate(params);
+    } else {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      res = await client.messages.create(params);
+    }
+    if (res.stop_reason === 'max_tokens') {
+      console.error('[relay] rewrite truncated (stop_reason=max_tokens), sending the raw answer instead of a cut-off sentence');
+      return answer;
+    }
     return res.content?.[0]?.text?.trim() || answer;
   } catch (e) {
     console.error('[relay] rewrite failed, sending the raw answer:', e.message);

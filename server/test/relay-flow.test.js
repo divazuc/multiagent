@@ -254,6 +254,34 @@ test('the rewriter is given the raw human answer and its output is what the lead
   assert.equal(rows[0].answer, '400 ₪ לחודש', 'the audit trail stores the raw human text');
 });
 
+// A normal, non-error API response whose text is simply cut off at the token
+// limit must NOT be forwarded to the lead as if it were the finished rewrite —
+// half a human sentence ("...בהתחייבות" truncated to "...בהתחיי") can change
+// the actual commercial offer. _setRewriterForTest bypasses the real call
+// entirely, so this uses the narrower _setMessagesCreateForTest seam to
+// exercise the response-handling branch (the stop_reason check) directly.
+test('a truncated rewrite (stop_reason: max_tokens) falls back to the ORIGINAL answer, not the cut-off text', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const original = '400 ₪ לחודש, בהתחייבות לשנה';
+  relay._setRewriterForTest(null); // fall through past the wide seam into the real call path
+  relay._setMessagesCreateForTest(async () => ({
+    stop_reason: 'max_tokens',
+    content: [{ text: '400 ₪ לחודש, בהתחיי' }], // plausible non-empty, truncated mid-word
+  }));
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Y' }] }; });
+
+  await relay.handleContactMessage({ business: BIZ, from: '972500000001', text: original, contextId: 'wamid.X' });
+
+  const toLead = sent.find(m => m.to === '97250000009');
+  assert.equal(toLead.text, original, 'a truncated rewrite must fall back to the human\'s original words, not the cut-off text');
+
+  relay._setMessagesCreateForTest(null); // don't leak the stub into later tests
+});
+
 test('a relayed answer preserves the session\'s existing qualification_progress rather than blanking it', async () => {
   const progress = { need: 'טיפול פנים', scope: null, budget: null, timeline: 'החודש', urgency: null };
   seed({ sessionQualificationProgress: progress });
