@@ -49,6 +49,41 @@ async function send(msg) {
   return sendWhatsAppMessage(msg);
 }
 
+// Graph rejects a template parameter that contains a newline, a tab, or a run
+// of four or more spaces — and a lead's WhatsApp question routinely contains a
+// newline. It also rejects an empty parameter, which `leadName`/`summary`
+// legitimately are. Either one fails the WHOLE send, so the rep would simply
+// never be asked. Collapse the whitespace and placeholder the empties.
+function templateParam(v) {
+  return String(v ?? '').replace(/\s+/g, ' ').trim() || '—';
+}
+
+// Business-initiated sends to a CONTACT (the rep/owner) usually fall outside
+// WhatsApp's 24h customer-service window, so they must go out as an approved
+// template. Sends to the LEAD stay plain text — the lead has just messaged us
+// — and so do the acks inside a rep's own reply thread.
+//
+// A missing template is a HARD STOP: nothing is sent and no message id comes
+// back, so no caller can move state on the strength of it. index.js's
+// follow-up sweep gets exactly this wrong — it writes status 'sent' with
+// wa_send 'not_configured' when nothing left the building. Do not copy it.
+//
+// `sender` (the test seam) short-circuits first and deliberately never touches
+// the template path: injected senders receive the readable plain text.
+async function sendToContact({ to, businessId, templateEnv, bodyParams, fallbackText }) {
+  if (sender) return sender({ to, businessId, text: fallbackText });
+  const templateName = process.env[templateEnv]?.trim();
+  if (!templateName) {
+    console.error(`[relay] ${templateEnv} is not configured — refusing to send to a contact (business=${businessId})`);
+    return null;
+  }
+  const { sendWhatsAppTemplate } = await import('../wa-send.js');
+  return sendWhatsAppTemplate({
+    to, templateName, langCode: 'he',
+    bodyParams: bodyParams.map(templateParam), businessId,
+  });
+}
+
 function holdingLineFor(persona) {
   return persona?.bot_gender === 'male'
     ? 'אני צריך לבדוק את זה, אעדכן בקרוב.'
@@ -84,10 +119,12 @@ export async function raiseEscalation({ business, session_id, question, reason =
     }
 
     const code = await store.nextShortCode(business.id);
-    const res = await send({
+    const res = await sendToContact({
       to: rep.phone,
-      text: repMessage({ code, leadName, summary, question }),
       businessId: business.id,
+      templateEnv: 'WHATSAPP_ESCALATION_TEMPLATE',
+      bodyParams: [code, leadName, summary, question],
+      fallbackText: repMessage({ code, leadName, summary, question }),
     });
     const repMessageId = res?.messages?.[0]?.id ?? null;
     if (!repMessageId) return null;
@@ -311,11 +348,21 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
       if (now.getTime() - since < settings.intervalHours * 3600 * 1000) continue;
       if (row.nudge_count >= settings.maxNudges) { await store.markExpired(row.id); expired++; continue; }
       if (!(await isOpenNow(row.business_id))) continue; // no counter change
-      await send({
+      const res = await sendToContact({
         to: row.rep_phone,
-        text: `תזכורת #${row.short_code} — עדיין ממתינה תשובה:\n${row.question}\n\nלהפסקת התזכורות השיבו "עצור".`,
         businessId: row.business_id,
+        templateEnv: 'WHATSAPP_NUDGE_TEMPLATE',
+        bodyParams: [row.short_code, row.question],
+        fallbackText: `תזכורת #${row.short_code} — עדיין ממתינה תשובה:\n${row.question}\n\nלהפסקת התזכורות השיבו "עצור".`,
       });
+      // Same rule as the escalation above, applied to the counter: a nudge
+      // that was refused (no template) or that Graph rejected must not burn
+      // the budget or move last_nudge_at — otherwise the ceiling is reached
+      // by reminders the rep never received and the question quietly expires.
+      if (!res?.messages?.[0]?.id) {
+        console.error(`[relay] nudge not delivered for ${row.id} — leaving the counter untouched`);
+        continue;
+      }
       await store.recordNudge(row.id);
       nudged++;
     } catch (e) {
