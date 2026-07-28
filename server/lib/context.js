@@ -1,6 +1,7 @@
 // WA_02 replacement — load session + business profile + conversation history
 
 import { supabase } from './supabase.js';
+import { resolveSessionBusiness } from './session-routing.js';
 
 const HISTORY_LIMIT = 50;
 const QUALIFICATION_FIELDS = ['need', 'scope', 'budget', 'timeline', 'urgency'];
@@ -43,6 +44,29 @@ export async function loadContext({ message, session_id, phone_number_id = null 
         setup_completed: true,
         qualification_progress: {},
       };
+    }
+
+    // Existing session — the receiving number is still the authority. A session
+    // created before a WhatsApp number was moved to another business would
+    // otherwise keep routing this sender to the old one forever, silently.
+    if (session && phone_number_id) {
+      const { data: owner } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('wa_phone_number_id', phone_number_id)
+        .maybeSingle();
+      const { businessId, corrected } = resolveSessionBusiness({
+        sessionBusinessId: session.business_id,
+        businessIdFromNumber: owner?.id ?? null,
+      });
+      if (corrected) {
+        console.warn(`[context] session ${session_id} was bound to ${session.business_id}; ` +
+          `the receiving number belongs to ${businessId} — re-pointing`);
+        await supabase.from('sessions')
+          .update({ business_id: businessId, updated_at: new Date().toISOString() })
+          .eq('session_id', session_id);
+        session = { ...session, business_id: businessId };
+      }
     }
 
     // Existing setup session — load draft; existing live session — load profile + history
