@@ -87,6 +87,16 @@ function templateParam(v) {
 //
 // `sender` (the test seam) short-circuits first and deliberately never touches
 // the template path: injected senders receive the readable plain text.
+// A LOCAL refusal — no template configured — costs nothing and applies
+// identically to every send, so it is decided BEFORE any database write. That
+// matters now that raiseEscalation reserves the row first: with the template
+// env deliberately unset (today's production state) an insert-then-refuse
+// ordering would churn one reserved-and-immediately-expired row per escalation
+// attempt, for nothing.
+function canSendToContact(templateEnv) {
+  return !!sender || !!process.env[templateEnv]?.trim();
+}
+
 async function sendToContact({ to, businessId, templateEnv, bodyParams, fallbackText }) {
   if (sender) return sender({ to, businessId, text: fallbackText });
   const templateName = process.env[templateEnv]?.trim();
@@ -120,6 +130,11 @@ export async function raiseEscalation({ business, session_id, question, reason =
     const rep = await resolveRep(business.id);
     if (!rep) return null;
 
+    if (!canSendToContact('WHATSAPP_ESCALATION_TEMPLATE')) {
+      console.error(`[relay] WHATSAPP_ESCALATION_TEMPLATE is not configured — refusing to escalate (business=${business.id})`);
+      return null;
+    }
+
     // Guard: the owner-contact backfill copied business_profiles.contact_phone
     // into the owner contact row, and for two real businesses that column
     // holds the business's own WABA number. If the resolved rep is that same
@@ -135,7 +150,49 @@ export async function raiseEscalation({ business, session_id, question, reason =
       return null;
     }
 
-    const code = await store.nextShortCode(business.id);
+    const open = await store.listOpen(business.id);
+
+    // Dedupe per lead. Without this, every escalate-intent message from one
+    // persistent lead buys another billable rep template and another open row
+    // — up to the 99-code ceiling, each then drawing nudge_max_count more
+    // templates (~495 conversations, most outside the 24h window at ~3.7x the
+    // session rate). The holding line invites exactly that behaviour, so the
+    // lead is still answered; the rep simply isn't asked twice.
+    if (open.some(r => r.session_id === session_id)) {
+      console.log(`[relay] ${session_id} already has an open escalation at ${business.id} — not asking the rep again`);
+      return { holdingLine: holdingLineFor(persona) };
+    }
+
+    const code = store.pickShortCode(open);
+
+    // INSERT BEFORE SEND. nextShortCode/pickShortCode is check-then-act, and
+    // the partial unique index escalations_open_code_uniq exists to make the
+    // loser of that race fail here. If we sent first, the rep would hold a real
+    // "#3 · <lead A's question>" with no row behind it — and correlate.js would
+    // then fall past the (unknown) quoted id to the CODE, matching the OTHER
+    // open row that legitimately holds #3. Lead B would receive the answer to
+    // lead A's question, which in a clinic may be a price.
+    //
+    // The inverted failure — a reserved row whose send never happened — is the
+    // genuinely milder one, and it is bounded: it is marked expired below, and
+    // the absolute age cap in nudgePass catches anything that escapes that.
+    let row;
+    try {
+      row = await store.createEscalation({
+        business_id: business.id, session_id, short_code: code,
+        question, reason, summary, rep_phone: rep.phone,
+        rep_message_id: null, status: 'open',
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error(`[relay] could not reserve short code ${code} for ${business.id} — not messaging the rep:`, e.message);
+      return null;
+    }
+    if (!row?.id) {
+      console.error(`[relay] escalation insert returned no id for ${business.id} — not messaging the rep`);
+      return null;
+    }
+
     const res = await sendToContact({
       to: rep.phone,
       businessId: business.id,
@@ -144,14 +201,14 @@ export async function raiseEscalation({ business, session_id, question, reason =
       fallbackText: repMessage({ code, leadName, summary, question }),
     });
     const repMessageId = res?.messages?.[0]?.id ?? null;
-    if (!repMessageId) return null;
-
-    await store.createEscalation({
-      business_id: business.id, session_id, short_code: code,
-      question, reason, summary, rep_phone: rep.phone,
-      rep_message_id: repMessageId, status: 'open',
-      created_at: new Date().toISOString(),
-    });
+    if (!repMessageId) {
+      // Release the short code and stop the nudge ladder before it starts —
+      // an open row nobody was asked about would answer the rep's NEXT reply.
+      try { await store.markExpired(row.id); }
+      catch (e) { console.error(`[relay] could not expire the unsent escalation ${row.id}:`, e.message); }
+      return null;
+    }
+    await store.setRepMessageId(row.id, repMessageId);
 
     return { holdingLine: holdingLineFor(persona) };
   } catch (e) {

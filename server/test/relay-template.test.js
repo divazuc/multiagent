@@ -267,7 +267,7 @@ test('a configured nudge template posts the short code and question, and records
 // 4. A rejected template is the same hard stop as a missing one
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('a template Graph rejects (e.g. not approved yet) leaves no escalation row', async () => {
+test('a template Graph rejects (e.g. not approved yet) leaves no OPEN escalation row', async () => {
   const rows = seed();
   relay._setSenderForTest(null);
   process.env.WHATSAPP_ESCALATION_TEMPLATE = 'escalation_notify';
@@ -280,7 +280,14 @@ test('a template Graph rejects (e.g. not approved yet) leaves no escalation row'
   });
 
   assert.equal(r, null, 'a rejected template must not promise the lead an answer');
-  assert.equal(rows.length, 0);
+  // The row is reserved before the send now (see raiseEscalation: reserving the
+  // short code is what stops a lost race from mis-delivering another lead's
+  // answer). What must never survive a failed send is an OPEN row — it would
+  // hold a short code and swallow the rep's next untagged reply.
+  assert.equal(rows.filter(x => x.status === 'open').length, 0);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, 'expired');
+  assert.equal(rows[0].rep_message_id, null, 'nothing was delivered, so no rep message id was ever patched in');
 
   graphResponse = () => new Response(JSON.stringify({ messages: [{ id: 'wamid.TEMPLATE' }] }),
     { status: 200, headers: { 'content-type': 'application/json' } });

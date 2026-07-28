@@ -16,6 +16,10 @@ function seed({
   rep = { business_id: 'b1', role: 'rep', name: 'סאלי', phone: '972500000001' },
   businessWhatsapp = null,
   sessionQualificationProgress = null,
+  // Simulates the partial unique index `escalations_open_code_uniq` rejecting
+  // the insert — the check-then-act race in nextShortCode losing to another
+  // request that already took the code.
+  insertFails = false,
 } = {}) {
   contacts._setDbForTest({
     async listContacts() { return rep ? [rep] : []; },
@@ -23,9 +27,12 @@ function seed({
   });
   const rows = [];
   store._setDbForTest({
-    async insert(row) { const r = { id: `e${rows.length + 1}`, ...row }; rows.push(r); return r; },
-    async listOpen() { return [...rows].reverse(); },
-    async listAllOpen() { return rows; },
+    async insert(row) {
+      if (insertFails) throw new Error('duplicate key value violates unique constraint "escalations_open_code_uniq"');
+      const r = { id: `e${rows.length + 1}`, ...row }; rows.push(r); return r;
+    },
+    async listOpen() { return [...rows].reverse().filter(r => r.status === 'open'); },
+    async listAllOpen() { return rows.filter(r => r.status === 'open'); },
     async update(id, patch) { Object.assign(rows.find(r => r.id === id), patch); },
   });
   relay._setDbForTest({
@@ -74,6 +81,95 @@ test('a failed send leaves no escalation behind', async () => {
   });
   assert.equal(r, null, 'must not promise the lead an answer nobody was asked for');
   assert.equal(rows.filter(x => x.status === 'open').length, 0);
+});
+
+// ── C2: reserve the code BEFORE telling the rep anything ────────────────────
+// The partial unique index escalations_open_code_uniq exists precisely to make
+// the insert fail when nextShortCode's check-then-act loses a race. With
+// send-before-insert the rep is left holding a real "#3 · <lead A's question>"
+// with no row behind it; correlate.js then falls past contextId to the CODE,
+// which matches the OTHER open row that legitimately holds #3 — and lead B
+// receives the answer to lead A's question. In a clinic that answer is a price.
+
+test('a lost short-code race sends the rep nothing at all', async () => {
+  const rows = seed({ insertFails: true });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  const r = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'אפשר לפרוס לתשלומים?', persona: {},
+  });
+
+  assert.equal(r, null, 'no holding line — nobody was successfully asked');
+  assert.equal(sent.length, 0,
+    'the rep must never hold a coded message with no row behind it: the code would resolve to another lead');
+  assert.equal(rows.length, 0);
+});
+
+test('a send that fails after the row is reserved leaves no open row behind', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => null); // Graph rejected it — no message id
+
+  const r = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {},
+  });
+
+  assert.equal(r, null);
+  assert.equal(rows.filter(x => x.status === 'open').length, 0,
+    'a reserved-but-unsent row must not stay open: it would hold a short code and answer a rep\'s next reply');
+  assert.equal(rows.length, 1, 'the row is kept, marked expired, so the reservation is auditable');
+  assert.equal(rows[0].status, 'expired');
+});
+
+// ── I2: one persistent lead must not buy 99 rep templates ────────────────────
+// Without a per-session dedupe every escalate-intent message creates another
+// escalation, another billable business-initiated template, and another open
+// row — up to the 99-code ceiling, each then drawing nudge_max_count more
+// templates. The holding line actively invites the lead to keep pushing.
+
+test('a second escalation for the same lead reuses the open one and sends nothing', async () => {
+  const rows = seed();
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  const first = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'אפשר לפרוס לתשלומים?', persona: { bot_gender: 'female' },
+  });
+  const second = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'אז מה, אפשר או לא?', persona: { bot_gender: 'female' },
+  });
+
+  assert.ok(first.holdingLine);
+  assert.ok(second.holdingLine, 'the lead is still told we are checking — the rep really does have their question');
+  assert.equal(sent.length, 1, 'the rep is asked once, not once per impatient message');
+  assert.equal(rows.length, 1, 'no second open row, so no second short code and no second nudge ladder');
+});
+
+test('a different lead at the same business still gets its own escalation', async () => {
+  const rows = seed();
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה א', persona: {} });
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000008', question: 'שאלה ב', persona: {} });
+
+  assert.equal(sent.length, 2);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map(r => r.short_code), [1, 2]);
+});
+
+test('once the open escalation is answered the same lead can escalate again', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה א', persona: {} });
+  await store.markAnswered(rows[0].id, 'כן');
+
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Y' }] }; });
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה ב', persona: {} });
+
+  assert.equal(sent.length, 1, 'a closed escalation must not block the lead\'s next real question');
+  assert.equal(rows.length, 2);
 });
 
 // ── Guard: never message the business's own WhatsApp number ─────────────────
