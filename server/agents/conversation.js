@@ -57,6 +57,11 @@ export async function runConversation({ message, session_id, context }) {
             business: { id: business_id, name: business_profile?.business_name ?? '' },
             session_id, question: message,
             reason: intent.escalation_reason ?? null,
+            // The rep's message needs to say WHO is asking. The name and the
+            // ai_summary snapshot are resolved inside the relay (it owns the
+            // db seam); the history is the fallback for a lead whose summary
+            // hasn't been generated yet, and only this layer has it loaded.
+            history: conversation_history,
             persona,
           })
         : null;

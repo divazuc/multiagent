@@ -38,6 +38,15 @@ async function realDb() {
       if (error) throw error;
       return data ?? null;
     },
+    // The LEAD's row in `contacts` — their name and the async-generated
+    // ai_summary. Keyed by phone, which for a live WhatsApp session IS the
+    // session_id (index.js:377 upserts the contact under exactly that value).
+    async getLeadContact(businessId, phone) {
+      const { data, error } = await supabase.from('contacts')
+        .select('name, ai_summary').eq('business_id', businessId).eq('phone', phone).maybeSingle();
+      if (error) throw error;
+      return data ?? null;
+    },
   };
 }
 
@@ -117,6 +126,45 @@ function holdingLineFor(persona) {
     : 'אני צריכה לבדוק את זה, אעדכן בקרוב.';
 }
 
+// Who is asking, and what about. Without this the rep reads
+// "#3 · — / סיכום: — / <question>" on EVERY escalation — the placeholder was
+// never the anonymous-lead case, it was every case, because conversation.js
+// passed `context.contact_summary` (a key nothing in the repo sets) and no name
+// at all. The rep cannot answer "can she pay in instalments?" without knowing
+// who she is.
+//
+// Design spec §2: snapshot contacts.ai_summary, and because it is generated
+// asynchronously (index.js:378) it is null or stale on a first-message
+// escalation — so fall back to the last few turns rather than sending nothing.
+//
+// Purely cosmetic, so it never fails the escalation: a thrown lookup degrades
+// to the history fallback, and no history degrades to the placeholder.
+const SUMMARY_TURNS = 3;
+
+function summaryFromHistory(history) {
+  if (!Array.isArray(history)) return null;
+  const turns = history
+    .filter(m => m?.content)
+    .slice(-SUMMARY_TURNS)
+    .map(m => `${m.role === 'assistant' ? 'בוט' : 'ליד'}: ${String(m.content).replace(/\s+/g, ' ').trim()}`)
+    .filter(s => s.length > 5);
+  return turns.length ? turns.join(' | ') : null;
+}
+
+async function leadSnapshot({ businessId, sessionId, leadName, summary, history }) {
+  if (leadName && summary) return { leadName, summary }; // caller knows better
+  let contact = null;
+  try {
+    contact = await (await getDb()).getLeadContact?.(businessId, sessionId) ?? null;
+  } catch (e) {
+    console.error('[relay] lead contact lookup failed — the rep gets a thinner message:', e.message);
+  }
+  return {
+    leadName: leadName ?? contact?.name ?? null,
+    summary: summary ?? contact?.ai_summary ?? summaryFromHistory(history),
+  };
+}
+
 function repMessage({ code, leadName, summary, question }) {
   const who = leadName ? ` · ${leadName}` : '';
   const ctx = summary ? `\nסיכום: ${summary}` : '';
@@ -125,7 +173,7 @@ function repMessage({ code, leadName, summary, question }) {
 
 // Returns null when no relay is possible — the caller then keeps today's
 // behaviour. NEVER tell a lead we are checking if nobody was asked.
-export async function raiseEscalation({ business, session_id, question, reason = null, summary = null, leadName = null, persona = {} }) {
+export async function raiseEscalation({ business, session_id, question, reason = null, summary = null, leadName = null, persona = {}, history = null }) {
   try {
     const rep = await resolveRep(business.id);
     if (!rep) return null;
@@ -164,6 +212,9 @@ export async function raiseEscalation({ business, session_id, question, reason =
     }
 
     const code = store.pickShortCode(open);
+    const lead = await leadSnapshot({
+      businessId: business.id, sessionId: session_id, leadName, summary, history,
+    });
 
     // INSERT BEFORE SEND. nextShortCode/pickShortCode is check-then-act, and
     // the partial unique index escalations_open_code_uniq exists to make the
@@ -180,7 +231,7 @@ export async function raiseEscalation({ business, session_id, question, reason =
     try {
       row = await store.createEscalation({
         business_id: business.id, session_id, short_code: code,
-        question, reason, summary, rep_phone: rep.phone,
+        question, reason, summary: lead.summary, rep_phone: rep.phone,
         rep_message_id: null, status: 'open',
         created_at: new Date().toISOString(),
       });
@@ -197,8 +248,8 @@ export async function raiseEscalation({ business, session_id, question, reason =
       to: rep.phone,
       businessId: business.id,
       templateEnv: 'WHATSAPP_ESCALATION_TEMPLATE',
-      bodyParams: [code, leadName, summary, question],
-      fallbackText: repMessage({ code, leadName, summary, question }),
+      bodyParams: [code, lead.leadName, lead.summary, question],
+      fallbackText: repMessage({ code, leadName: lead.leadName, summary: lead.summary, question }),
     });
     const repMessageId = res?.messages?.[0]?.id ?? null;
     if (!repMessageId) {

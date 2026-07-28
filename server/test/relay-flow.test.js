@@ -20,6 +20,10 @@ function seed({
   // the insert — the check-then-act race in nextShortCode losing to another
   // request that already took the code.
   insertFails = false,
+  // The lead's row in `contacts` — the name shown to the rep and the
+  // ai_summary snapshot the design spec §2 requires. `undefined` means the
+  // lookup itself throws.
+  leadContact = null,
 } = {}) {
   contacts._setDbForTest({
     async listContacts() { return rep ? [rep] : []; },
@@ -38,6 +42,10 @@ function seed({
   relay._setDbForTest({
     async getBusiness() { return { whatsapp_number: businessWhatsapp }; },
     async getSession() { return { qualification_progress: sessionQualificationProgress }; },
+    async getLeadContact() {
+      if (leadContact === undefined) throw new Error('transient db error');
+      return leadContact;
+    },
   });
   relay._setHistorySaverForTest(async () => ({ status: 'success', result: { saved: true }, error: null }));
   return rows;
@@ -416,4 +424,93 @@ test('a contact lookup that throws is consumed, never handed to the conversation
   });
 
   assert.equal(consumed, true, 'not knowing whether the sender is a rep must never resolve to "sell to them"');
+});
+
+// ── I5: the rep must know WHO is asking ──────────────────────────────────────
+// conversation.js passed `summary: context.contact_summary` — a key nothing in
+// the repo ever sets — and no leadName at all, so templateParam's "—"
+// placeholder rendered for {{2}} and {{3}} on EVERY escalation, not just for an
+// anonymous lead. The rep got a bare question from nobody. Design spec §2
+// requires the contacts.ai_summary snapshot with a fallback to recent turns,
+// and this has to be right BEFORE the templates go to Meta: the approved body
+// is written around these parameters.
+
+const HISTORY = [
+  { role: 'user',      content: 'היי, כמה עולה טיפול פנים?' },
+  { role: 'assistant', content: 'שמחה שפנית! מה בדיוק מעניין אותך?' },
+  { role: 'user',      content: 'ניקוי עמוק, ואפשר לפרוס לתשלומים?' },
+];
+
+test('the rep is told the lead\'s name and the ai_summary snapshot', async () => {
+  seed({ leadContact: { name: 'דנה כהן', ai_summary: 'מתעניינת בטיפול פנים, שאלה על מחירים בעבר.' } });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'אפשר לפרוס לתשלומים?',
+    history: HISTORY, persona: { bot_gender: 'female' },
+  });
+
+  assert.match(sent[0].text, /דנה כהן/, 'the rep must know who is asking');
+  assert.match(sent[0].text, /מתעניינת בטיפול פנים/, 'the ai_summary snapshot must reach the rep');
+  assert.ok(!sent[0].text.includes('סיכום: —'), 'the placeholder must not render when a real summary exists');
+});
+
+test('a lead with no ai_summary yet falls back to the recent turns', async () => {
+  const rows = seed({ leadContact: { name: 'דנה כהן', ai_summary: null } });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'אפשר לפרוס לתשלומים?',
+    history: HISTORY, persona: {},
+  });
+
+  // ai_summary is generated asynchronously (index.js:378), so on a
+  // first-message escalation it is null or stale — spec §2 says fall back to
+  // the last few turns rather than sending the rep an empty summary.
+  assert.match(sent[0].text, /ניקוי עמוק/, 'the rep must see what the lead has actually been saying');
+  assert.match(rows[0].summary, /ניקוי עמוק/, 'the snapshot is stored on the row, not just sent');
+});
+
+test('an anonymous lead with no history still escalates, placeholder and all', async () => {
+  seed({ leadContact: null });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  const r = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'אפשר לפרוס לתשלומים?', persona: {},
+  });
+
+  assert.ok(r.holdingLine, 'an unknown lead must never block the escalation');
+  assert.match(sent[0].text, /אפשר לפרוס לתשלומים\?/);
+});
+
+test('a contacts lookup failure degrades the rep message instead of killing the escalation', async () => {
+  const rows = seed({ leadContact: undefined }); // getLeadContact throws
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  const r = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'אפשר לפרוס לתשלומים?',
+    history: HISTORY, persona: {},
+  });
+
+  assert.ok(r.holdingLine, 'a cosmetic lookup must never cost the lead their escalation');
+  assert.equal(rows[0].status, 'open');
+  assert.match(sent[0].text, /ניקוי עמוק/, 'the history fallback still supplies a summary');
+});
+
+test('an explicitly passed leadName and summary win over the lookup', async () => {
+  seed({ leadContact: { name: 'לא נכון', ai_summary: 'לא נכון' } });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.X' }] }; });
+
+  await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'שאלה',
+    leadName: 'דנה כהן', summary: 'סיכום מפורש', persona: {},
+  });
+
+  assert.match(sent[0].text, /דנה כהן/);
+  assert.match(sent[0].text, /סיכום מפורש/);
 });

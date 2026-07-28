@@ -64,7 +64,7 @@ function seedRelay({ rep = { business_id: 'b1', role: 'rep', name: 'סאלי', p
     async getBusiness() { return { whatsapp_number: '972599999999' }; },
     async getSession() { return { qualification_progress: {} }; },
     async listPlatformWhatsappNumbers() { return [{ whatsapp_number: '972599999999' }]; },
-    async getLeadContact() { return null; },
+    async getLeadContact() { return { name: 'דנה כהן', ai_summary: 'מתעניינת בטיפול פנים.' }; },
   });
   const sent = [];
   relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.REP' }] }; });
@@ -105,6 +105,38 @@ test('runConversation actually raises an escalation for a real loadContext-shape
   assert.equal(rows[0].session_id, '972500000009');
   assert.equal(out.result.response, 'אני צריכה לבדוק את זה, אעדכן בקרוב.',
     'the lead gets the relay holding line, not the dead-end "מעבירה אותך לנציגה" sentence');
+  // I5 — the rep must be able to tell who is asking. This is the wiring that
+  // decides what the approved Meta template body can say.
+  assert.match(sent[0].text, /דנה כהן/, 'the lead\'s name reaches the rep through the real caller');
+  assert.match(sent[0].text, /מתעניינת בטיפול פנים/);
+});
+
+test('a lead with no summary yet still reaches the rep with recent turns', async () => {
+  const { rows, sent } = seedRelay();
+  relay._setDbForTest({
+    async getBusiness() { return { whatsapp_number: '972599999999' }; },
+    async getSession() { return { qualification_progress: {} }; },
+    async getLeadContact() { return { name: 'דנה כהן', ai_summary: null }; },
+  });
+  _setMessagesCreateForTest(escalatingIntent());
+
+  await runConversation({
+    message: 'אפשר לפרוס לתשלומים?',
+    session_id: '972500000009',
+    context: loadContextShaped({
+      conversation_history: [
+        { role: 'user', content: 'היי, כמה עולה טיפול פנים?' },
+        { role: 'assistant', content: 'שמחה שפנית! מה מעניין אותך?' },
+        { role: 'user', content: 'ניקוי עמוק' },
+      ],
+    }),
+  });
+
+  _setMessagesCreateForTest(null);
+
+  assert.match(sent[0].text, /ניקוי עמוק/,
+    'conversation_history must actually be threaded through — it is the only summary a new lead has');
+  assert.match(rows[0].summary, /ניקוי עמוק/);
 });
 
 test('with no reachable rep the lead still gets the old dead-end phrase and no row is created', async () => {
