@@ -1304,7 +1304,7 @@ Do **not** reuse `BusinessPreferences.handleSave` for this — it posts ten fiel
 
 In `server/lib/portal.js`, add `getBusinessContacts` to the op whitelist so the client dashboard can *display* both contacts, with `business_id` taken from the signed token as every other portal op does. Do **not** whitelist `setBusinessContact`: a client silently redirecting their own escalations to a wrong number is a support incident, so changing them stays an operator action.
 
-Render them read-only in the client settings tab (`wa-studio/src/components/FaqSettings.jsx`, next to the existing schedule block) as plain labelled text, with no inputs.
+Render them read-only in the client settings tab (`wa-studio/src/demo/FaqSettings.jsx`, next to the existing schedule block) as plain labelled text, with no inputs.
 
 - [ ] **Step 4: Verify the build**
 
@@ -1314,7 +1314,7 @@ Expected: build succeeds
 - [ ] **Step 5: Commit**
 
 ```bash
-git add server/lib/studio.js server/lib/portal.js wa-studio/src/components/BotPolicyEditor.jsx wa-studio/src/components/FaqSettings.jsx
+git add server/lib/studio.js server/lib/portal.js wa-studio/src/components/BotPolicyEditor.jsx wa-studio/src/demo/FaqSettings.jsx
 git commit -m "feat(studio): owner and rep contact management, read-only for clients"
 ```
 
