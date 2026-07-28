@@ -5,7 +5,18 @@ import { ESCALATION_OPTIONS, FORBIDDEN_OPTIONS, DAY_NAMES } from '../lib/botPoli
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const api = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
 
+async function rpc(fn, args = []) {
+  const res = await fetch(api('/studio/rpc'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fn, args }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok || body.ok === false) throw new Error(body.error || `${fn}: HTTP ${res.status}`)
+  return body.result
+}
+
 const DEFAULT_DAY = { active: false, from: '09:00', to: '19:00' }
+const EMPTY_CONTACT = { name: '', phone: '', email: '', notes: '' }
 
 const box = {
   overlay: { position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
@@ -39,20 +50,42 @@ function CheckGroup({ options, selected, onToggle, customValue, onCustom, custom
   )
 }
 
+function ContactFields({ label, hint, value, onChange, onSave, saving, error, saved }) {
+  const set = (k) => (e) => onChange({ ...EMPTY_CONTACT, ...value, [k]: e.target.value })
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <input style={box.input} placeholder="שם" value={value?.name ?? ''} onChange={set('name')} dir="rtl" />
+        <input style={box.input} placeholder="טלפון" value={value?.phone ?? ''} onChange={set('phone')} dir="ltr" />
+        <input style={box.input} placeholder="אימייל" value={value?.email ?? ''} onChange={set('email')} dir="ltr" />
+        <textarea style={{ ...box.input, resize: 'vertical' }} placeholder="הערות" value={value?.notes ?? ''} onChange={set('notes')} rows={2} dir="rtl" />
+      </div>
+      {hint && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{hint}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+        <button style={box.btn} onClick={onSave} disabled={saving}>{saving ? 'שומר…' : 'שמירת איש קשר'}</button>
+        {error && <span style={{ color: '#f87171', fontSize: 12 }}>{error}</span>}
+        {!error && saved && <span style={{ color: 'var(--accent)', fontSize: 12 }}>נשמר ✓</span>}
+      </div>
+    </div>
+  )
+}
+
 export default function BotPolicyEditor({ business, onClose, onSaved }) {
   const [state, setState] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [contactSaving, setContactSaving] = useState({ owner: false, rep: false })
+  const [contactErrors, setContactErrors] = useState({ owner: null, rep: null })
+  const [contactSaved, setContactSaved] = useState({ owner: false, rep: false })
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(api('/studio/rpc'), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fn: 'getBotSettings', args: [business.id] }),
-        })
-        const body = await res.json()
-        const s = body.result ?? {}
+        const [s, contacts] = await Promise.all([
+          rpc('getBotSettings', [business.id]),
+          rpc('getBusinessContacts', [business.id]),
+        ])
         const g = s.guardrails ?? {}
         setState({
           persona: s.persona ?? {},
@@ -71,6 +104,10 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
           followup_enabled: s.followup_enabled === true,
           followup_delay_days: s.followup_delay_days ?? 2,
           followup_message: s.followup_message ?? '',
+          nudge_interval_hours: s.nudge_interval_hours ?? 2,
+          nudge_max_count: s.nudge_max_count ?? 4,
+          owner: contacts.owner ?? EMPTY_CONTACT,
+          rep: contacts.rep ?? EMPTY_CONTACT,
         })
       } catch (e) { setError(e.message) }
     })()
@@ -85,6 +122,30 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
 
   function setDay(i, patch) {
     setState(s => ({ ...s, days: s.days.map((d, j) => j === i ? { ...d, ...patch } : d) }))
+  }
+
+  // Saved through a dedicated op (setBusinessContact), never through the bulk
+  // /business/update save() below — business_contacts is its own table, and
+  // upsertContact() can throw on a phone it cannot normalise. That error must
+  // reach the operator, not be swallowed.
+  async function saveContact(role) {
+    setContactSaving(s => ({ ...s, [role]: true }))
+    setContactErrors(e => ({ ...e, [role]: null }))
+    setContactSaved(s => ({ ...s, [role]: false }))
+    try {
+      const value = state[role] ?? EMPTY_CONTACT
+      await rpc('setBusinessContact', [business.id, role, {
+        name: value.name?.trim() || null,
+        phone: value.phone ?? '',
+        email: value.email?.trim() || null,
+        notes: value.notes?.trim() || null,
+      }])
+      setContactSaved(s => ({ ...s, [role]: true }))
+    } catch (e) {
+      setContactErrors(err => ({ ...err, [role]: e.message }))
+    } finally {
+      setContactSaving(s => ({ ...s, [role]: false }))
+    }
   }
 
   async function save() {
@@ -123,6 +184,27 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
         body: JSON.stringify({ business_id: business.id, updates }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      // Sent as its own request so a database that hasn't had
+      // wa-studio/docs/sql/2026-07-28-nudge-settings.sql applied yet can
+      // never fail the policy save above — see getBotSettings() in
+      // server/lib/studio.js for the matching isolation on the read side.
+      try {
+        const nudgeRes = await fetch(api('/business/update'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: business.id,
+            updates: {
+              nudge_interval_hours: Math.min(Math.max(Number(state.nudge_interval_hours) || 2, 1), 24),
+              nudge_max_count: Math.min(Math.max(Number(state.nudge_max_count) || 4, 1), 20),
+            },
+          }),
+        })
+        if (!nudgeRes.ok) throw new Error(`HTTP ${nudgeRes.status}`)
+      } catch (e) {
+        console.error('[bot-policy] nudge settings did not save:', e.message)
+      }
+
       onSaved?.()
       onClose()
     } catch (e) { setError(e.message) }
@@ -249,6 +331,50 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
             <textarea rows={2} style={{ ...box.input, resize: 'vertical', marginTop: 6 }} value={state.followup_message}
                       placeholder="נוסח הפולו-אפ (ריק = ברירת מחדל)"
                       onChange={e => setState(s => ({ ...s, followup_message: e.target.value }))} />
+          </div>
+
+          <div style={box.sec}>
+            <div style={box.secTitle}>אנשי קשר</div>
+            <ContactFields
+              label="בעל העסק"
+              value={state.owner}
+              onChange={v => setState(s => ({ ...s, owner: v }))}
+              onSave={() => saveContact('owner')}
+              saving={contactSaving.owner}
+              error={contactErrors.owner}
+              saved={contactSaved.owner}
+            />
+            <ContactFields
+              label="נציג אנושי"
+              hint="אם ריק, האסקלציות יגיעו לבעל העסק"
+              value={state.rep}
+              onChange={v => setState(s => ({ ...s, rep: v }))}
+              onSave={() => saveContact('rep')}
+              saving={contactSaving.rep}
+              error={contactErrors.rep}
+              saved={contactSaved.rep}
+            />
+
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 4 }}>
+              <label style={box.check}>
+                תזכורת לנציג כל
+                <input type="number" min="1" max="24" style={{ ...box.timeInput, width: 52, textAlign: 'center' }}
+                       value={state.nudge_interval_hours}
+                       onChange={e => setState(s => ({ ...s, nudge_interval_hours: e.target.value }))} />
+                שעות
+              </label>
+              <label style={box.check}>
+                עד
+                <input type="number" min="1" max="20" style={{ ...box.timeInput, width: 52, textAlign: 'center' }}
+                       value={state.nudge_max_count}
+                       onChange={e => setState(s => ({ ...s, nudge_max_count: e.target.value }))} />
+                תזכורות ואז פקיעה
+              </label>
+            </div>
+
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
+              מספר שמופיע כאן לא יוכל לכתוב לבוט כליד
+            </div>
           </div>
 
           <ModulesSection business={business} />

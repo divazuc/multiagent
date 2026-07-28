@@ -115,6 +115,11 @@ const ops = {
   getBotSettings:   (bizId) => runStudioOp('getBotSettings', [bizId]),
   addFaqItem:       (bizId, fields) => runStudioOp('addFaqItem', [bizId, fields ?? {}]),
 
+  // Read-only: the client may see who the bot escalates to, never change it.
+  // Redirecting escalations to a different number stays an operator action —
+  // see server/lib/studio.js#setBusinessContact, deliberately NOT exposed here.
+  getBusinessContacts: (bizId) => runStudioOp('getBusinessContacts', [bizId]),
+
   async updateFaqItem(bizId, id, updates) {
     await assertOwned('knowledge_items', id, bizId);
     const clean = {};

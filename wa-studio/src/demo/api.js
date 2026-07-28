@@ -33,6 +33,7 @@ export function createDemoApi(bizId) {
     deleteFaqItem: (id) => rpc('deleteFaqItem', id),
     addFaqItem: (fields) => rpc('addFaqItem', bizId, fields),
     getBotSettings: () => rpc('getBotSettings', bizId),
+    getBusinessContacts: () => rpc('getBusinessContacts', bizId),
     async updateBotSettings(updates) {
       await jsonOrThrow(await fetch(`${AGENT}/business/update`, {
         method: 'POST',
@@ -81,6 +82,9 @@ export function createPortalApi(token, business, onAuthExpired) {
     deleteFaqItem: (id) => rpc('deleteFaqItem', id),
     addFaqItem: (fields) => rpc('addFaqItem', fields),
     getBotSettings: () => rpc('getBotSettings'),
+    // Read-only: the client can see who the bot escalates to, never change
+    // it — there is no setBusinessContact in the portal whitelist.
+    getBusinessContacts: () => rpc('getBusinessContacts'),
     updateBotSettings: (updates) => rpc('updateBotSettings', updates),
     listContacts: () => rpc('listContacts'),
     getBilling: async () => null, // no billing pipeline for real clients yet

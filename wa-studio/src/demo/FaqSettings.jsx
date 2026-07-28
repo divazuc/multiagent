@@ -169,9 +169,27 @@ export function DemoFaq({ api, showToast }) {
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
 const DEFAULT_DAY = { active: false, from: '09:00', to: '19:00' }
 
+// Read-only: who the bot escalates to is set by the operator
+// (BotPolicyEditor), never here — see server/lib/portal.js, which whitelists
+// getBusinessContacts but deliberately not setBusinessContact.
+function ContactLine({ label, contact, emptyHint }) {
+  const parts = [contact?.name, contact?.phone, contact?.email].filter(Boolean)
+  return (
+    <div className="st-ro-line">
+      <b>{label}: </b>
+      {parts.length ? parts.join(' · ') : emptyHint}
+    </div>
+  )
+}
+
 export function DemoSettings({ api, showToast }) {
   const [settings, setSettings] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [contacts, setContacts] = useState(null)
+
+  useEffect(() => {
+    api.getBusinessContacts?.().then(setContacts).catch(() => setContacts(null))
+  }, [api])
 
   useEffect(() => {
     api.getBotSettings().then(s => {
@@ -326,6 +344,15 @@ export function DemoSettings({ api, showToast }) {
                   value={settings.after_hours_message}
                   onChange={e => setSettings(s => ({ ...s, after_hours_message: e.target.value }))} />
       </section>
+
+      {/* contacts — read-only; changing them is an operator action */}
+      {contacts && (
+        <section className="st-card">
+          <h3>אנשי קשר</h3>
+          <ContactLine label="בעל העסק" contact={contacts.owner} emptyHint="לא הוגדר" />
+          <ContactLine label="נציג אנושי" contact={contacts.rep} emptyHint="לא הוגדר — אסקלציות מגיעות לבעל העסק" />
+        </section>
+      )}
 
       {/* follow-up — editable */}
       <section className="st-card">
