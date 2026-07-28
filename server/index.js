@@ -167,33 +167,24 @@ app.post('/wa-inbound', async (req, res) => {
     // escalation must never reach the conversation agent — recognise it here,
     // scoped to the business that owns the receiving number, before the
     // pipeline (and its own contacts-table upsert) ever runs.
+    // FAILS CLOSED — see lib/relay/intercept.js. Anything short of a clean
+    // "this sender is not a listed contact of this business" stops here rather
+    // than reaching the conversation agent.
     try {
-      const phoneNumberId = value?.metadata?.phone_number_id;
-      if (phoneNumberId) {
-        const { supabase } = await import('./lib/supabase.js');
-        const { data: biz, error: bizErr } = await supabase.from('businesses')
-          .select('id, name').eq('wa_phone_number_id', phoneNumberId).maybeSingle();
-        if (bizErr) console.error('[wa-inbound] business lookup failed:', bizErr.message);
-        if (biz) {
-          const { handleContactMessage } = await import('./lib/relay/index.js');
-          const { data: relayProfile, error: profileErr } = await supabase.from('business_profiles')
-            .select('persona').eq('business_id', biz.id).maybeSingle();
-          if (profileErr) console.error('[wa-inbound] persona lookup failed:', profileErr.message);
-          const consumed = await handleContactMessage({
-            business: { id: biz.id, name: biz.name ?? '' },
-            from: value.messages[0].from,
-            // text/interactive/button all classify as kind:'message' — read
-            // it the same way normalizeMessage does so a rep's button tap
-            // (Task 10 moves the rep hop to templates) doesn't relay as "".
-            text: extractMessageText(value.messages[0]),
-            contextId: value.messages[0].context?.id ?? null,
-            persona: relayProfile?.persona ?? null,
-          });
-          if (consumed) return; // never reaches the conversation agent, no contacts row
-        }
-      }
+      const { interceptContactMessage } = await import('./lib/relay/intercept.js');
+      const consumed = await interceptContactMessage({
+        phoneNumberId: value?.metadata?.phone_number_id,
+        from: value.messages[0].from,
+        // text/interactive/button all classify as kind:'message' — read it the
+        // same way normalizeMessage does so a rep's button tap (Task 10 moved
+        // the rep hop to templates) doesn't relay as "".
+        text: extractMessageText(value.messages[0]),
+        contextId: value.messages[0].context?.id ?? null,
+      });
+      if (consumed) return; // never reaches the conversation agent, no contacts row
     } catch (e) {
-      console.error('[wa-inbound] contact-check failed:', e.message);
+      console.error('[wa-inbound] contact gate failed — not running the pipeline for an unverified sender:', e.message);
+      return;
     }
 
     runAgentPipeline(req.body).catch(e => console.error('[wa-inbound] async pipeline failed:', e));

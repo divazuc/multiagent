@@ -397,3 +397,23 @@ test('a relayed answer preserves the session\'s existing qualification_progress 
   assert.deepEqual(saved[0].qualification_progress, progress,
     'must pass the session\'s existing progress through unchanged, not {} or undefined');
 });
+
+// ── I4: the contact lookup itself failing must also fail closed ──────────────
+// handleContactMessage already consumes a mid-flight failure AFTER the sender
+// is recognised. But if findContactByPhone is what throws, `recognized` was
+// still false, so the message went to the conversation agent — the bot pitches
+// its own rep and files them in the client's lead inbox. A lookup ERROR is not
+// evidence that the sender is a lead; it is evidence that we do not know.
+
+test('a contact lookup that throws is consumed, never handed to the conversation agent', async () => {
+  contacts._setDbForTest({
+    async listContacts() { throw new Error('transient db error'); },
+    async upsertContact() {},
+  });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: 'כן, אפשר', contextId: null,
+  });
+
+  assert.equal(consumed, true, 'not knowing whether the sender is a rep must never resolve to "sell to them"');
+});

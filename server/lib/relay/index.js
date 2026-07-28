@@ -324,9 +324,19 @@ export async function handleContactMessage({ business, from, text, contextId, pe
   // transient DB error) must still be consumed here, never fall through to
   // the conversation agent, which would sell to the business's own rep and
   // create a contacts row for them in the client's lead inbox.
+  //
+  // The lookup ITSELF failing is a third case, and it fails closed: `false`
+  // here would mean "this is a lead" on the strength of a transient DB error,
+  // which is the one thing this function exists to prevent.
   let recognized = false;
   try {
-    const contact = await findContactByPhone(business.id, from);
+    let contact;
+    try {
+      contact = await findContactByPhone(business.id, from);
+    } catch (e) {
+      console.error('[relay] contact lookup failed — refusing to hand the message to the conversation agent:', e.message);
+      return true;
+    }
     if (!contact) return false;
     recognized = true;
 
