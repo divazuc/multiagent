@@ -7,9 +7,11 @@ import * as store from './store.js';
 let sender = null; // test seam
 export function _setSenderForTest(fn) { sender = fn; }
 
-// Test seam for the business's own record (currently only whatsapp_number,
-// used by the own-number guard below). Same lazy-import style as
-// contacts.js/store.js — never import supabase at module top level.
+// Test seam for the business's own record (whatsapp_number, used by the
+// own-number guard below) and the lead's session (qualification_progress,
+// used by recordHistory below so a relayed answer doesn't blank it). Same
+// lazy-import style as contacts.js/store.js — never import supabase at
+// module top level.
 let db = null;
 export function _setDbForTest(fake) { db = fake; }
 
@@ -27,6 +29,12 @@ async function realDb() {
     async getBusiness(businessId) {
       const { data, error } = await supabase.from('businesses')
         .select('whatsapp_number').eq('id', businessId).maybeSingle();
+      if (error) throw error;
+      return data ?? null;
+    },
+    async getSession(sessionId) {
+      const { data, error } = await supabase.from('sessions')
+        .select('qualification_progress').eq('session_id', sessionId).maybeSingle();
       if (error) throw error;
       return data ?? null;
     },
@@ -111,8 +119,16 @@ async function voiceRewrite(answer /*, persona */) {
 // runs AFTER the answer is confirmed delivered and the row is marked, so a
 // failure here must never undo (or be allowed to look like it undoes) work
 // that already happened — log and swallow.
+//
+// saveConversation (db.js — shared with the main pipeline, not modified
+// here) writes `qualification_progress ?? {}` into the session row on every
+// call. If we didn't read the session's CURRENT progress and pass it back
+// through unchanged, every relayed answer would blank whatever the bot had
+// already learned about the lead (need/scope/budget/timeline/urgency), and
+// the next turn would re-ask for all of it right after a human just helped.
 async function recordHistory({ business, row, reply }) {
   try {
+    const session = await (await getDb()).getSession(row.session_id);
     const save = historySaver ?? (await import('../db.js')).saveConversation;
     const result = await save({
       session_id: row.session_id,
@@ -122,6 +138,7 @@ async function recordHistory({ business, row, reply }) {
       stage: 'escalation_answered',
       escalate: false,
       escalation_reason: null,
+      qualification_progress: session?.qualification_progress ?? {},
     });
     if (result?.status === 'error') console.error('[relay] history save failed:', result.error);
   } catch (e) {

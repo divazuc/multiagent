@@ -10,7 +10,13 @@ const BIZ = { id: 'b1', name: 'קליניקה' };
 // businessWhatsapp: the business's OWN WhatsApp number as it would come back
 // from the `businesses` table. Defaults to null (unknown/not set) so the
 // three original flow tests below are unaffected by the own-number guard.
-function seed({ rep = { business_id: 'b1', role: 'rep', name: 'סאלי', phone: '972500000001' }, businessWhatsapp = null } = {}) {
+// sessionQualificationProgress: what the `sessions` row for the lead already
+// holds — the relay's history write must pass this through unchanged.
+function seed({
+  rep = { business_id: 'b1', role: 'rep', name: 'סאלי', phone: '972500000001' },
+  businessWhatsapp = null,
+  sessionQualificationProgress = null,
+} = {}) {
   contacts._setDbForTest({
     async listContacts() { return rep ? [rep] : []; },
     async upsertContact() {},
@@ -24,6 +30,7 @@ function seed({ rep = { business_id: 'b1', role: 'rep', name: 'סאלי', phone:
   });
   relay._setDbForTest({
     async getBusiness() { return { whatsapp_number: businessWhatsapp }; },
+    async getSession() { return { qualification_progress: sessionQualificationProgress }; },
   });
   relay._setHistorySaverForTest(async () => ({ status: 'success', result: { saved: true }, error: null }));
   return rows;
@@ -217,4 +224,30 @@ test('an empty body (e.g. a button tap that failed to extract text) is never rel
   assert.equal(rows[0].answer, undefined);
   assert.ok(!sent.some(m => m.to === '97250000009'), 'the lead must never receive an empty relayed message');
   assert.ok(sent.some(m => m.to === '972500000001'), 'the rep is told the message was not understood');
+});
+
+// ── Fix round 2 — covering test ──────────────────────────────────────────────
+// db.js#saveConversation writes qualification_progress ?? {} into the
+// session row. If the relay doesn't pass the session's actual current
+// progress through, every relayed answer silently blanks it — the bot then
+// re-asks the lead things they already answered, on the very next turn.
+
+test('a relayed answer preserves the session\'s existing qualification_progress rather than blanking it', async () => {
+  const progress = { need: 'טיפול פנים', scope: null, budget: null, timeline: 'החודש', urgency: null };
+  seed({ sessionQualificationProgress: progress });
+
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const saved = [];
+  relay._setHistorySaverForTest(async (fields) => { saved.push(fields); return { status: 'success', result: {}, error: null }; });
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.Y' }] }));
+
+  await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: 'כן, אפשר לפרוס', contextId: 'wamid.X',
+  });
+
+  assert.equal(saved.length, 1, 'the relayed exchange must be recorded');
+  assert.deepEqual(saved[0].qualification_progress, progress,
+    'must pass the session\'s existing progress through unchanged, not {} or undefined');
 });
