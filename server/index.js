@@ -475,11 +475,11 @@ async function upsertContact({ business_id, phone, status, incrementMessage = fa
     if (existing) {
       const updates = { last_activity_at: now, updated_at: now };
       if (incrementMessage) updates.message_count = (existing.message_count || 0) + 1;
-      // Only upgrade status, never downgrade (new_lead → in_conversation → cta_triggered etc.)
-      const statusOrder = ['new_lead','in_conversation','cta_triggered','meeting_booked','followup_sent','converted','cold','not_relevant'];
-      const currentIdx = statusOrder.indexOf(existing.status);
-      const newIdx = statusOrder.indexOf(status);
-      if (status && newIdx > currentIdx) updates.status = status;
+      // Advances the ladder, never downgrades, and never erases a status a
+      // human chose (see lib/contact-status.js).
+      const { nextStatus } = await import('./lib/contact-status.js');
+      const advanced = nextStatus(existing.status, status);
+      if (advanced) updates.status = advanced;
       await supabase.from('contacts').update(updates).eq('id', existing.id);
     } else {
       await supabase.from('contacts').insert({
