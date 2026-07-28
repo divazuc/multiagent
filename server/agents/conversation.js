@@ -8,6 +8,17 @@ import { extractModuleAction } from '../lib/modules/actions.js';
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL  = 'claude-sonnet-4-6';
 
+// Test seam for the model call — same convention as lib/relay/index.js. Every
+// branch of runConversation is gated behind detectIntent, so without this the
+// escalation wiring below could only ever be asserted by grepping the source.
+// It is exactly that gap that let a guard on a non-existent key ship as a
+// production no-op.
+let messagesCreate = null;
+export function _setMessagesCreateForTest(fn) { messagesCreate = fn; }
+async function createMessage(params) {
+  return messagesCreate ? messagesCreate(params) : client.messages.create(params);
+}
+
 const MAX_VALIDATION_RETRIES = 2;
 const GENERIC_AI_PHRASES = ['certainly', 'of course', 'absolutely', 'as an ai', 'i am an ai', 'i cannot'];
 
@@ -17,7 +28,7 @@ export async function runConversation({ message, session_id, context }) {
   const startedAt = Date.now();
   try {
     const {
-      business_profile, persona, guardrails, hebrew_patterns,
+      business_id, business_profile, persona, guardrails, hebrew_patterns,
       conversation_history, missing_qualification_data, current_stage,
     } = context;
 
@@ -34,12 +45,18 @@ export async function runConversation({ message, session_id, context }) {
     // Hard escalation — all modes
     if (intent.escalate) {
       const { raiseEscalation } = await import('../lib/relay/index.js');
-      const relayed = business_profile?.business_id
+      // `business_id` is a TOP-LEVEL key of loadContext's result
+      // (lib/context.js:101) — `business_profile` is an explicit literal built
+      // from the business_profiles columns and has never contained it. Guarding
+      // on `business_profile.business_id` made this branch dead in production
+      // while every unit test still passed, because they all call
+      // raiseEscalation directly. server/index.js reads context.business_id for
+      // buildModulesContext/executeModuleAction; this now matches.
+      const relayed = business_id
         ? await raiseEscalation({
-            business: { id: business_profile.business_id, name: business_profile.business_name ?? '' },
+            business: { id: business_id, name: business_profile?.business_name ?? '' },
             session_id, question: message,
             reason: intent.escalation_reason ?? null,
-            summary: context.contact_summary ?? null,
             persona,
           })
         : null;
@@ -173,7 +190,7 @@ History: ${JSON.stringify(conversation_history.slice(-6))}
 Stage: ${current_stage}
 Message: "${message}"`;
 
-  const response = await client.messages.create({
+  const response = await createMessage({
     model: MODEL, max_tokens: 1024,
     system, messages: [{ role: 'user', content: userPrompt }],
   });
@@ -311,7 +328,7 @@ Forbidden: ${JSON.stringify(guardrails?.forbidden_phrases ?? [])}.
 Original: "${text}"
 Rewritten:`;
 
-  const response = await client.messages.create({
+  const response = await createMessage({
     model: MODEL, max_tokens: 300,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -345,7 +362,7 @@ async function callClaude(system, history, message) {
     ...history.slice(-10).map(m => ({ role: m.role, content: m.content })),
     { role: 'user', content: message },
   ];
-  const response = await client.messages.create({
+  const response = await createMessage({
     model: MODEL, max_tokens: 512, system, messages,
   });
   return response.content[0].text.trim();
