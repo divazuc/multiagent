@@ -273,14 +273,43 @@ export async function handleContactMessage({ business, from, text, contextId, pe
 // Nudges ride the follow-up processor's pass — this feature does not add a
 // second scheduler. Every nudge outside the 24h window is a billable
 // business-initiated conversation, hence the ceiling.
-export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2, maxNudges = 4 }) {
+//
+// getNudgeSettings(businessId) is optional and injected (mirrors isOpenNow) so
+// this stays unit-testable without a real business_profiles row. It is looked
+// up AT MOST ONCE PER BUSINESS per pass via a Map cache, not once per open
+// escalation — several leads waiting on the same rep must not multiply the
+// query. A missing callback, a null/undefined result, a thrown error, or a
+// row with the column simply absent all fall back to the intervalHours /
+// maxNudges arguments — never a hard failure of the pass.
+export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2, maxNudges = 4, getNudgeSettings = null }) {
   let nudged = 0, expired = 0;
   const open = await store.listAllOpen();
+  const settingsCache = new Map();
+
+  async function settingsFor(businessId) {
+    if (!getNudgeSettings) return { intervalHours, maxNudges };
+    if (settingsCache.has(businessId)) return settingsCache.get(businessId);
+    let resolved;
+    try {
+      const row = await getNudgeSettings(businessId);
+      resolved = {
+        intervalHours: Number(row?.nudge_interval_hours) || intervalHours,
+        maxNudges: Number(row?.nudge_max_count) || maxNudges,
+      };
+    } catch (e) {
+      console.error('[relay] nudge settings lookup failed for', businessId, '— using defaults:', e.message);
+      resolved = { intervalHours, maxNudges };
+    }
+    settingsCache.set(businessId, resolved);
+    return resolved;
+  }
+
   for (const row of open) {
     try {
+      const settings = await settingsFor(row.business_id);
       const since = new Date(row.last_nudge_at ?? row.created_at ?? now).getTime();
-      if (now.getTime() - since < intervalHours * 3600 * 1000) continue;
-      if (row.nudge_count >= maxNudges) { await store.markExpired(row.id); expired++; continue; }
+      if (now.getTime() - since < settings.intervalHours * 3600 * 1000) continue;
+      if (row.nudge_count >= settings.maxNudges) { await store.markExpired(row.id); expired++; continue; }
       if (!(await isOpenNow(row.business_id))) continue; // no counter change
       await send({
         to: row.rep_phone,

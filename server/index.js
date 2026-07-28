@@ -956,6 +956,13 @@ app.post('/follow-up/process', async (req, res) => {
               .select('working_hours').eq('business_id', businessId).maybeSingle();
             return isWithinWorkingHours(data?.working_hours);
           },
+          // nudgePass caches this per business_id itself — one query per
+          // business per pass, not one per open escalation.
+          getNudgeSettings: async (businessId) => {
+            const { data } = await supabase.from('business_profiles')
+              .select('nudge_interval_hours, nudge_max_count').eq('business_id', businessId).maybeSingle();
+            return data;
+          },
         });
       },
     });

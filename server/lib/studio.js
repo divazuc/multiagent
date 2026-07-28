@@ -295,7 +295,7 @@ const ops = {
     if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
     const { data, error } = await supabase
       .from('business_profiles')
-      .select('agent_active, answer_after_hours, working_hours, after_hours_message, followup_enabled, followup_delay_days, followup_message, guardrails, persona, agent_mode, cta_goal, push_speed')
+      .select('agent_active, answer_after_hours, working_hours, after_hours_message, followup_enabled, followup_delay_days, followup_message, guardrails, persona, agent_mode, cta_goal, push_speed, nudge_interval_hours, nudge_max_count')
       .eq('business_id', businessId)
       .maybeSingle();
     if (error) throw error;
@@ -303,28 +303,7 @@ const ops = {
     // client UI needs it here to know whether to render the policy editable.
     const { data: biz } = await supabase
       .from('businesses').select('portal_full_edit').eq('id', businessId).maybeSingle();
-
-    // Nudge cadence lives in its own query, fetched separately from the block
-    // above and defaulted on any error. Until
-    // wa-studio/docs/sql/2026-07-28-nudge-settings.sql is applied these two
-    // columns don't exist yet, and PostgREST 400s the WHOLE request when any
-    // selected column is missing — that must never take down the rest of the
-    // settings page (this op feeds the operator UI, the demo dashboard, and
-    // the live client portal alike).
-    let nudge = { nudge_interval_hours: 2, nudge_max_count: 4 };
-    try {
-      const { data: nudgeRow, error: nudgeError } = await supabase
-        .from('business_profiles')
-        .select('nudge_interval_hours, nudge_max_count')
-        .eq('business_id', businessId)
-        .maybeSingle();
-      if (nudgeError) throw nudgeError;
-      if (nudgeRow) nudge = nudgeRow;
-    } catch (e) {
-      console.error('[studio] nudge settings unavailable, using defaults:', e.message);
-    }
-
-    return { ...(data ?? {}), ...nudge, portal_full_edit: biz?.portal_full_edit === true };
+    return { ...(data ?? {}), portal_full_edit: biz?.portal_full_edit === true };
   },
 
   async deleteFaqItem(id) {

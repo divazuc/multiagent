@@ -1,17 +1,11 @@
 -- Per-business nudge cadence for open escalations.
 --
--- nudgePass() (server/lib/relay/index.js) already accepts intervalHours and
--- maxNudges, but server/index.js's runNudges caller does not pass them yet —
--- it runs on the function's hardcoded defaults (2h / 4 nudges) for every
--- business today. These two columns let an operator override that per
--- business from the admin UI (BotPolicyEditor); wiring runNudges to read them
--- is follow-up work, not part of this migration.
+-- nudgePass() (server/lib/relay/index.js) reads these two columns per
+-- business (via server/index.js's runNudges, cached per business per pass)
+-- and falls back to its built-in 2h / 4-nudge defaults when a row or column
+-- is missing. Set from the admin UI (BotPolicyEditor).
 --
--- IMPORTANT — apply this BEFORE deploying the code that adds these columns to
--- studio.js's getBotSettings() select list. PostgREST returns a hard 400 for
--- the whole request when a selected column does not exist, so deploying the
--- code first breaks getBotSettings for every business (admin BotPolicyEditor,
--- the demo dashboard, and the real client portal all call it).
+-- Applied to production 2026-07-28.
 begin;
 
 alter table business_profiles

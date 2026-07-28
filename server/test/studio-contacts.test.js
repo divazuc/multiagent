@@ -111,3 +111,14 @@ test('the portal whitelist does NOT expose setBusinessContact', async () => {
     /unknown portal op/i,
   );
 });
+
+test('the portal whitelist strips internal operator notes before they reach the client', async () => {
+  contacts._setDbForTest(fakeContactsDb([
+    { business_id: 'b1', role: 'owner', name: 'דיוה', phone: '972548139333', email: 'd@x.com', notes: 'מנהלת מכירות, זמינה רק בבקרים' },
+    { business_id: 'b1', role: 'rep', name: 'סאלי', phone: '972500000001', notes: 'internal: escalate pricing only' },
+  ]));
+  const result = await runPortalOp('b1', 'getBusinessContacts', []);
+  assert.deepEqual(result.owner, { name: 'דיוה', phone: '972548139333', email: 'd@x.com' });
+  assert.equal('notes' in result.owner, false, 'notes must not be present at all, not just falsy');
+  assert.equal('notes' in result.rep, false);
+});

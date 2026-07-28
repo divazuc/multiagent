@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ModulesSection from './ModulesSection.jsx'
 import { ESCALATION_OPTIONS, FORBIDDEN_OPTIONS, DAY_NAMES } from '../lib/botPolicy.js'
+import { saveBotPolicy } from '../lib/savePolicy.js'
 
 const AGENT_BASE = import.meta.env.VITE_AGENT_URL ?? ''
 const api = (path) => AGENT_BASE ? `${AGENT_BASE}${path}` : `/api/agent${path}`
@@ -17,6 +18,19 @@ async function rpc(fn, args = []) {
 
 const DEFAULT_DAY = { active: false, from: '09:00', to: '19:00' }
 const EMPTY_CONTACT = { name: '', phone: '', email: '', notes: '' }
+const ROLE_LABELS = { owner: 'בעל העסק', rep: 'נציג אנושי' }
+
+// setBusinessContact's fields shape, shared by the per-role save button and
+// the bulk policy save so a phone typed here and saved via either path is
+// normalised identically.
+function contactFields(value) {
+  return {
+    name: value?.name?.trim() || null,
+    phone: value?.phone ?? '',
+    email: value?.email?.trim() || null,
+    notes: value?.notes?.trim() || null,
+  }
+}
 
 const box = {
   overlay: { position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
@@ -133,13 +147,7 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
     setContactErrors(e => ({ ...e, [role]: null }))
     setContactSaved(s => ({ ...s, [role]: false }))
     try {
-      const value = state[role] ?? EMPTY_CONTACT
-      await rpc('setBusinessContact', [business.id, role, {
-        name: value.name?.trim() || null,
-        phone: value.phone ?? '',
-        email: value.email?.trim() || null,
-        notes: value.notes?.trim() || null,
-      }])
+      await rpc('setBusinessContact', [business.id, role, contactFields(state[role])])
       setContactSaved(s => ({ ...s, [role]: true }))
     } catch (e) {
       setContactErrors(err => ({ ...err, [role]: e.message }))
@@ -178,37 +186,34 @@ export default function BotPolicyEditor({ business, onClose, onSaved }) {
         followup_enabled: state.followup_enabled,
         followup_delay_days: Math.min(Math.max(Number(state.followup_delay_days) || 2, 1), 14),
         followup_message: state.followup_message.trim() || null,
+        nudge_interval_hours: Math.min(Math.max(Number(state.nudge_interval_hours) || 2, 1), 24),
+        nudge_max_count: Math.min(Math.max(Number(state.nudge_max_count) || 4, 1), 20),
       }
-      const res = await fetch(api('/business/update'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_id: business.id, updates }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-      // Sent as its own request so a database that hasn't had
-      // wa-studio/docs/sql/2026-07-28-nudge-settings.sql applied yet can
-      // never fail the policy save above — see getBotSettings() in
-      // server/lib/studio.js for the matching isolation on the read side.
-      try {
-        const nudgeRes = await fetch(api('/business/update'), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            business_id: business.id,
-            updates: {
-              nudge_interval_hours: Math.min(Math.max(Number(state.nudge_interval_hours) || 2, 1), 24),
-              nudge_max_count: Math.min(Math.max(Number(state.nudge_max_count) || 4, 1), 20),
-            },
-          }),
-        })
-        if (!nudgeRes.ok) throw new Error(`HTTP ${nudgeRes.status}`)
-      } catch (e) {
-        console.error('[bot-policy] nudge settings did not save:', e.message)
-      }
+      // Also flushes both contacts through setBusinessContact, so a rep
+      // phone typed into the form and saved via THIS button is never
+      // silently discarded — see saveBotPolicy() in ../lib/savePolicy.js.
+      // Any failure (the policy update, or either contact) propagates from
+      // here and is shown below rather than closing the modal.
+      await saveBotPolicy({
+        businessId: business.id,
+        updates,
+        contacts: { owner: contactFields(state.owner), rep: contactFields(state.rep) },
+        postUpdate: async (businessId, updates) => {
+          const res = await fetch(api('/business/update'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ business_id: businessId, updates }),
+          })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        },
+        postContact: (businessId, role, fields) => rpc('setBusinessContact', [businessId, role, fields]),
+      })
 
       onSaved?.()
       onClose()
-    } catch (e) { setError(e.message) }
-    finally { setSaving(false) }
+    } catch (e) {
+      setError(e.role ? `${ROLE_LABELS[e.role] ?? e.role}: ${e.message}` : e.message)
+    } finally { setSaving(false) }
   }
 
   return (

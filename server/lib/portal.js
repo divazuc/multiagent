@@ -118,7 +118,14 @@ const ops = {
   // Read-only: the client may see who the bot escalates to, never change it.
   // Redirecting escalations to a different number stays an operator action —
   // see server/lib/studio.js#setBusinessContact, deliberately NOT exposed here.
-  getBusinessContacts: (bizId) => runStudioOp('getBusinessContacts', [bizId]),
+  // Projected down to {name, phone, email}: `notes` is an internal operator
+  // note about the contact (e.g. "sales manager, mornings only") and must
+  // never reach the client's browser, even though the studio op returns it.
+  async getBusinessContacts(bizId) {
+    const { owner, rep } = await runStudioOp('getBusinessContacts', [bizId]);
+    const pub = (c) => c ? { name: c.name ?? null, phone: c.phone ?? null, email: c.email ?? null } : null;
+    return { owner: pub(owner), rep: pub(rep) };
+  },
 
   async updateFaqItem(bizId, id, updates) {
     await assertOwned('knowledge_items', id, bizId);
