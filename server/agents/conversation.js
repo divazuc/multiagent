@@ -33,7 +33,19 @@ export async function runConversation({ message, session_id, context }) {
 
     // Hard escalation — all modes
     if (intent.escalate) {
-      const phrase = persona?.escalation_phrase ?? 'אני מעביר אותך לנציג שלנו כעת.';
+      const { raiseEscalation } = await import('../lib/relay/index.js');
+      const relayed = business_profile?.business_id
+        ? await raiseEscalation({
+            business: { id: business_profile.business_id, name: business_profile.business_name ?? '' },
+            session_id, question: message,
+            reason: intent.escalation_reason ?? null,
+            summary: context.contact_summary ?? null,
+            persona,
+          })
+        : null;
+      const phrase = relayed?.holdingLine
+        ?? persona?.escalation_phrase
+        ?? (persona?.bot_gender === 'male' ? 'אני מעביר אותך לנציג שלנו כעת.' : 'אני מעבירה אותך לנציגה שלנו כעת.');
       return ok({
         response: phrase, next_stage: 'escalated', action: 'none',
         cta_triggered: false, escalate: true,
