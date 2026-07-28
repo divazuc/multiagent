@@ -104,3 +104,47 @@ test('still relays when the business\'s own number differs from the rep', async 
   assert.ok(r.holdingLine.length > 0);
   assert.equal(rows[0].status, 'open');
 });
+
+// ── Intercepting contact messages ────────────────────────────────────────────
+// Rep messages arrive at the same WhatsApp number as every lead's. If the
+// contact lookup below is skipped or mis-scoped, the rep's answer would be
+// treated as a new lead message.
+
+test('a contact message is consumed by the relay and never reaches the agent', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Y' }] }; });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: 'כן, אפשר לפרוס', contextId: 'wamid.X',
+  });
+
+  assert.equal(consumed, true);
+  assert.equal(rows[0].status, 'answered');
+  assert.equal(rows[0].answer, 'כן, אפשר לפרוס');
+  assert.ok(sent.some(m => m.to === '97250000009'), 'the lead receives the answer');
+});
+
+test('a message from an unknown number is not consumed', async () => {
+  seed();
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972999999999', text: 'שלום', contextId: null,
+  });
+  assert.equal(consumed, false);
+});
+
+test('a whole-message stop closes the escalation without answering the lead', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Z' }] }; });
+  await relay.handleContactMessage({ business: BIZ, from: '972500000001', text: 'עצור', contextId: null });
+
+  assert.equal(rows[0].status, 'stopped');
+  assert.ok(!sent.some(m => m.to === '97250000009'), 'the lead must not be messaged on stop');
+});

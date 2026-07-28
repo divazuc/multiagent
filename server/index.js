@@ -161,6 +161,35 @@ app.post('/wa-inbound', async (req, res) => {
       sendUnsupportedFallback(value).catch(() => {});
       return;
     }
+
+    // A message from a listed business contact (rep or owner) answering an
+    // escalation must never reach the conversation agent — recognise it here,
+    // scoped to the business that owns the receiving number, before the
+    // pipeline (and its own contacts-table upsert) ever runs.
+    try {
+      const phoneNumberId = value?.metadata?.phone_number_id;
+      if (phoneNumberId) {
+        const { supabase } = await import('./lib/supabase.js');
+        const { data: biz } = await supabase.from('businesses')
+          .select('id, name').eq('wa_phone_number_id', phoneNumberId).maybeSingle();
+        if (biz) {
+          const { handleContactMessage } = await import('./lib/relay/index.js');
+          const { data: relayProfile } = await supabase.from('business_profiles')
+            .select('persona').eq('business_id', biz.id).maybeSingle();
+          const consumed = await handleContactMessage({
+            business: { id: biz.id, name: biz.name ?? '' },
+            from: value.messages[0].from,
+            text: value.messages[0].text?.body ?? '',
+            contextId: value.messages[0].context?.id ?? null,
+            persona: relayProfile?.persona ?? null,
+          });
+          if (consumed) return; // never reaches the conversation agent, no contacts row
+        }
+      }
+    } catch (e) {
+      console.error('[wa-inbound] contact-check failed:', e.message);
+    }
+
     runAgentPipeline(req.body).catch(e => console.error('[wa-inbound] async pipeline failed:', e));
     return;
   }

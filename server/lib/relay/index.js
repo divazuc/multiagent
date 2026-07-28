@@ -1,6 +1,7 @@
 // Escalation relay: ask a human, then answer the lead in the bot's voice.
-import { resolveRep } from './contacts.js';
+import { resolveRep, findContactByPhone } from './contacts.js';
 import { normalizePhone } from './phone.js';
+import { resolveEscalation } from './correlate.js';
 import * as store from './store.js';
 
 let sender = null; // test seam
@@ -86,5 +87,49 @@ export async function raiseEscalation({ business, session_id, question, reason =
   } catch (e) {
     console.error('[relay] raise failed:', e.message);
     return null;
+  }
+}
+
+// Rewrites the human's answer into the bot's voice WITHOUT passing it through
+// validate() or the forbidden-phrase check: the rep IS the business, so their
+// answer is authoritative. Content must survive verbatim — only tone changes.
+async function voiceRewrite(answer /*, persona */) {
+  return answer; // Task 7 replaces this with a model call
+}
+
+// Recognises a message from ANY listed contact (rep or owner) — not only the
+// resolved rep — so an owner who writes in is never mistaken for a lead and
+// sold to. Scoped to the business that owns the receiving number: the lookup
+// is by (business.id, from), never a global phone search.
+export async function handleContactMessage({ business, from, text, contextId, persona = null }) {
+  try {
+    const contact = await findContactByPhone(business.id, from);
+    if (!contact) return false;
+
+    const open = await store.listOpen(business.id);
+    const { row, matchedBy, body, isStop } = resolveEscalation({ contextId, text, openRows: open });
+
+    if (!row) {
+      await send({ to: from, text: 'אין כרגע שאלה שממתינה לתשובה.', businessId: business.id });
+      return true;
+    }
+
+    if (isStop) {
+      await store.markStopped(row.id);
+      await send({ to: from, text: `הופסק ✓ (${row.session_id})`, businessId: business.id });
+      return true;
+    }
+
+    const reply = await voiceRewrite(body, persona);
+    await send({ to: row.session_id, text: reply, businessId: business.id });
+    await store.markAnswered(row.id, body);
+
+    // When we had to guess, name the thread so a mis-route is visible at once.
+    const ack = matchedBy === 'recent' ? `נשלח ✓ (${row.session_id})` : 'נשלח ✓';
+    await send({ to: from, text: ack, businessId: business.id });
+    return true;
+  } catch (e) {
+    console.error('[relay] contact message failed:', e.message);
+    return false;
   }
 }
