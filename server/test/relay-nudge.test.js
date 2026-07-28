@@ -283,3 +283,96 @@ test('without the rep_message_ids column the nudge id still routes the reply cor
   assert.equal(state.find(r => r.id === 'e1').status, 'answered');
   assert.equal(state.find(r => r.id === 'e2').status, 'open');
 });
+
+// ── I7: an unparseable timestamp defeated BOTH exits ─────────────────────────
+// new Date('not-a-date').getTime() is NaN. `NaN >= maxAge` is false, so the
+// age cap never fires; `NaN < interval` is false, so the interval gate never
+// skips. The row was therefore nudged on EVERY pass, forever, and every nudge
+// outside the 24h window is a billable business-initiated conversation. The
+// age cap is documented as the backstop for every failure mode — it was not
+// the backstop for this one.
+
+test('an unparseable created_at expires the row instead of nudging it forever', async () => {
+  const now = new Date('2026-07-26T09:00:00Z');
+  const rows = seedOpen([{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
+    rep_phone: '972500000001', session_id: '9725000009', question: 'שאלה', nudge_count: 0,
+    created_at: 'not-a-timestamp', last_nudge_at: null }]);
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'x' }] }; });
+
+  const r = await relay.nudgePass({ now, isOpenNow: async () => true, intervalHours: 2, maxNudges: 4 });
+
+  assert.equal(r.expired, 1, 'a row whose age cannot be computed must fail closed, not bill forever');
+  assert.equal(rows[0].status, 'expired');
+  assert.equal(sent.length, 0);
+});
+
+test('an unparseable last_nudge_at expires the row instead of nudging it every pass', async () => {
+  const now = new Date('2026-07-26T09:00:00Z');
+  const rows = seedOpen([{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
+    rep_phone: '972500000001', session_id: '9725000009', question: 'שאלה', nudge_count: 0,
+    created_at: new Date(now - 3 * HOUR).toISOString(), last_nudge_at: '0000-00-00' }]);
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'x' }] }; });
+
+  const r = await relay.nudgePass({ now, isOpenNow: async () => true, intervalHours: 2, maxNudges: 4 });
+
+  assert.equal(r.expired, 1);
+  assert.equal(rows[0].status, 'expired');
+  assert.equal(sent.length, 0, 'the interval gate cannot be trusted once the clock is unreadable');
+});
+
+// The same unbounded-billing shape without a bad timestamp: if recordNudge
+// keeps failing, last_nudge_at never advances, so the interval gate passes on
+// EVERY pass — a 5-minute scheduler would send ~860 nudges before the age cap.
+// Charging the budget before attempting the send closes it: a failed charge
+// means no send at all.
+
+test('a persistently failing recordNudge sends nothing rather than re-nudging every pass', async () => {
+  const now = new Date('2026-07-26T09:00:00Z');
+  const state = [{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
+    rep_phone: '972500000001', session_id: '9725000009', question: 'שאלה', nudge_count: 0,
+    created_at: new Date(now - 3 * HOUR).toISOString(),
+    last_nudge_at: new Date(now - 3 * HOUR).toISOString() }];
+  store._setDbForTest({
+    async insert(r) { state.push(r); return r; },
+    async listOpen(b) { return state.filter(r => r.business_id === b && r.status === 'open'); },
+    async listAllOpen() { return state.filter(r => r.status === 'open'); },
+    async update(id, patch) {
+      if ('nudge_count' in patch) throw new Error('transient db error on the counter');
+      Object.assign(state.find(r => r.id === id), patch);
+    },
+  });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'x' }] }; });
+
+  await relay.nudgePass({ now, isOpenNow: async () => true, intervalHours: 2, maxNudges: 4 });
+  await relay.nudgePass({ now: new Date('2026-07-26T09:05:00Z'), isOpenNow: async () => true, intervalHours: 2, maxNudges: 4 });
+
+  assert.equal(sent.length, 0,
+    'if the nudge cannot be charged it must not be sent — otherwise every pass bills another template');
+  assert.equal(state[0].nudge_count, 0);
+});
+
+// ── Age-cap clamp ────────────────────────────────────────────────────────────
+// max(72, intervalHours * (maxNudges + 1)) has no upper bound. The admin UI
+// clamps to 24h x 20 (~504h), but /business/update has no column whitelist and
+// no auth unless STUDIO_AUTH_REQUIRED === 'true', so the derived value is not
+// only reachable by the portal.
+
+test('the derived age cap is clamped so an absurd cadence cannot keep a row open for weeks', async () => {
+  const now = new Date('2026-07-26T09:00:00Z');
+  const rows = seedOpen([{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
+    rep_phone: '972500000001', session_id: '9725000009', question: 'שאלה', nudge_count: 0,
+    created_at: new Date(now - 200 * HOUR).toISOString(),
+    last_nudge_at: new Date(now - 1 * HOUR).toISOString() }]);
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'x' }] }));
+
+  const r = await relay.nudgePass({
+    now, isOpenNow: async () => true, intervalHours: 2, maxNudges: 4,
+    getNudgeSettings: async () => ({ nudge_interval_hours: 24, nudge_max_count: 20 }),
+  });
+
+  assert.equal(r.expired, 1, '24h x 21 = 504h must clamp to the 168h ceiling');
+  assert.equal(rows[0].status, 'expired');
+});

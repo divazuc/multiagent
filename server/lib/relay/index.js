@@ -397,9 +397,18 @@ export async function handleContactMessage({ business, from, text, contextId, pe
 // Derived, not flat, so it can never preempt a business's own configured
 // ladder: a business on 24h × 4 legitimately needs ~96h, and a flat 72h cap
 // would kill its escalations mid-ladder.
+// The derived term is clamped because it is NOT operator-only: /business/update
+// has no column whitelist and no auth unless STUDIO_AUTH_REQUIRED === 'true',
+// so nudge_interval_hours / nudge_max_count are writable well past what the
+// admin UI's own 24h x 20 limit would allow. One week is longer than any
+// legitimate ladder and short enough that a zombie row cannot leak a short code
+// or swallow a rep's reply for a month.
 const ABSOLUTE_MAX_AGE_HOURS = 72;
+const HARD_MAX_AGE_HOURS = 168;
 function maxAgeHoursFor({ intervalHours, maxNudges }) {
-  return Math.max(ABSOLUTE_MAX_AGE_HOURS, intervalHours * (maxNudges + 1));
+  const derived = Number(intervalHours) * (Number(maxNudges) + 1);
+  const floor = Math.max(ABSOLUTE_MAX_AGE_HOURS, Number.isFinite(derived) ? derived : 0);
+  return Math.min(floor, HARD_MAX_AGE_HOURS);
 }
 
 // Nudges ride the follow-up processor's pass — this feature does not add a
@@ -464,17 +473,43 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
       // column is NOT NULL DEFAULT now() in prod) is treated as brand new
       // rather than as infinitely old; guessing 'ancient' would expire real
       // questions on a schema surprise.
-      const ageMs = now.getTime() - new Date(row.created_at ?? now).getTime();
+      //
+      // An UNPARSEABLE timestamp is the opposite case and must fail closed.
+      // new Date('garbage').getTime() is NaN, and NaN loses every comparison:
+      // `NaN >= maxAge` is false so the cap never fired, `NaN < interval` is
+      // false so the gate never skipped, and the row was nudged on every single
+      // pass forever — each one a billable business-initiated conversation.
+      const createdMs = new Date(row.created_at ?? now).getTime();
+      if (!Number.isFinite(createdMs)) {
+        console.error(`[relay] escalation ${row.id} has an unreadable created_at (${row.created_at}) — expiring it`);
+        await store.markExpired(row.id); expired++; continue;
+      }
+      const ageMs = now.getTime() - createdMs;
       if (ageMs >= maxAgeHoursFor(settings) * 3600 * 1000) {
         console.error(`[relay] escalation ${row.id} passed the absolute age cap — expiring it`);
         await store.markExpired(row.id); expired++; continue;
       }
 
       const since = new Date(row.last_nudge_at ?? row.created_at ?? now).getTime();
+      if (!Number.isFinite(since)) {
+        console.error(`[relay] escalation ${row.id} has an unreadable last_nudge_at (${row.last_nudge_at}) — expiring it`);
+        await store.markExpired(row.id); expired++; continue;
+      }
       if (now.getTime() - since < settings.intervalHours * 3600 * 1000) continue;
       if (row.nudge_count >= settings.maxNudges) { await store.markExpired(row.id); expired++; continue; }
       if (!canNudge) continue;                            // refused before any attempt — no charge
       if (!(await isOpenNow(row.business_id))) continue;  // no counter change
+
+      // CHARGE BEFORE SENDING. recordNudge is the only thing that advances
+      // last_nudge_at, so if it fails after the send the interval gate passes
+      // again on the very next pass and the rep is nudged again — a 5-minute
+      // scheduler would bill ~860 templates before the age cap caught it.
+      // Reserving first means a failed charge throws into the per-row catch and
+      // nothing is sent. The cost of the inverse (charged, then the send is
+      // rejected) is one lost reminder, and the row still marches to the
+      // ceiling, which is exactly the behaviour Task 10 fixed for rejected
+      // sends anyway.
+      await store.recordNudge(row.id);
 
       const res = await sendToContact({
         to: row.rep_phone,
@@ -483,12 +518,10 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
         bodyParams: [row.short_code, row.question],
         fallbackText: `תזכורת #${row.short_code} — עדיין ממתינה תשובה:\n${row.question}\n\nלהפסקת התזכורות השיבו "עצור".`,
       });
-      // Charged unconditionally: this send was ATTEMPTED. If Graph rejected
-      // it, the row must still march toward the ceiling — markExpired has
-      // exactly one caller and it is gated solely on nudge_count, so
-      // withholding the increment here is what makes a row immortal.
-      // `nudged` still counts only what was really delivered.
-      await store.recordNudge(row.id);
+      // The charge above is unconditional by design: an ATTEMPTED send counts
+      // even when Graph rejects it, because markExpired has exactly one caller
+      // and it is gated solely on nudge_count — withholding the increment is
+      // what makes a row immortal. `nudged` still counts only real deliveries.
       const nudgeMessageId = res?.messages?.[0]?.id;
       if (nudgeMessageId) {
         nudged++;
