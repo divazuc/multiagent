@@ -52,10 +52,27 @@ async function send(msg) {
 // Graph rejects a template parameter that contains a newline, a tab, or a run
 // of four or more spaces — and a lead's WhatsApp question routinely contains a
 // newline. It also rejects an empty parameter, which `leadName`/`summary`
-// legitimately are. Either one fails the WHOLE send, so the rep would simply
-// never be asked. Collapse the whitespace and placeholder the empties.
+// legitimately are, and one longer than 1024 characters, which `{{4}}` (the
+// lead's raw question, up to 4096 chars inbound) can easily be. Any of the
+// three fails the WHOLE send, so the rep would simply never be asked and the
+// lead would silently lose the relay.
+//
+// 500 sits well under Meta's 1024 and leaves room for the other parameters;
+// truncation is only ever cosmetic, because escalations.question always keeps
+// the untruncated text and that is what the audit trail and the answer relay
+// both read.
+const MAX_TEMPLATE_PARAM_CHARS = 500;
+
 function templateParam(v) {
-  return String(v ?? '').replace(/\s+/g, ' ').trim() || '—';
+  const s = String(v ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return '—';
+  if (s.length <= MAX_TEMPLATE_PARAM_CHARS) return s;
+  const cut = s.slice(0, MAX_TEMPLATE_PARAM_CHARS - 1);
+  const lastSpace = cut.lastIndexOf(' ');
+  // Only honour a word boundary that isn't absurdly early — one 400-char
+  // "word" (a URL, an unspaced paste) must not truncate back to nothing.
+  const body = lastSpace > MAX_TEMPLATE_PARAM_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return body.trimEnd() + '…';
 }
 
 // Business-initiated sends to a CONTACT (the rep/owner) usually fall outside
@@ -307,9 +324,40 @@ export async function handleContactMessage({ business, from, text, contextId, pe
   }
 }
 
+// Absolute backstop on how long a row may sit 'open'. `nudge_count` reaching
+// the ceiling is the NORMAL exit; this is the one that survives every failure
+// mode that stops the counter from advancing at all — a rep number that isn't
+// on WhatsApp, a rep who blocked the business, a template Meta paused, a
+// WABA token that expired, WHATSAPP_NUDGE_TEMPLATE lost in a redeploy.
+//
+// It matters because an immortal open row is not merely untidy:
+//   · correlate.js returns the single open row for ANY untagged rep reply, so
+//     one zombie silently re-routes a rep's next answer to a dead lead;
+//   · store.js#nextShortCode only allocates codes no open row holds, so
+//     zombies leak the 1..99 space until inserts collide and raiseEscalation
+//     starts returning null for that business.
+//
+// Derived, not flat, so it can never preempt a business's own configured
+// ladder: a business on 24h × 4 legitimately needs ~96h, and a flat 72h cap
+// would kill its escalations mid-ladder.
+const ABSOLUTE_MAX_AGE_HOURS = 72;
+function maxAgeHoursFor({ intervalHours, maxNudges }) {
+  return Math.max(ABSOLUTE_MAX_AGE_HOURS, intervalHours * (maxNudges + 1));
+}
+
 // Nudges ride the follow-up processor's pass — this feature does not add a
 // second scheduler. Every nudge outside the 24h window is a billable
 // business-initiated conversation, hence the ceiling.
+//
+// Two distinct non-delivery cases, deliberately handled differently:
+//   · a LOCAL REFUSAL (no template configured) happens before any attempt. It
+//     applies identically to every row, so it is decided and logged ONCE per
+//     pass, and charges nobody's budget — a config error must not burn a real
+//     rep's reminders.
+//   · an ATTEMPTED send Graph rejected DOES count toward the ceiling. It has
+//     to: recordNudge is what eventually walks the row to markExpired, and
+//     wa-send never throws, so a permanently undeliverable rep would
+//     otherwise leave the row open forever.
 //
 // getNudgeSettings(businessId) is optional and injected (mirrors isOpenNow) so
 // this stays unit-testable without a real business_profiles row. It is looked
@@ -341,13 +389,36 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
     return resolved;
   }
 
+  // Decided once, not once per row — see the two cases above. The loop still
+  // runs when this is false: the age backstop must keep expiring rows even
+  // when nothing can be sent, or a template lost in a redeploy would leave
+  // every already-open escalation immortal.
+  const canNudge = !!sender || !!process.env.WHATSAPP_NUDGE_TEMPLATE?.trim();
+  if (!canNudge) {
+    console.error('[relay] WHATSAPP_NUDGE_TEMPLATE is not configured — no rep nudges will be sent this pass');
+  }
+
   for (const row of open) {
     try {
       const settings = await settingsFor(row.business_id);
+
+      // Backstop first, so it applies whatever the interval gate or the
+      // send would have done. A row with no created_at (only fixtures — the
+      // column is NOT NULL DEFAULT now() in prod) is treated as brand new
+      // rather than as infinitely old; guessing 'ancient' would expire real
+      // questions on a schema surprise.
+      const ageMs = now.getTime() - new Date(row.created_at ?? now).getTime();
+      if (ageMs >= maxAgeHoursFor(settings) * 3600 * 1000) {
+        console.error(`[relay] escalation ${row.id} passed the absolute age cap — expiring it`);
+        await store.markExpired(row.id); expired++; continue;
+      }
+
       const since = new Date(row.last_nudge_at ?? row.created_at ?? now).getTime();
       if (now.getTime() - since < settings.intervalHours * 3600 * 1000) continue;
       if (row.nudge_count >= settings.maxNudges) { await store.markExpired(row.id); expired++; continue; }
-      if (!(await isOpenNow(row.business_id))) continue; // no counter change
+      if (!canNudge) continue;                            // refused before any attempt — no charge
+      if (!(await isOpenNow(row.business_id))) continue;  // no counter change
+
       const res = await sendToContact({
         to: row.rep_phone,
         businessId: row.business_id,
@@ -355,16 +426,14 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
         bodyParams: [row.short_code, row.question],
         fallbackText: `תזכורת #${row.short_code} — עדיין ממתינה תשובה:\n${row.question}\n\nלהפסקת התזכורות השיבו "עצור".`,
       });
-      // Same rule as the escalation above, applied to the counter: a nudge
-      // that was refused (no template) or that Graph rejected must not burn
-      // the budget or move last_nudge_at — otherwise the ceiling is reached
-      // by reminders the rep never received and the question quietly expires.
-      if (!res?.messages?.[0]?.id) {
-        console.error(`[relay] nudge not delivered for ${row.id} — leaving the counter untouched`);
-        continue;
-      }
+      // Charged unconditionally: this send was ATTEMPTED. If Graph rejected
+      // it, the row must still march toward the ceiling — markExpired has
+      // exactly one caller and it is gated solely on nudge_count, so
+      // withholding the increment here is what makes a row immortal.
+      // `nudged` still counts only what was really delivered.
       await store.recordNudge(row.id);
-      nudged++;
+      if (res?.messages?.[0]?.id) nudged++;
+      else console.error(`[relay] nudge to the rep was rejected for ${row.id} — counted toward the ceiling anyway`);
     } catch (e) {
       console.error('[relay] nudge failed for', row.id, e.message);
     }

@@ -25,9 +25,18 @@ Executed successfully 2026-07-28 against the `is_test` tenant **Leadz marketing*
 > the rep contact to that number, `raiseEscalation` refuses to send (own-number guard),
 > which is correct but will look like a broken run.
 
-> **3. Hebrew payloads go through Python or Node — never curl.** Git Bash on this
+> **3. Never overwrite a real rep contact.** `upsertContact` keys on
+> `(business_id, role)`, so seeding a throwaway rep on a tenant that already has one
+> silently replaces it — and the cleanup would then delete it for good. The script
+> **aborts** if a `rep` row already exists, and its cleanup deletes only a row whose
+> phone is the throwaway number. Do not remove either guard.
+
+> **4. Hebrew payloads go through Python or Node — never curl.** Git Bash on this
 > machine re-encodes the Hebrew body into `??????` and the model reads garbage.
 > Write any file containing Hebrew with a normal file write, not a bash heredoc.
+> This runbook uses **Node**, not Python: `_setSenderForTest` is an ESM export, so
+> only an in-process import can inject the fake sender — which is the whole reason
+> this run is safe. Node reads UTF-8 source correctly, so the curl hazard does not apply.
 
 ---
 
@@ -70,59 +79,81 @@ const BIZ_ID = '1037d6c1-e64f-4672-aa5c-19619ad6b821';
 const SESSION = 'e2e_relay_9001';   // throwaway — NOT a phone number
 const REP_PHONE = '972500000001';   // throwaway — never dialled, the sender is fake
 
-// 0. Refuse to run against anything that is not the test tenant.
+// ── 0. Refuse to run against anything but the test tenant ────────────────────
 const { data: biz } = await sb.from('businesses')
   .select('id,name,is_test,whatsapp_number').eq('id', BIZ_ID).maybeSingle();
 if (!biz?.is_test) throw new Error(`refusing to run: business ${BIZ_ID} is not is_test`);
 if (REP_PHONE === biz.whatsapp_number) throw new Error('rep phone equals the business own number');
 
-// 1. Seed a live session for the throwaway lead + a rep contact.
-await sb.from('sessions').upsert({
-  session_id: SESSION, business_id: BIZ_ID, session_mode: 'live',
-  setup_completed: true, current_stage: 'start',
-}, { onConflict: 'session_id' });
-await contactsMod.upsertContact(BIZ_ID, 'rep', { name: 'E2E Rep', phone: REP_PHONE });
+// Refuse to clobber a real rep: upsertContact keys on (business_id, role), so an
+// existing rep row would be overwritten here and deleted by cleanup — unrecoverably.
+const { data: existingRep } = await sb.from('business_contacts')
+  .select('id,name,phone').eq('business_id', BIZ_ID).eq('role', 'rep').maybeSingle();
+if (existingRep) {
+  throw new Error(`refusing to run: this tenant already has a rep contact (${existingRep.name ?? '—'} ${existingRep.phone ?? '—'}). `
+    + 'Seeding would overwrite it and cleanup would delete it. Use a different tenant.');
+}
 
-// 2. Fake sender — everything that would hit WhatsApp is printed instead.
-const outbox = [];
-relay._setSenderForTest(async (msg) => {
-  outbox.push(msg);
-  console.log(`   → WA[fake] to=${msg.to}\n      ${msg.text.replace(/\n/g, '\n      ')}`);
-  return { messages: [{ id: `wamid.E2E${outbox.length}` }] };
-});
+// Everything that touches the tenant lives inside try/finally: a throw in the
+// middle must never leave a rep contact or a live session behind on a real
+// tenant, because a real lead escalating afterwards would try to reach it.
+try {
+  // ── 1. Seed a live session for the throwaway lead + the throwaway rep ──────
+  await sb.from('sessions').upsert({
+    session_id: SESSION, business_id: BIZ_ID, session_mode: 'live',
+    setup_completed: true, current_stage: 'start',
+  }, { onConflict: 'session_id' });
+  await contactsMod.upsertContact(BIZ_ID, 'rep', { name: 'E2E Rep', phone: REP_PHONE });
 
-// 3. Lead escalates.
-const raised = await relay.raiseEscalation({
-  business: { id: BIZ_ID, name: biz.name }, session_id: SESSION,
-  question: 'אפשר לפרוס את התשלום ל-3 תשלומים?', reason: 'pricing',
-  summary: 'מתעניין בחבילת ליווי', leadName: 'דני', persona: { bot_gender: 'female' },
-});
-console.log('holdingLine:', raised?.holdingLine ?? '(null — nothing was asked)');
-const { data: openRow } = await sb.from('escalations')
-  .select('id,short_code,status,rep_message_id').eq('business_id', BIZ_ID)
-  .eq('session_id', SESSION).maybeSingle();
+  // ── 2. Fake sender — everything bound for WhatsApp is printed instead ──────
+  const outbox = [];
+  relay._setSenderForTest(async (msg) => {
+    outbox.push(msg);
+    console.log(`   → WA[fake] to=${msg.to}\n      ${msg.text.replace(/\n/g, '\n      ')}`);
+    return { messages: [{ id: `wamid.E2E${outbox.length}` }] };
+  });
 
-// 4. Rep quote-replies on WhatsApp (context.id = the message we sent them).
-const consumed = await relay.handleContactMessage({
-  business: { id: BIZ_ID, name: biz.name }, from: REP_PHONE,
-  text: 'כן, אפשר לפרוס ל-3 תשלומים ללא ריבית.',
-  contextId: openRow?.rep_message_id ?? null, persona: { bot_gender: 'female' },
-});
+  // ── 3. Lead escalates ─────────────────────────────────────────────────────
+  const raised = await relay.raiseEscalation({
+    business: { id: BIZ_ID, name: biz.name }, session_id: SESSION,
+    question: 'אפשר לפרוס את התשלום ל-3 תשלומים?', reason: 'pricing',
+    summary: 'מתעניין בחבילת ליווי', leadName: 'דני', persona: { bot_gender: 'female' },
+  });
+  console.log('holdingLine:', raised?.holdingLine ?? '(null — nothing was asked)');
+  const { data: openRow } = await sb.from('escalations')
+    .select('id,short_code,status,rep_message_id').eq('business_id', BIZ_ID)
+    .eq('session_id', SESSION).maybeSingle();
 
-// 5. Final state.
-const { data: finalRow } = await sb.from('escalations')
-  .select('status,answer,answered_at').eq('business_id', BIZ_ID).eq('session_id', SESSION).maybeSingle();
-console.log('consumed:', consumed, '| escalation:', JSON.stringify(finalRow));
-console.log('lead received:', outbox.find(m => m.to === SESSION)?.text ?? '(nothing)');
+  // ── 4. Rep quote-replies (context.id = the message we sent them) ──────────
+  const consumed = await relay.handleContactMessage({
+    business: { id: BIZ_ID, name: biz.name }, from: REP_PHONE,
+    text: 'כן, אפשר לפרוס ל-3 תשלומים ללא ריבית.',
+    contextId: openRow?.rep_message_id ?? null, persona: { bot_gender: 'female' },
+  });
 
-// 6. Cleanup — always.
-await sb.from('escalations').delete().eq('business_id', BIZ_ID).eq('session_id', SESSION);
-await sb.from('conversation_messages').delete().eq('session_id', SESSION);
-await sb.from('sessions').delete().eq('session_id', SESSION);
-await sb.from('business_contacts').delete().eq('business_id', BIZ_ID).eq('role', 'rep');
+  // ── 5. Final state ────────────────────────────────────────────────────────
+  const { data: finalRow } = await sb.from('escalations')
+    .select('status,answer,answered_at').eq('business_id', BIZ_ID).eq('session_id', SESSION).maybeSingle();
+  console.log('consumed:', consumed, '| escalation:', JSON.stringify(finalRow));
+  console.log('lead received:', outbox.find(m => m.to === SESSION)?.text ?? '(nothing)');
+} finally {
+  // ── 6. Cleanup — runs even if anything above threw ────────────────────────
+  // The rep delete is scoped to the throwaway PHONE as well as the role, so a
+  // rep row this script did not create can never be removed by it.
+  await sb.from('escalations').delete().eq('business_id', BIZ_ID).eq('session_id', SESSION);
+  await sb.from('conversation_messages').delete().eq('session_id', SESSION);
+  await sb.from('sessions').delete().eq('session_id', SESSION);
+  await sb.from('business_contacts').delete()
+    .eq('business_id', BIZ_ID).eq('role', 'rep').eq('phone', REP_PHONE);
+  console.log('cleaned up: escalation, history, session, throwaway rep contact');
+}
 ```
 
 ## Verified output (2026-07-28)
+
+The run below used the same flow. The rep-collision abort and the `try/finally` were
+added afterwards in review and have deliberately **not** been re-run against the live
+tenant — they are guards around the flow, not changes to it.
 
 ```
 0. tenant: Leadz marketing | is_test: true | own WABA: 972559489893
@@ -160,7 +191,7 @@ What to check in that output:
 
 ## Cleanup (always)
 
-Step 6 above does it. Verify with a read-back — the tenant must return to exactly:
+The `finally` block does it. Verify with a read-back — the tenant must return to exactly:
 `escalations []`, `business_contacts` = one `owner` row with `phone: null`,
 `sessions` = only `972542898835`, no `conversation_messages` for the throwaway session.
 Leaving a `rep` contact behind is the one that matters: a real lead escalating on this
@@ -187,19 +218,45 @@ Unset is a hard stop, and that is the intended state:
 
 - `raiseEscalation` sends nothing, returns no message id, and writes **no** escalation row,
   so the lead simply gets today's escalation sentence and is never promised an answer
-  nobody was asked for;
-- `nudgePass` sends nothing, does not increment `nudge_count` and does not move
-  `last_nudge_at`, so an unsent reminder cannot burn the ceiling;
-- both log the missing variable by name (`[relay] WHATSAPP_…_TEMPLATE is not configured
-  — refusing to send to a contact`).
+  nobody was asked for. Logged per escalation, because each one is a distinct lost event;
+- `nudgePass` decides **once per pass** that it cannot send, logs one line, and skips every
+  send. No `nudge_count` is incremented and no `last_nudge_at` moves — a config error must
+  never burn a real rep's reminder budget.
 
 Setting the vars to a template name that is *not yet approved* is worse than leaving them
 unset: Graph rejects the send, which is still a correct hard stop, but it burns a Graph
 call and buries the reason in the API error instead of the explicit refusal log.
 
-Body parameters are whitespace-collapsed and empty ones become `—` before they reach
-Graph, because Graph rejects a parameter containing a newline, a tab, a run of four or
-more spaces, or nothing at all — and a lead's question routinely contains a newline.
+### How an open escalation is guaranteed to end
+
+Three exits, and the third exists precisely because the first two can stall:
+
+1. **Answered** — the rep replies (`handleContactMessage`).
+2. **Ceiling** — `nudge_count` reaches `nudge_max_count` and the row is expired. A nudge
+   that was *attempted* and rejected by Graph **still counts**, so an unreachable rep
+   (number not on WhatsApp, business blocked, template paused by Meta) still walks the
+   row to expiry rather than leaving it open forever.
+3. **Absolute age cap** — `max(72h, interval × (max + 1))` since `created_at`. Derived, not
+   flat, so a business configured for a longer ladder (24h × 4 ≈ 96h) is never cut short.
+   This is the backstop for every failure mode that stops the counter advancing at all,
+   including the env var being lost in a redeploy after rows were already created.
+
+The cap matters because one immortal `open` row is not merely untidy: `correlate.js` relays
+**any** untagged rep reply to the single open row, so a zombie re-routes a rep's next answer
+into a dead lead's transcript; and `store.js#nextShortCode` only allocates codes no open row
+holds, so zombies leak the 1..99 space until inserts collide and `raiseEscalation` starts
+returning `null` for that business.
+
+Nothing schedules `POST /follow-up/process` today, so no pass runs at all until a scheduler
+is attached — expiry only happens when something calls it.
+
+### Parameter hygiene
+
+Body parameters are whitespace-collapsed, empties become `—`, and anything over 500
+characters is truncated on a word boundary with `…`. Graph rejects a parameter containing a
+newline, a tab, a run of four or more spaces, nothing at all, or more than 1024 characters —
+and `{{4}}` is the lead's raw question, which can arrive at 4096 characters with newlines in
+it. Truncation is cosmetic only: `escalations.question` always keeps the full text.
 
 ### Once approved
 
@@ -210,4 +267,5 @@ more spaces, or nothing at all — and a lead's question routinely contains a ne
 3. For a real template send, use a phone **you own** as the rep contact on the Leadz
    tenant, drop the `_setSenderForTest` call, and run only step 3 (escalation raise).
    Expect a real WhatsApp template on that handset and a `wamid.…` in `rep_message_id`.
-   Delete the escalation row and the rep contact afterwards.
+   Keep the `try/finally` and the rep-collision abort in place; delete the escalation row
+   and the rep contact afterwards.
