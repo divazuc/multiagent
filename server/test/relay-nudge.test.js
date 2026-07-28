@@ -318,6 +318,25 @@ test('an unparseable created_at expires the row instead of nudging it forever', 
   assert.equal(sent.length, 0);
 });
 
+// The test above is also caught by the sibling last_nudge_at guard, because
+// `last_nudge_at ?? created_at` falls back to the same bad value. Give the row
+// a VALID last_nudge_at and only the created_at guard can save it — otherwise
+// the age cap silently stops being the backstop it is documented to be.
+test('an unparseable created_at is caught even when last_nudge_at is valid', async () => {
+  const now = new Date('2026-07-26T09:00:00Z');
+  const rows = seedOpen([{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
+    rep_phone: '972500000001', session_id: '9725000009', question: 'שאלה', nudge_count: 0,
+    created_at: 'not-a-timestamp', last_nudge_at: new Date(now - 3 * HOUR).toISOString() }]);
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'x' }] }; });
+
+  const r = await relay.nudgePass({ now, isOpenNow: async () => true, intervalHours: 2, maxNudges: 4 });
+
+  assert.equal(r.expired, 1, 'an uncomputable age must fail closed even when the interval gate is satisfiable');
+  assert.equal(rows[0].status, 'expired');
+  assert.equal(sent.length, 0, 'a row whose age cannot be computed must never be billed');
+});
+
 test('an unparseable last_nudge_at expires the row instead of nudging it every pass', async () => {
   const now = new Date('2026-07-26T09:00:00Z');
   const rows = seedOpen([{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
