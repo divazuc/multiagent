@@ -937,7 +937,21 @@ app.post('/follow-up/process', async (req, res) => {
 
     const sent    = results.filter(r => r.status === 'sent').length;
     const skipped = results.filter(r => r.skipped).length;
-    return res.json({ status: 'success', processed: results.length, sent, skipped, results });
+
+    // Rep nudges (human-rep-relay Task 8) ride this same pass — nothing
+    // schedules /follow-up/process today (no cron, no setInterval; see
+    // CLAUDE.md / the relay design doc §9), so this is where a future
+    // scheduler attaches, and it must not gain a second one of its own.
+    const { nudgePass } = await import('./lib/relay/index.js');
+    const nudges = await nudgePass({
+      isOpenNow: async (businessId) => {
+        const { data } = await supabase.from('business_profiles')
+          .select('working_hours').eq('business_id', businessId).maybeSingle();
+        return isWithinWorkingHours(data?.working_hours);
+      },
+    });
+
+    return res.json({ status: 'success', processed: results.length, sent, skipped, results, nudges });
   } catch (e) {
     return res.status(500).json({ status: 'error', message: e.message });
   }

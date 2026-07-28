@@ -269,3 +269,29 @@ export async function handleContactMessage({ business, from, text, contextId, pe
     return recognized;
   }
 }
+
+// Nudges ride the follow-up processor's pass — this feature does not add a
+// second scheduler. Every nudge outside the 24h window is a billable
+// business-initiated conversation, hence the ceiling.
+export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2, maxNudges = 4 }) {
+  let nudged = 0, expired = 0;
+  const open = await store.listAllOpen();
+  for (const row of open) {
+    try {
+      const since = new Date(row.last_nudge_at ?? row.created_at ?? now).getTime();
+      if (now.getTime() - since < intervalHours * 3600 * 1000) continue;
+      if (row.nudge_count >= maxNudges) { await store.markExpired(row.id); expired++; continue; }
+      if (!(await isOpenNow(row.business_id))) continue; // no counter change
+      await send({
+        to: row.rep_phone,
+        text: `תזכורת #${row.short_code} — עדיין ממתינה תשובה:\n${row.question}\n\nלהפסקת התזכורות השיבו "עצור".`,
+        businessId: row.business_id,
+      });
+      await store.recordNudge(row.id);
+      nudged++;
+    } catch (e) {
+      console.error('[relay] nudge failed for', row.id, e.message);
+    }
+  }
+  return { nudged, expired };
+}
