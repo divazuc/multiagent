@@ -60,3 +60,31 @@ test('upsertContact rejects an unusable phone instead of storing junk', async ()
   contacts._setDbForTest(fakeDb([]));
   await assert.rejects(() => contacts.upsertContact('b1', 'rep', { phone: '123' }), /phone/i);
 });
+
+test('upsertContact clears the phone to null when given an empty string', async () => {
+  const db = fakeDb([]);
+  contacts._setDbForTest(db);
+  await contacts.upsertContact('b1', 'rep', { name: 'סאלי', phone: '' });
+  assert.equal(db.state.upserts[0].phone, null);
+});
+
+test('upsertContact clears the phone to null when given a whitespace-only string', async () => {
+  const db = fakeDb([]);
+  contacts._setDbForTest(db);
+  await contacts.upsertContact('b1', 'rep', { name: 'סאלי', phone: '   ' });
+  assert.equal(db.state.upserts[0].phone, null);
+});
+
+test('upsertContact clears the phone to null when given null', async () => {
+  const db = fakeDb([]);
+  contacts._setDbForTest(db);
+  await contacts.upsertContact('b1', 'rep', { name: 'סאלי', phone: null });
+  assert.equal(db.state.upserts[0].phone, null);
+});
+
+test('upsertContact leaves the phone untouched when the key is absent', async () => {
+  const db = fakeDb([]);
+  contacts._setDbForTest(db);
+  await contacts.upsertContact('b1', 'rep', { name: 'סאלי' });
+  assert.equal('phone' in db.state.upserts[0], false);
+});

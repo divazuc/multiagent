@@ -46,10 +46,15 @@ export async function findContactByPhone(businessId, phone) {
 
 export async function upsertContact(businessId, role, fields) {
   const row = { business_id: businessId, role, ...fields };
-  if (fields.phone != null && fields.phone !== '') {
-    const norm = normalizePhone(fields.phone);
-    if (!norm) throw new Error(`unusable phone: ${fields.phone}`);
-    row.phone = norm;
+  if (fields.phone != null) {
+    if (String(fields.phone).trim() === '') {
+      // '' or whitespace is a deliberate "remove this rep" clear, not junk.
+      row.phone = null;
+    } else {
+      const norm = normalizePhone(fields.phone);
+      if (!norm) throw new Error(`unusable phone: ${fields.phone}`);
+      row.phone = norm;
+    }
   }
   await (await getDb()).upsertContact(row);
 }
