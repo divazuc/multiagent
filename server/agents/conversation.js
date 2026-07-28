@@ -2,6 +2,7 @@
 // Supports three agent modes: sales / support / hybrid
 
 import Anthropic from '@anthropic-ai/sdk';
+import { replyDelayMs } from '../lib/reply-delay.js';
 import { extractModuleAction } from '../lib/modules/actions.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -11,6 +12,9 @@ const MAX_VALIDATION_RETRIES = 2;
 const GENERIC_AI_PHRASES = ['certainly', 'of course', 'absolutely', 'as an ai', 'i am an ai', 'i cannot'];
 
 export async function runConversation({ message, session_id, context }) {
+  // The reply-delay window is measured end-to-end from here, so a slow model
+  // call eats the budget instead of being padded on top of it.
+  const startedAt = Date.now();
   try {
     const {
       business_profile, persona, guardrails, hebrew_patterns,
@@ -74,7 +78,7 @@ export async function runConversation({ message, session_id, context }) {
 
     // Human-like delay before responding
     const answerLength = business_profile?.answer_length ?? persona?.answer_length ?? 'short';
-    await humanDelay(validated.text, answerLength);
+    await humanDelay(validated.text, answerLength, startedAt);
 
     return ok({
       response: validated.text,
@@ -338,13 +342,13 @@ async function callClaude(system, history, message) {
 // ── Human-like reply delay ────────────────────────────────────────────────────
 // Mimics real typing time so the conversation feels natural, not instant-bot
 
-async function humanDelay(text, answerLength) {
-  const words  = (text ?? '').split(/\s+/).length;
-  let ms;
-  if (answerLength === 'detailed' || words > 40) ms = 8000 + Math.random() * 4000;   // 8–12s
-  else if (answerLength === 'medium' || words > 20) ms = 5000 + Math.random() * 3000; // 5–8s
-  else ms = 3000 + Math.random() * 2000;                                               // 3–5s
-  await new Promise(r => setTimeout(r, ms));
+async function humanDelay(text, answerLength, startedAt) {
+  const ms = replyDelayMs({
+    words: (text ?? '').split(/\s+/).length,
+    answerLength,
+    elapsedMs: startedAt ? Date.now() - startedAt : 0,
+  });
+  if (ms > 0) await new Promise(r => setTimeout(r, ms));
 }
 
 function ok(result) { return { status: 'success', result, error: null }; }
