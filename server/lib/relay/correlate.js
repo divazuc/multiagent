@@ -10,8 +10,13 @@ export function parseRepMessage(text) {
 }
 
 // Whole-message match only. "די יקר, אבל אפשר לפרוס" is an ANSWER, not a stop.
+//
+// The trailing class includes '?' (a rep typing "עצור?" means stop, and it read
+// as an answer to be relayed to the lead in the bot's voice) and whitespace, so
+// "עצור ." — punctuation after a space — is stripped in one pass rather than
+// leaving a trailing space that no token can match.
 export function isStopMessage(body) {
-  const cleaned = String(body ?? '').trim().replace(/[.!,;:]+$/, '').toLowerCase();
+  const cleaned = String(body ?? '').trim().replace(/[\s.!,;:?]+$/, '').toLowerCase();
   return STOP_TOKENS.has(cleaned);
 }
 

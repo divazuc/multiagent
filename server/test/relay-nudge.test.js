@@ -11,8 +11,19 @@ const HOUR = 3600 * 1000;
 // rep_message_ids DDL is applied — postgres rejects the unknown column. The
 // relay has to degrade to something correct in that state, because the branch
 // can merge before an operator runs the migration.
-function seedOpen(rows, { supportsArrayColumn = true } = {}) {
+function seedOpen(rows, { supportsArrayColumn = true, platform = [] } = {}) {
   const state = [...rows];
+  // The pass reads every tenant's WhatsApp line once (the bot-to-bot loop
+  // breaker) and fails closed if it cannot, so the seam has to be installed
+  // even for tests that have nothing to do with it — without it the real db
+  // path is taken, supabase.js throws on the missing env, and every row is
+  // skipped as unverified.
+  relay._setDbForTest({
+    async getBusiness() { return { whatsapp_number: null }; },
+    async getSession() { return { qualification_progress: {} }; },
+    async getLeadContact() { return null; },
+    async listPlatformWhatsappNumbers() { return platform.map(n => ({ whatsapp_number: n })); },
+  });
   store._setDbForTest({
     async insert(r) { state.push(r); return r; },
     // listOpen is contractually newest-first (see correlate.js) — the real
@@ -375,4 +386,30 @@ test('the derived age cap is clamped so an absurd cadence cannot keep a row open
 
   assert.equal(r.expired, 1, '24h x 21 = 504h must clamp to the 168h ceiling');
   assert.equal(rows[0].status, 'expired');
+});
+
+// The loop breaker applies to the SECOND hop too: a rep_phone captured before
+// the guard existed (or after a whatsapp_number change) must not be nudged
+// every two hours into another tenant's bot.
+
+test('a nudge is never sent to another business\'s WhatsApp line', async () => {
+  const now = new Date('2026-07-26T09:00:00Z');
+  const rows = seedOpen([{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
+    rep_phone: '972559489893', session_id: '9725000009', question: 'שאלה', nudge_count: 0,
+    created_at: new Date(now - 3 * HOUR).toISOString(),
+    last_nudge_at: new Date(now - 3 * HOUR).toISOString() }]);
+  relay._setDbForTest({
+    async getBusiness() { return { whatsapp_number: null }; },
+    async getSession() { return { qualification_progress: {} }; },
+    async getLeadContact() { return null; },
+    async listPlatformWhatsappNumbers() { return [{ whatsapp_number: '972559489893' }]; },
+  });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'x' }] }; });
+
+  const r = await relay.nudgePass({ now, isOpenNow: async () => true, intervalHours: 2, maxNudges: 4 });
+
+  assert.equal(sent.length, 0, 'nudging another tenant\'s bot line is the same loop, on a 2-hourly timer');
+  assert.equal(r.nudged, 0);
+  assert.equal(rows[0].nudge_count, 0, 'a destination we refuse to message must not burn the budget either');
 });

@@ -47,6 +47,15 @@ async function realDb() {
       if (error) throw error;
       return data ?? null;
     },
+    // EVERY business's WhatsApp line, not just this one's — see
+    // assertNotPlatformNumber. Small (one row per tenant) and read at most once
+    // per escalation / once per nudge pass.
+    async listPlatformWhatsappNumbers() {
+      const { data, error } = await supabase.from('businesses')
+        .select('whatsapp_number').not('whatsapp_number', 'is', null);
+      if (error) throw error;
+      return data ?? [];
+    },
   };
 }
 
@@ -118,6 +127,31 @@ async function sendToContact({ to, businessId, templateEnv, bodyParams, fallback
     to, templateName, langCode: 'he',
     bodyParams: bodyParams.map(templateParam), businessId,
   });
+}
+
+// BOT-TO-BOT LOOP BREAKER. The own-number guard below compares only against
+// THIS business's whatsapp_number. If a rep contact phone is the WABA line of
+// ANOTHER business on the platform, there is an unbounded loop:
+//
+//   A escalates -> messages B's line -> B's agent answers as if to a lead ->
+//   A's contact gate recognises B as a listed contact -> A relays B's answer
+//   to A's lead and acks B -> B's agent answers the ack -> forever.
+//
+// Only the first hop is a template; every hop after it sits inside a session
+// window, so it is cheap per message and unbounded in count. This is not
+// hypothetical: two production businesses currently share the whatsapp_number
+// 972559489893, and the owner-contact backfill has already put platform WABA
+// numbers into contact rows once.
+//
+// Fails CLOSED: if the list cannot be read we do not know whether the
+// destination is a bot, and "send it anyway" is the one answer that can start
+// the loop. Returns null when the seam does not implement the lookup at all,
+// which only happens in fixtures that predate it.
+async function platformNumberSet() {
+  const d = await getDb();
+  if (typeof d.listPlatformWhatsappNumbers !== 'function') return null;
+  const rows = await d.listPlatformWhatsappNumbers();
+  return new Set((rows ?? []).map(r => normalizePhone(r?.whatsapp_number)).filter(Boolean));
 }
 
 function holdingLineFor(persona) {
@@ -195,6 +229,15 @@ export async function raiseEscalation({ business, session_id, question, reason =
     const bizPhone = normalizePhone(biz?.whatsapp_number);
     if (repPhone && bizPhone && repPhone === bizPhone) {
       console.error(`[relay] refusing to escalate: resolved rep phone equals business's own WhatsApp number (business=${business.id})`);
+      return null;
+    }
+
+    // The same guard widened to every tenant — see platformNumberSet. A throw
+    // here reaches the outer catch and returns null, which is the intended
+    // fail-closed outcome.
+    const platform = await platformNumberSet();
+    if (repPhone && platform?.has(repPhone)) {
+      console.error(`[relay] refusing to escalate: resolved rep phone is a platform WhatsApp line (business=${business.id})`);
       return null;
     }
 
@@ -391,6 +434,19 @@ export async function handleContactMessage({ business, from, text, contextId, pe
     if (!contact) return false;
     recognized = true;
 
+    // The loop's other entry point, and the worse one: an inbound message from
+    // a platform WABA line would be treated as a REP ANSWER — rewritten into
+    // this bot's voice and relayed to a real lead, bypassing every guardrail by
+    // design (spec §6, the rep is authoritative). One tenant's bot would be
+    // putting words in another tenant's mouth, and each ack would feed the next
+    // turn. Consume it and say nothing: no ack, no relay, no pipeline.
+    const fromPhone = normalizePhone(from);
+    const platform = await platformNumberSet();
+    if (fromPhone && platform?.has(fromPhone)) {
+      console.error(`[relay] ignoring a message from a platform WhatsApp line listed as a contact of ${business.id}`);
+      return true;
+    }
+
     const open = await store.listOpen(business.id);
     const { row, matchedBy, body, isStop } = resolveEscalation({ contextId, text, openRows: open });
 
@@ -525,6 +581,20 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
     console.error('[relay] WHATSAPP_NUDGE_TEMPLATE is not configured — no rep nudges will be sent this pass');
   }
 
+  // Read once per pass, not once per row. A rep_phone can be a platform WABA
+  // line even though raiseEscalation now refuses to create such a row: rows
+  // predating that guard, and a business whose whatsapp_number changed after
+  // the escalation was raised. Fails closed — an unreadable list means every
+  // destination is treated as unverified and nothing is sent, while the age cap
+  // still expires the rows.
+  let platform = null;
+  try {
+    platform = await platformNumberSet();
+  } catch (e) {
+    console.error('[relay] platform number list unreadable — no nudges will be sent this pass:', e.message);
+    platform = 'unknown';
+  }
+
   for (const row of open) {
     try {
       const settings = await settingsFor(row.business_id);
@@ -559,6 +629,13 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
       if (now.getTime() - since < settings.intervalHours * 3600 * 1000) continue;
       if (row.nudge_count >= settings.maxNudges) { await store.markExpired(row.id); expired++; continue; }
       if (!canNudge) continue;                            // refused before any attempt — no charge
+      // Refused before any attempt too, so it charges nobody: the escalation is
+      // unanswerable rather than unattended, and the age cap will close it.
+      const dest = normalizePhone(row.rep_phone);
+      if (platform === 'unknown' || (dest && platform?.has(dest))) {
+        console.error(`[relay] not nudging ${row.id} — the rep phone is a platform WhatsApp line or could not be verified`);
+        continue;
+      }
       if (!(await isOpenNow(row.business_id))) continue;  // no counter change
 
       // CHARGE BEFORE SENDING. recordNudge is the only thing that advances

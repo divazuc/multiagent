@@ -514,3 +514,107 @@ test('an explicitly passed leadName and summary win over the lookup', async () =
   assert.match(sent[0].text, /דנה כהן/);
   assert.match(sent[0].text, /סיכום מפורש/);
 });
+
+// ── Bot-to-bot loop breaker ──────────────────────────────────────────────────
+// The own-number guard compares only against THIS business's
+// businesses.whatsapp_number. If a rep contact phone is the WABA line of
+// ANOTHER business on the platform there is an unbounded loop: A escalates ->
+// messages B's line -> B's agent replies -> A sees B as a listed contact and
+// treats the reply as a rep answer -> A relays and acks -> B replies -> ...
+// Every hop after the first sits inside a session window, so it is cheap per
+// message and unbounded in count. Two production businesses currently share
+// the whatsapp_number 972559489893, and a backfill has already put platform
+// WABA numbers into contact rows once.
+
+function seedPlatform({ platform = [], businessWhatsapp = null } = {}) {
+  const rows = seed({ businessWhatsapp });
+  relay._setDbForTest({
+    async getBusiness() { return { whatsapp_number: businessWhatsapp }; },
+    async getSession() { return { qualification_progress: {} }; },
+    async getLeadContact() { return null; },
+    async listPlatformWhatsappNumbers() { return platform.map(n => ({ whatsapp_number: n })); },
+  });
+  return rows;
+}
+
+test('refuses to escalate to a rep phone that is ANOTHER business\'s WhatsApp line', async () => {
+  // '0500000001' is the seeded rep '972500000001' in local format, registered
+  // to a different business — the guard must normalize both sides.
+  const rows = seedPlatform({ platform: ['972599999999', '0500000001'], businessWhatsapp: '972599999999' });
+  let sendCount = 0;
+  relay._setSenderForTest(async () => { sendCount++; return { messages: [{ id: 'wamid.LOOP' }] }; });
+
+  const r = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {},
+  });
+
+  assert.equal(r, null);
+  assert.equal(sendCount, 0, 'messaging another tenant\'s bot line starts a loop nothing bounds');
+  assert.equal(rows.length, 0, 'no row is reserved for a destination we refuse to message');
+});
+
+test('a rep phone that belongs to no platform line is still messaged', async () => {
+  const rows = seedPlatform({ platform: ['972599999999', '972555555555'], businessWhatsapp: '972599999999' });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.OK' }] }; });
+
+  const r = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {},
+  });
+
+  assert.equal(sent.length, 1);
+  assert.ok(r.holdingLine);
+  assert.equal(rows[0].status, 'open');
+});
+
+test('an unreadable platform list fails closed rather than starting a loop', async () => {
+  seed();
+  relay._setDbForTest({
+    async getBusiness() { return { whatsapp_number: null }; },
+    async getSession() { return { qualification_progress: {} }; },
+    async getLeadContact() { return null; },
+    async listPlatformWhatsappNumbers() { throw new Error('transient db error'); },
+  });
+  let sendCount = 0;
+  relay._setSenderForTest(async () => { sendCount++; return { messages: [{ id: 'wamid.X' }] }; });
+
+  const r = await relay.raiseEscalation({
+    business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {},
+  });
+
+  assert.equal(r, null);
+  assert.equal(sendCount, 0, 'not knowing whether the destination is a bot must never resolve to "send it"');
+});
+
+// The loop's other entry point, and the worse one. If another tenant's bot line
+// is listed as a contact, its messages are not merely acked — they are treated
+// as a REP ANSWER, rewritten into this bot's voice and relayed to a real lead,
+// bypassing every guardrail by design (spec §6: the rep is authoritative). One
+// bot would be putting words in another bot's mouth.
+test('a message from another business\'s WhatsApp line is dropped, never relayed as a rep answer', async () => {
+  const rows = seed({ rep: { business_id: 'b1', role: 'rep', name: 'סאלי', phone: '972559489893' } });
+  relay._setDbForTest({
+    async getBusiness() { return { whatsapp_number: null }; },
+    async getSession() { return { qualification_progress: {} }; },
+    async getLeadContact() { return null; },
+    async listPlatformWhatsappNumbers() { return [{ whatsapp_number: '972559489893' }]; },
+  });
+  // An open escalation exists, so without the guard the fallback ladder would
+  // happily hand this bot's chatter to a waiting lead.
+  store._setDbForTest({
+    async insert(row) { const r = { id: 'e1', ...row }; rows.push(r); return r; },
+    async listOpen() { return [{ id: 'e1', business_id: 'b1', status: 'open', short_code: 1,
+      session_id: '97250000009', question: 'שאלה', rep_message_id: 'wamid.X' }]; },
+    async listAllOpen() { return rows; },
+    async update() { throw new Error('nothing may be marked answered here'); },
+  });
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Y' }] }; });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972559489893', text: 'שלום! איך אפשר לעזור?', contextId: null,
+  });
+
+  assert.equal(consumed, true, 'it must not reach the conversation agent either — that is the loop');
+  assert.equal(sent.length, 0, 'no ack, no relay: every reply here is another turn of the loop');
+});

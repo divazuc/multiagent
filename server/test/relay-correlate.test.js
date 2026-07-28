@@ -57,3 +57,19 @@ test('a stop message is flagged and still resolves to a row', () => {
   assert.equal(r.row.id, 'e1');
   assert.equal(r.isStop, true);
 });
+
+// A stop token the rep typed naturally must still stop the reminders. The
+// punctuation strip missed '?' and did not re-trim afterwards, so both of
+// these fell through as ANSWERS — and were relayed to the lead as the bot's
+// own words.
+test('a stop token survives natural punctuation and stray spacing', () => {
+  assert.equal(isStopMessage('עצור?'), true);
+  assert.equal(isStopMessage('עצור .'), true);
+  assert.equal(isStopMessage('  הפסק !  '), true);
+  assert.equal(isStopMessage('stop?'), true);
+});
+
+test('a real answer that merely ends in a question mark is still an answer', () => {
+  assert.equal(isStopMessage('די יקר, אבל אפשר לפרוס?'), false);
+  assert.equal(isStopMessage('כן, אפשר לפרוס עד 3 תשלומים'), false);
+});
