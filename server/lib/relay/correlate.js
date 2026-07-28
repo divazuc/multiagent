@@ -21,8 +21,16 @@ export function resolveEscalation({ contextId, text, openRows = [] }) {
   const isStop = isStopMessage(body);
   const out = (row, matchedBy) => ({ row: row ?? null, matchedBy: row ? matchedBy : null, body, isStop });
 
+  // Any message WE sent the rep about this escalation is quote-matchable:
+  // rep_message_id is the original notification, rep_message_ids collects the
+  // nudges. The nudge is the most recent message in the rep's thread and so the
+  // one they are most likely to reply to — without it in the ladder, a natural
+  // answer (no leading #N) falls all the way to 'recent' and reaches the wrong
+  // lead. rep_message_ids may be absent on rows written before its column
+  // existed; Array.isArray covers that.
   if (contextId) {
-    const hit = openRows.find(r => r.rep_message_id === contextId);
+    const hit = openRows.find(r => r.rep_message_id === contextId
+      || (Array.isArray(r.rep_message_ids) && r.rep_message_ids.includes(contextId)));
     if (hit) return out(hit, 'quote');
   }
   if (code != null) {

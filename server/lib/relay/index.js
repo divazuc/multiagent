@@ -489,8 +489,15 @@ export async function nudgePass({ now = new Date(), isOpenNow, intervalHours = 2
       // withholding the increment here is what makes a row immortal.
       // `nudged` still counts only what was really delivered.
       await store.recordNudge(row.id);
-      if (res?.messages?.[0]?.id) nudged++;
-      else console.error(`[relay] nudge to the rep was rejected for ${row.id} — counted toward the ceiling anyway`);
+      const nudgeMessageId = res?.messages?.[0]?.id;
+      if (nudgeMessageId) {
+        nudged++;
+        // The rep is most likely to quote-reply to THIS message, not the
+        // original — keep its id matchable or the answer reaches another lead.
+        await store.attachNudgeMessageId(row.id, nudgeMessageId);
+      } else {
+        console.error(`[relay] nudge to the rep was rejected for ${row.id} — counted toward the ceiling anyway`);
+      }
     } catch (e) {
       console.error('[relay] nudge failed for', row.id, e.message);
     }

@@ -72,3 +72,36 @@ export async function recordNudge(id) {
   const base = typeof current === 'number' ? current : 0;
   await s.update(id, { nudge_count: base + 1, last_nudge_at: new Date().toISOString() });
 }
+
+// A nudge is a SECOND message in the rep's thread, and by construction the most
+// recent one — so it is what a rep naturally quote-replies to. Its id has to be
+// matchable or the reply falls through to matchedBy:'recent' and answers
+// whichever escalation happens to be newest, i.e. the wrong lead.
+//
+// Kept as its own append-only column rather than overwriting rep_message_id,
+// because a rep who scrolls up and quotes the ORIGINAL escalation message must
+// keep matching too. Capped: a row can be nudged at most nudge_max_count times,
+// but the cap costs nothing and stops a stuck row from growing an array.
+//
+// Deliberately separate from recordNudge: the counter must advance even if this
+// does not. Pre-DDL (see the report's DDL section) postgres rejects the unknown
+// column, so this falls back to repointing rep_message_id at the nudge —
+// strictly worse than the array (the original stops matching) and strictly
+// better than mis-delivering another lead's answer.
+const MAX_REP_MESSAGE_IDS = 8;
+
+export async function attachNudgeMessageId(id, repMessageId) {
+  if (!repMessageId) return;
+  const s = await getDb();
+  try {
+    const rows = await s.listAllOpen();
+    const current = rows.find(r => r.id === id)?.rep_message_ids;
+    const ids = Array.isArray(current) ? current : [];
+    if (ids.includes(repMessageId)) return;
+    await s.update(id, { rep_message_ids: [...ids, repMessageId].slice(-MAX_REP_MESSAGE_IDS) });
+  } catch (e) {
+    console.error('[relay] could not append the nudge message id (rep_message_ids column missing?):', e.message);
+    try { await s.update(id, { rep_message_id: repMessageId }); }
+    catch (e2) { console.error('[relay] nudge message id fallback also failed:', e2.message); }
+  }
+}
