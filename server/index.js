@@ -11,6 +11,7 @@ import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedF
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
 import { runFollowUpsAndNudges } from './lib/followup-orchestrator.js';
+import { healthPayload } from './lib/health.js';
 import dataRouter from './routes/data.js';
 import oauthRouter from './routes/oauth.js';
 
@@ -69,7 +70,7 @@ app.use('/data', dataRouter);
 app.use(oauthRouter);
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/health', (_req, res) => res.json(healthPayload()));
 
 // Sits behind studioAuth (not in PUBLIC_PATHS) — the frontend login screen
 // calls it with a candidate key to validate before storing it.
