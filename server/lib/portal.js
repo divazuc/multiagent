@@ -110,7 +110,7 @@ const ops = {
     return data;
   },
 
-  getOverviewStats: (bizId, days) => runStudioOp('getOverviewStats', [bizId, days]),
+  getOverviewStats: (bizId, days, domain) => runStudioOp('getOverviewStats', [bizId, days, domain]),
   loadFaqItems:     (bizId) => runStudioOp('loadFaqItems', [bizId]),
   getBotSettings:   (bizId) => runStudioOp('getBotSettings', [bizId]),
   addFaqItem:       (bizId, fields) => runStudioOp('addFaqItem', [bizId, fields ?? {}]),

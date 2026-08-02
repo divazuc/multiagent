@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { buildBotTests, defaultBotId } from './domain-classify.js';
 
 // Named-operation whitelist for the wa-studio frontend. Each op mirrors a
 // query the studio previously ran directly against Supabase with the anon
@@ -295,15 +296,20 @@ const ops = {
     if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
     const { data, error } = await supabase
       .from('business_profiles')
-      .select('agent_active, answer_after_hours, working_hours, after_hours_message, followup_enabled, followup_delay_days, followup_message, guardrails, persona, agent_mode, cta_goal, push_speed, nudge_interval_hours, nudge_max_count')
+      .select('agent_active, answer_after_hours, working_hours, after_hours_message, followup_enabled, followup_delay_days, followup_message, guardrails, persona, agent_mode, cta_goal, push_speed, nudge_interval_hours, nudge_max_count, draft_setup_data')
       .eq('business_id', businessId)
       .maybeSingle();
     if (error) throw error;
-    // The policy lock is a property of the business, not the profile — the
-    // client UI needs it here to know whether to render the policy editable.
     const { data: biz } = await supabase
       .from('businesses').select('portal_full_edit').eq('id', businessId).maybeSingle();
-    return { ...(data ?? {}), portal_full_edit: biz?.portal_full_edit === true };
+    // Only the bots array leaves the server — draft_setup_data holds internal
+    // onboarding state that must not reach the client.
+    const { draft_setup_data, ...rest } = data ?? {};
+    return {
+      ...rest,
+      bots: draft_setup_data?.dashboard_config?.bots ?? null,
+      portal_full_edit: biz?.portal_full_edit === true,
+    };
   },
 
   async deleteFaqItem(id) {
@@ -313,7 +319,7 @@ const ops = {
   },
 
   // ── Business overview (client dashboard) ───────────────────────────────────
-  async getOverviewStats(businessId, days = 30) {
+  async getOverviewStats(businessId, days = 30, domain = null) {
     if (!businessId) { const e = new Error('businessId is required'); e.status = 400; throw e; }
     days = Math.min(Math.max(Number(days) || 30, 7), 120);
     const since = new Date(Date.now() - days * 86400000);
@@ -353,12 +359,15 @@ const ops = {
     const profile = profileRes.data ?? {};
     const wh = profile.working_hours ?? null;
 
-    // Hebrew keyword buckets mirroring the three business domains. Doctors
-    // first: "קורס הזרקות" must not fall into treatments via "הזרק".
-    const DOMAIN_TESTS = [
+    // Config-driven bot classification; the hardcoded pair mirrors the
+    // original Esthetic three-domain split for businesses not yet seeded.
+    const botsConfig = profile.draft_setup_data?.dashboard_config?.bots ?? null;
+    const FALLBACK_BOTS = [
       ['doctors', /קורס|רופא|הכשר|סילבוס|השתלמ|בי.?ה.?ס/],
       ['hair', /שיער|גבות|זקן|השתל|קרקפת|נשיר|FUE/i],
     ];
+    const botTests = buildBotTests(botsConfig)?.map(t => [t.id, t.re]) ?? FALLBACK_BOTS;
+    const fallbackId = defaultBotId(botsConfig) ?? 'treatments';
 
     const jerusalem = (iso) => new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
     const isAfterHours = (iso) => {
@@ -380,10 +389,34 @@ const ops = {
       daily.set(key, { date: key, messages: 0, after_hours: 0, sessions: new Set() });
     }
 
+    // Pass 1 — build sessions and classify each one.
     const sessions = new Map(); // session_id -> {text, escalated, cta, after_hours_first}
-    let afterHoursMessages = 0;
-
     for (const m of messages) {
+      const ah = isAfterHours(m.created_at);
+      let s = sessions.get(m.session_id);
+      if (!s) { s = { text: '', escalated: false, cta: false, after_hours_first: ah }; sessions.set(m.session_id, s); }
+      s.text += ' ' + (m.user_message || '');
+      if (m.escalate) s.escalated = true;
+      if (m.cta_triggered) s.cta = true;
+    }
+    const sessionDomain = new Map();
+    const domains = {};
+    for (const b of (botsConfig ?? [])) domains[b.id] = 0;
+    if (!botsConfig) { domains.treatments = 0; domains.hair = 0; domains.doctors = 0; }
+    for (const [sid, s] of sessions) {
+      const hit = botTests.find(([, re]) => re.test(s.text));
+      const d = hit ? hit[0] : fallbackId;
+      sessionDomain.set(sid, d);
+      domains[d] = (domains[d] ?? 0) + 1;
+    }
+
+    // Pass 2 — aggregate, optionally scoped to one bot. `domains` above stays
+    // unfiltered on purpose: the bot view's share tile needs the full split.
+    const inScope = (sid) => !domain || sessionDomain.get(sid) === domain;
+    let afterHoursMessages = 0, messagesInScope = 0;
+    for (const m of messages) {
+      if (!inScope(m.session_id)) continue;
+      messagesInScope++;
       const bucket = daily.get(localDateKey(new Date(m.created_at)));
       const ah = isAfterHours(m.created_at);
       if (ah) afterHoursMessages++;
@@ -392,18 +425,11 @@ const ops = {
         if (ah) bucket.after_hours++;
         bucket.sessions.add(m.session_id);
       }
-      let s = sessions.get(m.session_id);
-      if (!s) { s = { text: '', escalated: false, cta: false, after_hours_first: ah }; sessions.set(m.session_id, s); }
-      s.text += ' ' + (m.user_message || '');
-      if (m.escalate) s.escalated = true;
-      if (m.cta_triggered) s.cta = true;
     }
-
-    const domains = { treatments: 0, hair: 0, doctors: 0 };
-    let escalated = 0, cta = 0, afterHoursSessions = 0;
-    for (const s of sessions.values()) {
-      const hit = DOMAIN_TESTS.find(([, re]) => re.test(s.text));
-      domains[hit ? hit[0] : 'treatments']++;
+    let escalated = 0, cta = 0, afterHoursSessions = 0, conversationsInScope = 0;
+    for (const [sid, s] of sessions) {
+      if (!inScope(sid)) continue;
+      conversationsInScope++;
       if (s.escalated) escalated++;
       if (s.cta) cta++;
       if (s.after_hours_first) afterHoursSessions++;
@@ -425,11 +451,12 @@ const ops = {
 
     return {
       days,
+      domain: domain ?? null,
       since: sinceIso,
       daily: [...daily.values()].map(d => ({ date: d.date, messages: d.messages, after_hours: d.after_hours, conversations: d.sessions.size })),
       totals: {
-        conversations: sessions.size,
-        messages: messages.length,
+        conversations: conversationsInScope,
+        messages: messagesInScope,
         after_hours_messages: afterHoursMessages,
         after_hours_sessions: afterHoursSessions,
         escalations: escalated,
