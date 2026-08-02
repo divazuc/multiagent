@@ -759,6 +759,12 @@ body {
   display: block; font-size: 12px; font-weight: 700; color: var(--ink-faint);
   margin: 14px 0 5px;
 }
+.st-input {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; font: inherit; font-size: 14.5px; line-height: 1.5;
+  background: var(--paper); color: var(--ink);
+}
+.st-input:focus { outline: 2px solid var(--green); border-color: transparent; }
 .st-textarea {
   width: 100%; border: 1px solid var(--line); border-radius: 10px;
   padding: 10px 14px; font: inherit; font-size: 14.5px; line-height: 1.5;

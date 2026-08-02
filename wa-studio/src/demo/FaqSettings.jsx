@@ -305,6 +305,7 @@ export function DemoSettings({ api, showToast, bots = null, bot = null, onBotsCh
                       keywords: botDraft.keywords.trim() || null }
       const next = await api.updateBotIdentity(bot, patch)
       onBotsChange?.(next)
+      setBotDraft({ name: patch.name, panel: patch.panel, keywords: patch.keywords ?? '' })
       showToast('זהות הבוט עודכנה ✓')
     } catch {
       showToast('שמירת זהות הבוט נכשלה — נסו שוב')
