@@ -27,7 +27,12 @@ export function createDemoApi(bizId) {
       const list = await rpc('listBusinesses')
       return list.find(b => b.id === bizId)?.name ?? null
     },
-    getOverviewStats: (days) => rpc('getOverviewStats', bizId, days),
+    getOverviewStats: (days, domain) => rpc('getOverviewStats', bizId, days, domain ?? null),
+    getInterviewQuestions: () => rpc('getInterviewQuestions', bizId),
+    answerInterviewQuestion: (id, rawAnswer) => rpc('answerInterviewQuestion', bizId, id, rawAnswer),
+    dismissInterviewQuestion: (id) => rpc('dismissInterviewQuestion', bizId, id),
+    generateInterviewQuestions: (bot) => rpc('generateInterviewQuestions', bizId, bot ?? null),
+    updateBotIdentity: (botId, patch) => rpc('updateBotIdentity', bizId, botId, patch),
     loadFaqItems: () => rpc('loadFaqItems', bizId),
     updateFaqItem: (id, updates) => rpc('updateFaqItem', id, updates),
     deleteFaqItem: (id) => rpc('deleteFaqItem', id),
@@ -76,7 +81,12 @@ export function createPortalApi(token, business, onAuthExpired) {
   return {
     bizId: business.id,
     getBusinessName: async () => business.name,
-    getOverviewStats: (days) => rpc('getOverviewStats', days),
+    getOverviewStats: (days, domain) => rpc('getOverviewStats', days, domain ?? null),
+    getInterviewQuestions: () => rpc('getInterviewQuestions'),
+    answerInterviewQuestion: (id, rawAnswer) => rpc('answerInterviewQuestion', id, rawAnswer),
+    dismissInterviewQuestion: (id) => rpc('dismissInterviewQuestion', id),
+    generateInterviewQuestions: (bot) => rpc('generateInterviewQuestions', bot ?? null),
+    updateBotIdentity: (botId, patch) => rpc('updateBotIdentity', botId, patch),
     loadFaqItems: () => rpc('loadFaqItems'),
     updateFaqItem: (id, updates) => rpc('updateFaqItem', id, updates),
     deleteFaqItem: (id) => rpc('deleteFaqItem', id),
