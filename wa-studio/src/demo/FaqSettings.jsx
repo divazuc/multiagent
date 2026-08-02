@@ -197,10 +197,18 @@ function ContactLine({ label, contact, emptyHint }) {
   )
 }
 
-export function DemoSettings({ api, showToast }) {
+export function DemoSettings({ api, showToast, bots = null, bot = null, onBotsChange = null }) {
   const [settings, setSettings] = useState(null)
   const [saving, setSaving] = useState(false)
   const [contacts, setContacts] = useState(null)
+  const activeBotMeta = botById(bots, bot)
+  const [botDraft, setBotDraft] = useState(null) // {name, panel, keywords}
+  const [botSaving, setBotSaving] = useState(false)
+
+  useEffect(() => {
+    setBotDraft(activeBotMeta ? { name: activeBotMeta.name, panel: activeBotMeta.panel ?? '', keywords: activeBotMeta.keywords ?? '' } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bot])
 
   useEffect(() => {
     api.getBusinessContacts?.().then(setContacts).catch(() => setContacts(null))
@@ -290,11 +298,47 @@ export function DemoSettings({ api, showToast }) {
   const forb = [...(settings.guardrails.forbidden_topics ?? [])]
   if (settings.guardrails.forbidden_custom) forb.push(settings.guardrails.forbidden_custom)
 
+  async function saveBotIdentity() {
+    setBotSaving(true)
+    try {
+      const patch = { name: botDraft.name.trim() || activeBotMeta.name, panel: botDraft.panel.trim(),
+                      keywords: botDraft.keywords.trim() || null }
+      const next = await api.updateBotIdentity(bot, patch)
+      onBotsChange?.(next)
+      showToast('זהות הבוט עודכנה ✓')
+    } catch {
+      showToast('שמירת זהות הבוט נכשלה — נסו שוב')
+    } finally {
+      setBotSaving(false)
+    }
+  }
+
   return (
     <div className="st-page">
+      {activeBotMeta && botDraft && (
+        <section className="st-card st-bot-card" style={{ '--bot-color': activeBotMeta.color }}>
+          <div className="st-sched-head">
+            <h3>{activeBotMeta.icon} זהות הבוט — {activeBotMeta.name}</h3>
+            <span className="st-bot-status"><i className="bs-dot" /> מחובר</span>
+          </div>
+          <label className="st-field-label" htmlFor="st-bot-name">שם הבוט</label>
+          <input id="st-bot-name" className="st-input" value={botDraft.name}
+                 onChange={e => setBotDraft(d => ({ ...d, name: e.target.value }))} />
+          <label className="st-field-label" htmlFor="st-bot-panel">מספר וואטסאפ / פאנל מחובר</label>
+          <input id="st-bot-panel" className="st-input" dir="ltr" value={botDraft.panel}
+                 onChange={e => setBotDraft(d => ({ ...d, panel: e.target.value }))} />
+          <label className="st-field-label" htmlFor="st-bot-kw">מילות סיווג (מפרידים ב-|) — לפיהן שיחות משויכות לבוט הזה</label>
+          <input id="st-bot-kw" className="st-input" dir="rtl" value={botDraft.keywords}
+                 placeholder="בוט ברירת המחדל — קולט כל שיחה שלא סווגה"
+                 onChange={e => setBotDraft(d => ({ ...d, keywords: e.target.value }))} />
+          <button className="st-save st-bot-save" onClick={saveBotIdentity} disabled={botSaving}>
+            {botSaving ? 'שומר…' : 'שמירת זהות הבוט'}
+          </button>
+        </section>
+      )}
       {/* master switch */}
       <section className="st-card">
-        <h3>מצב הסוכן</h3>
+        <h3>מצב הסוכן {activeBotMeta && <span className="st-shared-badge">משותף לכל הבוטים</span>}</h3>
         <div className="st-mode" role="radiogroup" aria-label="מצב הסוכן">
           <button className={mode === 'always' ? 'st-mode-btn on' : 'st-mode-btn'} onClick={() => setMode('always')}>
             <b>פעיל תמיד</b>
@@ -315,6 +359,7 @@ export function DemoSettings({ api, showToast }) {
       <section className={mode === 'schedule' ? 'st-card' : 'st-card st-muted'}>
         <div className="st-sched-head">
           <h3>שעות פעילות</h3>
+          {activeBotMeta && <span className="st-shared-badge">משותף לכל הבוטים</span>}
           {mode === 'always' && <span className="st-note">הסוכן במצב "פעיל תמיד" — השעות שמורות אך לא פעילות</span>}
           {mode === 'off' && <span className="st-note">הסוכן כבוי — השעות שמורות אך לא פעילות</span>}
         </div>

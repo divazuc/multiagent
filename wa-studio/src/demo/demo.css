@@ -860,3 +860,10 @@ html, body { overflow-x: hidden; }
 .ov-share-sub { font-size: 13px; color: #64748b; }
 .ov-share-rail { height: 10px; border-radius: 6px; background: #f1f5f9; overflow: hidden; margin-top: 6px; }
 .ov-share-fill { height: 100%; border-radius: 6px; background: var(--bot-color, #0f766e); transition: width .4s ease; }
+
+/* ── Bot identity card (settings, bot view) ── */
+.st-bot-card { border-inline-start: 4px solid var(--bot-color, #0f766e); }
+.st-bot-status { font-size: 12.5px; color: #059669; display: flex; align-items: center; gap: 5px; }
+.st-bot-save { margin-top: 10px; }
+.st-shared-badge { font-size: 11px; font-weight: 600; color: #64748b; background: #f1f5f9;
+  border-radius: 999px; padding: 2px 9px; margin-inline-start: 8px; vertical-align: middle; }
