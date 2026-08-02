@@ -847,6 +847,13 @@ html, body { overflow-x: hidden; }
   color: color-mix(in srgb, var(--bot-color) 80%, #000); background: color-mix(in srgb, var(--bot-color) 8%, #fff); }
 @media (max-width: 640px) { .bs-active-note { display: none; } .bs-card { min-width: 136px; } }
 
+/* ── FAQ bot tags ── */
+.fq-bot-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--bot-color, #64748b) 45%, transparent);
+  color: color-mix(in srgb, var(--bot-color, #334155) 80%, #000);
+  background: color-mix(in srgb, var(--bot-color, #64748b) 8%, #fff); }
+.fq-bot-shared { --bot-color: #64748b; }
+
 /* ── Bot share tile (overview, bot view) ── */
 .ov-share { display: flex; flex-direction: column; gap: 6px; }
 .ov-share-num { font-size: 44px; font-weight: 800; color: var(--bot-color, #0f766e); line-height: 1; }

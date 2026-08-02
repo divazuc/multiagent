@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
+import { itemBot, botById } from './bots.js'
 
 const CATEGORY_LABELS = {
   general: 'כללי', services: 'טיפולים', pricing: 'מחירים', booking: 'תיאום',
@@ -7,7 +8,7 @@ const CATEGORY_LABELS = {
 
 // ════ FAQ tab — the shared knowledge_items entity, client-editable ═══════════
 
-export function DemoFaq({ api, showToast }) {
+export function DemoFaq({ api, showToast, bots = null, bot = null }) {
   const [items, setItems] = useState(null)
   // modal: null | {mode:'add'} | {mode:'edit', id}
   const [modal, setModal] = useState(null)
@@ -22,6 +23,14 @@ export function DemoFaq({ api, showToast }) {
 
   const suggested = items.filter(i => i.suggested && !i.is_active)
   const active = items.filter(i => !i.suggested)
+
+  const inZone = (item) => {
+    if (!bots || !bot) return true
+    const b = itemBot(item, bots)
+    return b === bot || b === 'shared'
+  }
+  const zoneSuggested = suggested.filter(inZone)
+  const zoneActive = active.filter(inZone)
 
   async function approve(item) {
     await api.updateFaqItem(item.id, { suggested: false, is_active: true })
@@ -76,13 +85,13 @@ export function DemoFaq({ api, showToast }) {
 
   return (
     <div className="fq-page">
-      {suggested.length > 0 && (
+      {zoneSuggested.length > 0 && (
         <section className="fq-suggested">
           <div className="fq-sug-head">
             <h3>💡 שאלות שחוזרות בשיחות</h3>
             <span>הסוכן זיהה שאלות שנשאלות שוב ושוב — אישור אחד והן נכנסות למאגר</span>
           </div>
-          {suggested.map(item => (
+          {zoneSuggested.map(item => (
             <div key={item.id} className="fq-sug-card">
               <div className="fq-sug-q">{item.question}</div>
               <div className="fq-sug-a">{item.answer}</div>
@@ -98,16 +107,22 @@ export function DemoFaq({ api, showToast }) {
       <section className="fq-list-card">
         <div className="fq-list-head">
           <h3>מאגר השאלות והתשובות</h3>
-          <span className="fq-count">{active.filter(i => i.is_active).length} שאלות פעילות</span>
+          <span className="fq-count">{zoneActive.filter(i => i.is_active).length} שאלות פעילות</span>
           <button className="cd-qa cd-qa-primary" style={{ marginInlineStart: 'auto' }} onClick={openAdd}>
             + שאלה חדשה
           </button>
         </div>
 
-        {active.map(item => (
+        {zoneActive.map(item => (
           <div key={item.id} className={`fq-item ${!item.is_active ? 'fq-off' : ''}`}>
             <div className="fq-item-top">
               <span className="fq-cat">{CATEGORY_LABELS[item.category] || item.category}</span>
+              {bots && (() => {
+                const b = itemBot(item, bots)
+                if (b === 'shared') return <span className="fq-bot-tag fq-bot-shared">משותף</span>
+                const meta = botById(bots, b)
+                return meta ? <span className="fq-bot-tag" style={{ '--bot-color': meta.color }}>{meta.icon} {meta.name}</span> : null
+              })()}
               <div className="fq-item-tools">
                 <button className="fq-tool" onClick={() => openEdit(item)}>עריכה</button>
                 <label className="fq-switch">
