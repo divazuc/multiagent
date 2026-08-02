@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Overview from './Overview.jsx'
 import { DemoFaq, DemoSettings } from './FaqSettings.jsx'
 import { createDemoApi } from './api.js'
+import BotSwitcher from './BotSwitcher.jsx'
+import { leadBot, botById } from './bots.js'
 
 const DEFAULT_BIZ = '1037d6c1-e64f-4672-aa5c-19619ad6b821' // Leadz marketing
 const BIZ_ID = new URLSearchParams(window.location.search).get('biz') || DEFAULT_BIZ
@@ -112,6 +114,10 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
   const [editingLead, setEditingLead] = useState(false)
   const [leadDraft, setLeadDraft] = useState({ name: '', notes: '' })
 
+  // bot zone switcher
+  const [bots, setBots] = useState(null)
+  const [activeBot, setActiveBot] = useState(null)
+
   useEffect(() => {
     (async () => {
       try {
@@ -141,6 +147,11 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
       try {
         setBilling(await api.getBilling())
       } catch { /* KPI falls back */ }
+
+      try {
+        const s = await api.getBotSettings()
+        if (Array.isArray(s?.bots) && s.bots.length) setBots(s.bots)
+      } catch { /* no switcher without config */ }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api])
@@ -166,25 +177,31 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api])
 
+  // bot-scoped lead list — the hub (activeBot === null) shows everything
+  const botLeads = useMemo(
+    () => (activeBot && bots) ? leads.filter(l => leadBot(l, bots) === activeBot) : leads,
+    [leads, activeBot, bots]
+  )
+
   // tag counts across all leads (for the filter chips)
   const tagCounts = useMemo(() => {
     const counts = {}
-    for (const l of leads) for (const t of leadTags(l)) counts[t] = (counts[t] || 0) + 1
+    for (const l of botLeads) for (const t of leadTags(l)) counts[t] = (counts[t] || 0) + 1
     return counts
-  }, [leads])
+  }, [botLeads])
 
   const statusCounts = useMemo(() => {
     const counts = {}
-    for (const l of leads) {
+    for (const l of botLeads) {
       const label = (STATUS_LABELS[l.status] || {}).label || l.status
       counts[label] = (counts[label] || 0) + 1
     }
     return counts
-  }, [leads])
+  }, [botLeads])
 
   const filtered = useMemo(() => {
     const q = query.trim()
-    return leads.filter(l => {
+    return botLeads.filter(l => {
       if (q) {
         const phoneLocal = l.phone?.startsWith('972') ? '0' + l.phone.slice(3) : (l.phone || '')
         const hay = `${l.name || ''} ${l.phone || ''} ${phoneLocal} ${formatPhone(l.phone)}`.replace(/-/g, '')
@@ -200,7 +217,7 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
       }
       return true
     })
-  }, [leads, query, activeTags, statusFilter])
+  }, [botLeads, query, activeTags, statusFilter])
 
   const filtersActive = query.trim() || activeTags.length > 0 || statusFilter
 
@@ -250,19 +267,20 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
     }
   }
 
-  const activeCount = leads.filter(l => ['in_conversation'].includes(l.status)).length
-  const totalMessages = leads.reduce((sum, l) => sum + (l.message_count || 0), 0)
+  const activeCount = botLeads.filter(l => ['in_conversation'].includes(l.status)).length
+  const totalMessages = botLeads.reduce((sum, l) => sum + (l.message_count || 0), 0)
 
   return (
     <div className="cd-page">
       {/* ── Header band ── */}
-      <header className="cd-header">
+      <header className="cd-header" style={activeBot ? { '--bot-color': botById(bots, activeBot)?.color } : undefined}>
         <div className="cd-header-inner">
           <div className="cd-brand">
             <div className="cd-brand-mark">💬</div>
             <div>
               <h1 className="cd-title">מרכז הלידים</h1>
               <div className="cd-biz-name">{bizName}</div>
+              {activeBot && <div className="cd-bot-context">{botById(bots, activeBot)?.icon} {botById(bots, activeBot)?.name}</div>}
             </div>
           </div>
           <nav className="cd-tabs" aria-label="תצוגות">
@@ -292,15 +310,17 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
       </header>
 
       <main className="cd-main">
-        {view === 'overview' && <Overview api={api} />}
-        {view === 'faq' && <DemoFaq api={api} showToast={showToast} />}
-        {view === 'settings' && <DemoSettings api={api} showToast={showToast} />}
+        <BotSwitcher bots={bots} active={activeBot} onSelect={setActiveBot} />
+
+        {view === 'overview' && <Overview api={api} bots={bots} bot={activeBot} onSelectBot={setActiveBot} />}
+        {view === 'faq' && <DemoFaq api={api} showToast={showToast} bots={bots} bot={activeBot} />}
+        {view === 'settings' && <DemoSettings api={api} showToast={showToast} bots={bots} bot={activeBot} onBotsChange={setBots} />}
 
         {view === 'inbox' && <>
         {/* ── KPI strip ── */}
         <section className="cd-kpis" aria-label="נתונים עיקריים">
           <div className="cd-kpi">
-            <div className="cd-kpi-value">{leads.length}</div>
+            <div className="cd-kpi-value">{botLeads.length}</div>
             <div className="cd-kpi-label">לידים בתיבה</div>
           </div>
           <div className="cd-kpi">
@@ -373,7 +393,7 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
                 </div>
                 {filtersActive && (
                   <button className="cd-clear-filters" onClick={() => { setQuery(''); setActiveTags([]); setStatusFilter(null) }}>
-                    ניקוי הסינון · מציג {filtered.length} מתוך {leads.length}
+                    ניקוי הסינון · מציג {filtered.length} מתוך {botLeads.length}
                   </button>
                 )}
               </div>
@@ -396,6 +416,10 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
                     </div>
                     <div className="cd-lead-mid">
                       <span className={`cd-chip ${st.cls}`}>{st.label}</span>
+                      {bots && !activeBot && (() => {
+                        const b = botById(bots, leadBot(lead, bots))
+                        return b ? <span className="cd-minitag cd-minitag-bot" style={{ '--bot-color': b.color }}>{b.icon} {b.name}</span> : null
+                      })()}
                       {tags.map(t => (
                         <span key={t} className="cd-minitag">{TAG_DEFS.find(d => d.key === t)?.label}</span>
                       ))}
@@ -409,10 +433,10 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
                   </button>
                 )
               })}
-              {filtered.length === 0 && leads.length > 0 && (
+              {filtered.length === 0 && botLeads.length > 0 && (
                 <div className="cd-empty">אין לידים שמתאימים לסינון — נסו לנקות את החיפוש</div>
               )}
-              {leads.length === 0 && (
+              {botLeads.length === 0 && (
                 <div className="cd-empty">כשלקוחות יכתבו לוואטסאפ של העסק — הלידים יופיעו כאן</div>
               )}
             </div>
