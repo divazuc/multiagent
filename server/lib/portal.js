@@ -113,6 +113,7 @@ const ops = {
   getOverviewStats: (bizId, days, domain) => runStudioOp('getOverviewStats', [bizId, days, domain]),
   loadFaqItems:     (bizId) => runStudioOp('loadFaqItems', [bizId]),
   getBotSettings:   (bizId) => runStudioOp('getBotSettings', [bizId]),
+  updateBotIdentity: (bizId, botId, patch) => runStudioOp('updateBotIdentity', [bizId, botId, patch ?? {}]),
   addFaqItem:       (bizId, fields) => runStudioOp('addFaqItem', [bizId, fields ?? {}]),
 
   // Read-only: the client may see who the bot escalates to, never change it.

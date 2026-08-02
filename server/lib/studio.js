@@ -312,6 +312,35 @@ const ops = {
     };
   },
 
+  // Per-bot identity edits from the dashboard. Read-merge-write on the JSONB:
+  // single-writer demo/portal usage, so the race window is acceptable.
+  async updateBotIdentity(businessId, botId, patch = {}) {
+    if (!businessId || !botId) { const e = new Error('businessId and botId are required'); e.status = 400; throw e; }
+    const allowed = {};
+    for (const k of ['name', 'panel', 'keywords']) if (k in patch) allowed[k] = patch[k];
+    const { data, error } = await supabase
+      .from('business_profiles')
+      .select('draft_setup_data')
+      .eq('business_id', businessId)
+      .maybeSingle();
+    if (error) throw error;
+    const draft = data?.draft_setup_data ?? {};
+    const bots = draft.dashboard_config?.bots;
+    if (!Array.isArray(bots) || !bots.some(b => b?.id === botId)) {
+      const e = new Error(`unknown bot: ${botId}`); e.status = 404; throw e;
+    }
+    const next = bots.map(b => b.id === botId ? { ...b, ...allowed } : b);
+    const { error: writeErr } = await supabase
+      .from('business_profiles')
+      .update({
+        draft_setup_data: { ...draft, dashboard_config: { ...draft.dashboard_config, bots: next } },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('business_id', businessId);
+    if (writeErr) throw writeErr;
+    return next;
+  },
+
   async deleteFaqItem(id) {
     if (!id) { const e = new Error('id is required'); e.status = 400; throw e; }
     const { error } = await supabase.from('knowledge_items').delete().eq('id', id);
