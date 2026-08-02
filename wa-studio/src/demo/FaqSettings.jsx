@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { itemBot, botById } from './bots.js'
+import InterviewCard from './Interview.jsx'
 
 const CATEGORY_LABELS = {
   general: 'כללי', services: 'טיפולים', pricing: 'מחירים', booking: 'תיאום',
@@ -85,6 +86,11 @@ export function DemoFaq({ api, showToast, bots = null, bot = null }) {
 
   return (
     <div className="fq-page">
+      <InterviewCard
+        api={api} bots={bots} bot={bot} showToast={showToast}
+        onSuggested={item => setItems(prev => [...prev, item])}
+      />
+
       {zoneSuggested.length > 0 && (
         <section className="fq-suggested">
           <div className="fq-sug-head">
