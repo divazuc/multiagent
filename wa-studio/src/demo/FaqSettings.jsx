@@ -86,10 +86,12 @@ export function DemoFaq({ api, showToast, bots = null, bot = null }) {
 
   return (
     <div className="fq-page">
-      <InterviewCard
-        api={api} bots={bots} bot={bot} showToast={showToast}
-        onSuggested={item => setItems(prev => [...prev, item])}
-      />
+      {bots?.length > 0 && (
+        <InterviewCard
+          api={api} bots={bots} bot={bot} showToast={showToast}
+          onSuggested={item => setItems(prev => [...prev, item])}
+        />
+      )}
 
       {zoneSuggested.length > 0 && (
         <section className="fq-suggested">

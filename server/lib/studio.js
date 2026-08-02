@@ -318,6 +318,15 @@ const ops = {
     if (!businessId || !botId) { const e = new Error('businessId and botId are required'); e.status = 400; throw e; }
     const allowed = {};
     for (const k of ['name', 'panel', 'keywords']) if (k in patch) allowed[k] = patch[k];
+    if ('name' in allowed && (typeof allowed.name !== 'string' || !allowed.name.trim() || allowed.name.length > 60)) {
+      const e = new Error('name must be a non-empty string up to 60 chars'); e.status = 400; throw e;
+    }
+    if ('panel' in allowed && (typeof allowed.panel !== 'string' || allowed.panel.length > 80)) {
+      const e = new Error('panel must be a string up to 80 chars'); e.status = 400; throw e;
+    }
+    if ('keywords' in allowed && allowed.keywords != null && (typeof allowed.keywords !== 'string' || allowed.keywords.length > 200)) {
+      const e = new Error('keywords must be null or a string up to 200 chars'); e.status = 400; throw e;
+    }
     const { data, error } = await supabase
       .from('business_profiles')
       .select('draft_setup_data')

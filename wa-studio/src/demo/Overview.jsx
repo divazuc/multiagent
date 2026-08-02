@@ -103,6 +103,7 @@ function DomainDonut({ domains, total, meta, onSelect }) {
   const [hover, setHover] = useState(null)
   const R = 62, STROKE = 26, C = 2 * Math.PI * R
   const entries = meta.map(m => ({ ...m, value: domains[m.key] || 0 })).filter(e => e.value > 0)
+  const shown = entries.reduce((a, e) => a + e.value, 0)
   let offset = 0
 
   return (
@@ -126,7 +127,7 @@ function DomainDonut({ domains, total, meta, onSelect }) {
               return seg
             })}
           </g>
-          <text x="80" y="76" textAnchor="middle" className="ov-donut-num">{total.toLocaleString('he-IL')}</text>
+          <text x="80" y="76" textAnchor="middle" className="ov-donut-num">{shown.toLocaleString('he-IL')}</text>
           <text x="80" y="94" textAnchor="middle" className="ov-donut-sub">שיחות</text>
         </svg>
       </div>

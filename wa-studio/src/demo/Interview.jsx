@@ -25,7 +25,7 @@ export default function InterviewCard({ api, bots = null, bot = null, showToast,
       onSuggested?.(item)
       showToast('נוסח מלוטש נוסף להצעות למטה — אישור אחד והוא במאגר ✓')
     } catch {
-      showToast('הליטוש נכשל — התשובה שלך נשמרה, נסו שוב עוד רגע')
+      showToast('הליטוש נכשל — הטקסט נשאר כאן, נסו שוב עוד רגע')
     } finally {
       setBusy(b => ({ ...b, [q.id]: false }))
     }
