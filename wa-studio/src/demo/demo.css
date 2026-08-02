@@ -846,3 +846,10 @@ html, body { overflow-x: hidden; }
 .cd-minitag-bot { border: 1px solid color-mix(in srgb, var(--bot-color) 45%, transparent);
   color: color-mix(in srgb, var(--bot-color) 80%, #000); background: color-mix(in srgb, var(--bot-color) 8%, #fff); }
 @media (max-width: 640px) { .bs-active-note { display: none; } .bs-card { min-width: 136px; } }
+
+/* ── Bot share tile (overview, bot view) ── */
+.ov-share { display: flex; flex-direction: column; gap: 6px; }
+.ov-share-num { font-size: 44px; font-weight: 800; color: var(--bot-color, #0f766e); line-height: 1; }
+.ov-share-sub { font-size: 13px; color: #64748b; }
+.ov-share-rail { height: 10px; border-radius: 6px; background: #f1f5f9; overflow: hidden; margin-top: 6px; }
+.ov-share-fill { height: 100%; border-radius: 6px; background: var(--bot-color, #0f766e); transition: width .4s ease; }

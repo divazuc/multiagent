@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { botById } from './bots.js'
 
 // Chart palette — validated (dataviz six checks, light surface):
 // categorical: teal #0d9488 / bronze #b45309 / violet #6d28d9
@@ -98,10 +99,10 @@ function ActivityBars({ daily }) {
 }
 
 // ── Domain donut: the three-bots story ──────────────────────────────────────
-function DomainDonut({ domains, total }) {
+function DomainDonut({ domains, total, meta, onSelect }) {
   const [hover, setHover] = useState(null)
   const R = 62, STROKE = 26, C = 2 * Math.PI * R
-  const entries = DOMAIN_META.map(m => ({ ...m, value: domains[m.key] || 0 })).filter(e => e.value > 0)
+  const entries = meta.map(m => ({ ...m, value: domains[m.key] || 0 })).filter(e => e.value > 0)
   let offset = 0
 
   return (
@@ -117,7 +118,8 @@ function DomainDonut({ domains, total }) {
                   strokeDasharray={`${Math.max(frac * C - 2, 1)} ${C}`}
                   strokeDashoffset={-offset * C}
                   opacity={hover && hover !== e.key ? 0.4 : 1}
-                  style={{ transition: 'stroke-width .15s, opacity .15s', cursor: 'default' }}
+                  style={{ transition: 'stroke-width .15s, opacity .15s', cursor: onSelect ? 'pointer' : 'default' }}
+                  onClick={() => onSelect?.(e.key)}
                   onMouseEnter={() => setHover(e.key)} onMouseLeave={() => setHover(null)} />
               )
               offset += frac
@@ -132,6 +134,8 @@ function DomainDonut({ domains, total }) {
         {entries.map(e => (
           <li key={e.key}
               className={hover && hover !== e.key ? 'dim' : ''}
+              style={{ cursor: onSelect ? 'pointer' : 'default' }}
+              onClick={() => onSelect?.(e.key)}
               onMouseEnter={() => setHover(e.key)} onMouseLeave={() => setHover(null)}>
             <i style={{ background: e.color }} />
             <span className="ov-dl-label">{e.label}</span>
@@ -168,7 +172,7 @@ function RoiMeter({ saved, cost }) {
   )
 }
 
-export default function Overview({ api }) {
+export default function Overview({ api, bots = null, bot = null, onSelectBot = null }) {
   const [days, setDays] = useState(30)
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(false)
@@ -176,11 +180,18 @@ export default function Overview({ api }) {
   useEffect(() => {
     let dead = false
     setStats(null); setError(false)
-    api.getOverviewStats(days)
+    api.getOverviewStats(days, bot)
       .then(s => { if (!dead) setStats(s) })
       .catch(() => { if (!dead) setError(true) })
     return () => { dead = true }
-  }, [api, days])
+  }, [api, days, bot])
+
+  const domainMeta = useMemo(
+    () => bots?.length
+      ? bots.map(b => ({ key: b.id, label: b.name, color: b.color }))
+      : DOMAIN_META,
+    [bots]
+  )
 
   const money = useMemo(() => {
     if (!stats) return null
@@ -226,7 +237,7 @@ export default function Overview({ api }) {
       {/* hero: money saved */}
       <section className="ov-hero">
         <div className="ov-hero-main">
-          <div className="ov-hero-label">שווי עבודת המענה שהמערכת ביצעה ב-{stats.days} הימים האחרונים</div>
+          <div className="ov-hero-label">שווי עבודת המענה שהמערכת ביצעה ב-{stats.days} הימים האחרונים{bot ? ` · ${botById(bots, bot)?.name}` : ''}</div>
           <div className="ov-hero-number">{nis(heroValue)}</div>
           <div className="ov-hero-formula">
             {totals.messages.toLocaleString('he-IL')} תשובות ללקוחות · ‏~{config.minutes_per_reply} דק׳ למענה ידני · ‏{nis(config.hourly_cost_ils)} לשעת נציגה
@@ -275,11 +286,26 @@ export default function Overview({ api }) {
           <h3>פעילות הסוכן לפי יום</h3>
           <ActivityBars daily={daily} />
         </section>
-        <section className="ov-card">
-          <h3>התפלגות תחומי פנייה</h3>
-          <div className="ov-card-sub">הבוט המרכזי מזהה את התחום ומנתב כל שיחה</div>
-          <DomainDonut domains={domains} total={totals.conversations} />
-        </section>
+        {!bot && (
+          <section className="ov-card">
+            <h3>התפלגות תחומי פנייה</h3>
+            <div className="ov-card-sub">הבוט המרכזי מזהה את התחום ומנתב כל שיחה{bots?.length && onSelectBot ? ' · לחיצה על תחום פותחת את הזון שלו' : ''}</div>
+            <DomainDonut domains={domains} total={Object.values(domains).reduce((a, b) => a + b, 0) || 1} meta={domainMeta} onSelect={bots?.length ? onSelectBot : null} />
+          </section>
+        )}
+        {bot && (() => {
+          const b = botById(bots, bot)
+          const grand = Object.values(domains).reduce((a, b2) => a + b2, 0)
+          const share = grand ? Math.round(((domains[bot] ?? 0) / grand) * 100) : 0
+          return (
+            <section className="ov-card ov-share" style={{ '--bot-color': b?.color }}>
+              <h3>{b?.icon} נתח {b?.name} מכלל הפעילות</h3>
+              <div className="ov-share-num">{share}%</div>
+              <div className="ov-share-sub">{(domains[bot] ?? 0).toLocaleString('he-IL')} מתוך {grand.toLocaleString('he-IL')} שיחות בתקופה</div>
+              <div className="ov-share-rail"><div className="ov-share-fill" style={{ width: `${share}%` }} /></div>
+            </section>
+          )
+        })()}
       </div>
     </div>
   )
