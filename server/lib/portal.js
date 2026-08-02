@@ -115,6 +115,10 @@ const ops = {
   getBotSettings:   (bizId) => runStudioOp('getBotSettings', [bizId]),
   updateBotIdentity: (bizId, botId, patch) => runStudioOp('updateBotIdentity', [bizId, botId, patch ?? {}]),
   addFaqItem:       (bizId, fields) => runStudioOp('addFaqItem', [bizId, fields ?? {}]),
+  getInterviewQuestions:      (bizId) => runStudioOp('getInterviewQuestions', [bizId]),
+  answerInterviewQuestion:    (bizId, id, raw) => runStudioOp('answerInterviewQuestion', [bizId, id, raw]),
+  dismissInterviewQuestion:   (bizId, id) => runStudioOp('dismissInterviewQuestion', [bizId, id]),
+  generateInterviewQuestions: (bizId, bot) => runStudioOp('generateInterviewQuestions', [bizId, bot ?? null]),
 
   // Read-only: the client may see who the bot escalates to, never change it.
   // Redirecting escalations to a different number stays an operator action —

@@ -341,6 +341,24 @@ const ops = {
     return next;
   },
 
+  // ── Knowledge interview (see lib/knowledge-interview.js) ───────────────────
+  async getInterviewQuestions(businessId) {
+    const ki = await import('./knowledge-interview.js');
+    return ki.getInterviewQuestions(businessId);
+  },
+  async answerInterviewQuestion(businessId, questionId, rawAnswer) {
+    const ki = await import('./knowledge-interview.js');
+    return ki.answerInterviewQuestion(businessId, questionId, rawAnswer);
+  },
+  async dismissInterviewQuestion(businessId, questionId) {
+    const ki = await import('./knowledge-interview.js');
+    return ki.dismissInterviewQuestion(businessId, questionId);
+  },
+  async generateInterviewQuestions(businessId, bot) {
+    const ki = await import('./knowledge-interview.js');
+    return ki.generateInterviewQuestions(businessId, bot);
+  },
+
   async deleteFaqItem(id) {
     if (!id) { const e = new Error('id is required'); e.status = 400; throw e; }
     const { error } = await supabase.from('knowledge_items').delete().eq('id', id);
