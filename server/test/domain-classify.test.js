@@ -45,3 +45,8 @@ test('classifyText: first matching bot in array order wins; no match falls to de
   assert.equal(classifyText('', BOTS), 'treatments');
   assert.equal(classifyText('כל טקסט', null), null);
 });
+
+test('classifyText with a keywordless (default-only) config falls back to the default bot', () => {
+  assert.equal(classifyText('כל טקסט', [{ id: 'onlybot', keywords: null }]), 'onlybot');
+  assert.equal(classifyText('', [{ id: 'a', keywords: null }, { id: 'b', keywords: null }]), 'a');
+});

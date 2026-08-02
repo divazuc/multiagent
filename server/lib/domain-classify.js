@@ -23,8 +23,9 @@ export function defaultBotId(bots) {
 }
 
 export function classifyText(text, bots) {
+  if (!Array.isArray(bots) || !bots.length) return null;
   const tests = buildBotTests(bots);
-  if (!tests) return null;
+  if (!tests) return defaultBotId(bots);
   const hit = tests.find(t => t.re.test(text ?? ''));
   return hit ? hit.id : defaultBotId(bots);
 }
