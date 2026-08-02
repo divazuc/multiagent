@@ -361,12 +361,20 @@ const ops = {
 
     // Config-driven bot classification; the hardcoded pair mirrors the
     // original Esthetic three-domain split for businesses not yet seeded.
-    const botsConfig = profile.draft_setup_data?.dashboard_config?.bots ?? null;
+    // An empty/absent bots array normalizes to null so it takes the same
+    // legacy fallback path as a business with no config at all — a config
+    // that HAS bots but none of them carry keywords must NOT fall back to
+    // the hardcoded regexes, or sessions would tally into phantom
+    // 'doctors'/'hair' keys that aren't part of that business's config.
+    const rawBots = profile.draft_setup_data?.dashboard_config?.bots;
+    const botsConfig = Array.isArray(rawBots) && rawBots.length ? rawBots : null;
     const FALLBACK_BOTS = [
       ['doctors', /קורס|רופא|הכשר|סילבוס|השתלמ|בי.?ה.?ס/],
       ['hair', /שיער|גבות|זקן|השתל|קרקפת|נשיר|FUE/i],
     ];
-    const botTests = buildBotTests(botsConfig)?.map(t => [t.id, t.re]) ?? FALLBACK_BOTS;
+    const botTests = botsConfig
+      ? (buildBotTests(botsConfig)?.map(t => [t.id, t.re]) ?? [])
+      : FALLBACK_BOTS;
     const fallbackId = defaultBotId(botsConfig) ?? 'treatments';
 
     const jerusalem = (iso) => new Date(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
