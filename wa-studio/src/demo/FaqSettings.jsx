@@ -1,5 +1,37 @@
 ﻿import { useState, useEffect } from 'react'
 import { itemBot, botById } from './bots.js'
+import { ESCALATION_OPTIONS, FORBIDDEN_OPTIONS } from '../lib/botPolicy.js'
+
+// Checkbox editor over a rule catalog: known options + any custom rules the
+// business already saved, plus an "other" input that appends a checked rule.
+function PolicyChecklist({ options, selected, onChange, addLabel }) {
+  const [other, setOther] = useState('')
+  const all = [...options, ...selected.filter(v => !options.includes(v))]
+  function toggle(opt) {
+    onChange(selected.includes(opt) ? selected.filter(v => v !== opt) : [...selected, opt])
+  }
+  function addOther() {
+    const v = other.trim()
+    if (v && !selected.includes(v)) onChange([...selected, v])
+    setOther('')
+  }
+  return (
+    <div className="st-checks">
+      {all.map(opt => (
+        <label key={opt} className="st-check">
+          <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
+          {opt}
+        </label>
+      ))}
+      <div className="st-check-other">
+        <input type="text" placeholder={addLabel} value={other}
+               onChange={e => setOther(e.target.value)}
+               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOther() } }} />
+        <button className="cd-qa" onClick={addOther} disabled={!other.trim()}>+ הוספה</button>
+      </div>
+    </div>
+  )
+}
 import InterviewCard from './Interview.jsx'
 
 const CATEGORY_LABELS = {
@@ -475,33 +507,25 @@ export function DemoSettings({ api, showToast, bots = null, bot = null, onBotsCh
             onClick={() => setSettings(s => ({ ...s, bot_gender: 'male' }))}><b>לשון זכר</b></button>
         </div>
 
-        <div className="st-ro-subtitle">מתי הבוט מעביר לנציג אנושי — שורה לכל כלל</div>
-        <textarea
-          className="st-textarea" rows={4}
-          placeholder={'בקשה מפורשת לדבר עם נציג\nתלונה או לקוח כועס'}
-          value={esc.join('\n')}
-          onChange={e => setSettings(s => ({
+        <div className="st-ro-subtitle">מתי הבוט מעביר לנציג אנושי — סמנו מה שרלוונטי</div>
+        <PolicyChecklist
+          options={ESCALATION_OPTIONS}
+          selected={esc}
+          addLabel="אחר — כלל נוסף משלכם…"
+          onChange={list => setSettings(s => ({
             ...s,
-            guardrails: {
-              ...s.guardrails,
-              escalation_points: e.target.value.split('\n').map(v => v.trim()).filter(Boolean),
-              escalation_custom: '',
-            },
+            guardrails: { ...s.guardrails, escalation_points: list, escalation_custom: '' },
           }))}
         />
 
-        <div className="st-ro-subtitle">על מה הבוט לא עונה — שורה לכל נושא</div>
-        <textarea
-          className="st-textarea" rows={4}
-          placeholder={'מסירת מחירים, הנחות ותנאי תשלום\nייעוץ רפואי אישי'}
-          value={forb.join('\n')}
-          onChange={e => setSettings(s => ({
+        <div className="st-ro-subtitle">על מה הבוט לא עונה — סמנו מה שרלוונטי</div>
+        <PolicyChecklist
+          options={FORBIDDEN_OPTIONS}
+          selected={forb}
+          addLabel="אחר — נושא נוסף שחסום…"
+          onChange={list => setSettings(s => ({
             ...s,
-            guardrails: {
-              ...s.guardrails,
-              forbidden_topics: e.target.value.split('\n').map(v => v.trim()).filter(Boolean),
-              forbidden_custom: '',
-            },
+            guardrails: { ...s.guardrails, forbidden_topics: list, forbidden_custom: '' },
           }))}
         />
 

@@ -1,8 +1,5 @@
-import { botById } from './bots.js'
-
 export default function BotSwitcher({ bots, active, onSelect }) {
   if (!bots?.length) return null
-  const activeBot = botById(bots, active)
   return (
     <div className="bs-bar" role="tablist" aria-label="בחירת בוט">
       <button
@@ -28,11 +25,6 @@ export default function BotSwitcher({ bots, active, onSelect }) {
           </span>
         </button>
       ))}
-      {activeBot && (
-        <div className="bs-active-note">
-          מציג את הזון של <b>{activeBot.name}</b> בלבד
-        </div>
-      )}
     </div>
   )
 }

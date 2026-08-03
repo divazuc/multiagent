@@ -9,11 +9,11 @@
 import { supabase } from '../lib/supabase.js';
 
 const BOTS = [
-  { id: 'doctors', name: 'הכשרות וקורסים', icon: '🩺', color: '#6d28d9',
+  { id: 'doctors', name: 'הכשרות וקורסים', icon: '🩺', color: '#6d28d9', tint: '#ede9fe',
     panel: 'פאנל 01 · 972-51-555-1111', keywords: 'קורס|רופא|הכשר|סילבוס|השתלמ|בי.?ה.?ס' },
-  { id: 'treatments', name: 'טיפולים אסתטיים', icon: '💉', color: '#0d9488',
+  { id: 'treatments', name: 'טיפולים אסתטיים', icon: '💉', color: '#0d9488', tint: '#dbeafe',
     panel: 'פאנל 02 · 972-51-555-2222', keywords: null },
-  { id: 'hair', name: 'השתלות שיער', icon: '💇', color: '#b45309',
+  { id: 'hair', name: 'השתלות שיער', icon: '💇', color: '#b45309', tint: '#fef3c6',
     panel: 'פאנל 03 · 972-51-555-3333', keywords: 'שיער|גבות|זקן|השתל|קרקפת|נשיר|FUE' },
 ];
 

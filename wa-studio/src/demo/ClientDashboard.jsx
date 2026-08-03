@@ -273,7 +273,14 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
   return (
     <div className="cd-page">
       {/* ── Header band ── */}
-      <header className="cd-header" style={activeBot ? { '--bot-color': botById(bots, activeBot)?.color } : undefined}>
+      <header
+        className={`cd-header${bots?.length ? ' cd-tinted' : ''}`}
+        style={bots?.length ? {
+          '--hdr-tint': activeBot
+            ? (botById(bots, activeBot)?.tint ?? `color-mix(in srgb, ${botById(bots, activeBot)?.color} 14%, #ffffff)`)
+            : '#ddf3ea',
+        } : undefined}
+      >
         <div className="cd-header-inner">
           <div className="cd-brand">
             <div className="cd-brand-mark">💬</div>
