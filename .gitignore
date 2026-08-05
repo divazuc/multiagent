@@ -12,3 +12,10 @@ server/scripts/*.png
 
 # Business config snapshots — local safety net, may contain client prompt text
 server/snapshots/
+
+# Security audit spec — local only; maps known weaknesses, repo is public
+SECURITY_AUDIT_SPEC.md
+
+# Meta App Review recording docs — local only; contain WABA number + flow details
+wa-studio/docs/meta-app-review-videos.md
+wa-studio/docs/meta-video2-commands.ps1
