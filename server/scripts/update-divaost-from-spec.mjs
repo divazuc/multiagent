@@ -81,15 +81,16 @@ const UPDATES = [
     a: 'כן — צריך רק גישה לניהול הדומיין לצורך החיבור. למי שאין דומיין, אפשר לרכוש דרכנו (100 ₪ לשנה, לפני מע״מ).' },
   { q: 'האתר יהיה מהיר?', activate: true,
     a: 'כן — האתרים נבנים על תשתית מהירה עם דחיסת תמונות אוטומטית (WebP), מטא-תגיות מסודרות ובדיקות QA במובייל ובדסקטופ לפני העלייה.' },
-  // 30-DAY UNIFICATION — DELIBERATELY LEFT AT 14 HERE. Everywhere else the
-  // funnel's windows moved to 30 days (offer validity, the link, the
-  // questionnaire and materials cutoffs). This line is the one place the two
-  // numbers mean different things: 14 days is the CONTRACTUAL PAYMENT
-  // DEADLINE, 30 is the content-document window. The owner has not decided
-  // whether the payment deadline moves too, and changing a contract term by
-  // search-and-replace is not a copy edit. Ask her, then change this line
-  // alone — the pin in test/booster-messages.test.js exists to stop a blanket
-  // replace from doing it silently.
+  // Clock 3 — the CONTRACTUAL PAYMENT DEADLINE, 14 days. Owner-confirmed
+  // unchanged. The 30 in the same sentence is the content-document window, a
+  // different clock again — which is why this line reads as though it
+  // contradicts itself and does not.
+  //
+  // Only ONE of the funnel's windows moved: post-signature quote validity, to
+  // 30 days from the SIGNATURE. Pre-signature link validity (14 express / 30
+  // questionnaire) and this payment deadline both stayed. Never reconcile
+  // these numbers by search-and-replace — the pin in
+  // test/booster-messages.test.js exists to stop exactly that.
   { q: 'מה קורה אם אני מתעכב בהעברת התוכן?', activate: true,
     a: 'ההצעה בתוקף 14 יום לתשלום ו-30 יום למילוי מסמך התוכן. אחרי תשלום ופגישה, אם החומרים לא הועברו תוך 3 חודשים — ההזמנה נסגרת עם החזר בניכוי דמי טיפול של 250 ₪ + מע״מ. שווה פשוט למלא בקצב, האזור האישי מדריך אתכם.' },
 ];
@@ -103,7 +104,11 @@ const NEW_ITEMS = [
   R('בחירת חבילה', 'במיני אני בונה את האתר לבד?', 'לא — דיוה בונה את כל האתרים, בכל החבילות. ההבדל במיני הוא שהאפיון נעשה דרך שאלון מקוון במקום פגישה, וזה מה שמאפשר את המחיר והמהירות.'),
   R('תשלום וסליקה', 'אפשר לשלם בתשלומים?', 'לא — התשלום הוא 100% מראש בתשלום אחד, לפני תחילת העבודה. דרכי התשלום: העברה בנקאית, Bit או PayBox.'),
   R('מחירים וחבילות', 'המחירים כוללים מע״מ?', 'המחירים המפורסמים הם לפני מע״מ. בהצעה עצמה המע״מ (18%) מוצג בשורה נפרדת, כך שרואים את הסכום הסופי במדויק.'),
-  R('מחירים וחבילות', 'כמה זמן הצעת המחיר בתוקף?', 'ההצעה בתוקף 30 יום מרגע האישור, והמחירים בה נעולים גם אם המחירון מתעדכן. אחרי הפקיעה יש להוציא הצעה חדשה לפי המחירון העדכני.'),
+  // Clock 2 — POST-signature quote validity. The one the owner moved to 30
+  // ("תוקף ההצעות ל-30 יום מרגע שנחתמה"). "מרגע האישור" was the ambiguity that
+  // caused this whole correction — it reads equally as "when the quote was
+  // issued" — so the anchor is now named explicitly.
+  R('מחירים וחבילות', 'כמה זמן הצעת המחיר בתוקף?', 'ההצעה בתוקף 30 יום מרגע החתימה, והמחירים בה נעולים גם אם המחירון מתעדכן. אחרי הפקיעה יש להוציא הצעה חדשה לפי המחירון העדכני.'),
   R('מחירים וחבילות', 'כמה עולה עבודה שלא כלולה בחבילה או במחירון?', 'עבודות מחוץ לתכולה מתומחרות לפי תעריף שעתי של 350 ₪ + מע״מ, מינימום שעה אחת — ותמיד מתואמות מראש.'),
   R('אחסון ודומיין', 'כמה נפח אחסון מקבלים, ומה קורה אם אחרוג?', 'מיני ודף נחיתה — 100MB (בערך 650 תמונות), אתר תדמית — 150MB (כ-1,000 תמונות). רוב האתרים משתמשים בפחות מ-10% מזה. בהגעה ל-80% תקבלו התראה, ואפשר להרחיב מהממשק: ‎+100MB ב-120 ₪, ‎+250MB ב-240 ₪, ‎+500MB ב-400 ₪ לשנה.'),
   R('אחסון ודומיין', 'מה קורה לתמונות שאני מעלה לאתר?', 'כל תמונה נדחסת אוטומטית ל-WebP ברוחב עד 1600px — מהיר וחסכוני בנפח. התהליך אינו הפיך, לכן מומלץ לשמור אצלכם עותק מקורי של כל תמונה.'),
@@ -112,7 +117,12 @@ const NEW_ITEMS = [
   R('הרחבות לאתר', 'אפשר להציג לוגואים של לקוחות או שותפים באתר?', 'כן — הוספת רצועת לוגואים של לקוחות/שותפים עולה 150 ₪ לפני מע״מ. אתם מספקים את הלוגואים באיכות טובה.'),
   R('בחירת חבילה', 'אתם עושים גם חנויות, אזורים אישיים או אתרים רב-לשוניים?', 'פרויקטים כמו חנות אונליין, אזור אישי עם התחברות, מערכת הזמנות, אתר רב-לשוני מלא או מיגרציה מאתר קיים הם בהיקף אחר, מחוץ למסלול האקספרס — נתאם שיחה קצרה עם דיוה להצעה מותאמת.'),
   R('תהליך העבודה', 'שילמתי — מה השלב הבא?', 'שולחים צילום של אישור התשלום כאן בוואטסאפ. דיוה בודקת מול הבנק ומעדכנת תוך יום עסקים, מפיקה חשבונית — ואז נפתח לכם האזור האישי למילוי התוכן.'),
-  R('תהליך העבודה', 'מה קורה אחרי שאני משאיר פרטים באתר?', 'תקבלו בוואטסאפ קישור אישי למחשבון ההצעה — מסמנים תוספות ורואים מחיר מתעדכן בזמן אמת, חותמים דיגיטלית (עם קוד אימות למייל), וההצעה החתומה נשלחת כ-PDF לשני הצדדים. ההצעה בתוקף 30 יום.'),
+  // Clock 1 — PRE-signature LINK validity, and it stays 14 (express). This
+  // sentence sits right after "וההצעה החתומה נשלחת כ-PDF", which is exactly
+  // why a bare "ההצעה בתוקף 14 יום" read as the post-signature window and got
+  // wrongly moved to 30. It now names the LINK and the moment it is counted
+  // from, so position in the sentence can no longer imply the wrong clock.
+  R('תהליך העבודה', 'מה קורה אחרי שאני משאיר פרטים באתר?', 'תקבלו בוואטסאפ קישור אישי למחשבון ההצעה — מסמנים תוספות ורואים מחיר מתעדכן בזמן אמת, חותמים דיגיטלית (עם קוד אימות למייל), וההצעה החתומה נשלחת כ-PDF לשני הצדדים. הקישור להצעה בתוקף 14 יום מרגע קבלתו.'),
   R('ניהול ותחזוקה', 'מה אני יכול לעשות לבד במערכת, בלי לשלם?', 'לערוך טקסטים, להחליף תמונות, לעדכן פרטי קשר ושעות, להזין קודי מדידה (GA4, פיקסל, Search Console), לצפות ולייצא לידים ולעקוב אחרי נפח האחסון — הכול חופשי. שינוי מבנה או הוספת עמוד — עבודה בתשלום.'),
   R('ניהול ותחזוקה', 'הקוד והאתר שלי? אפשר לקבל את הקבצים?', 'המערכת והקוד בבעלות דיוה אוסט, ואתם מקבלים רישיון שימוש מלא באתר. התכנים — טקסטים, תמונות ורשימת הפניות — תמיד שלכם וניתנים לייצוא בכל עת. מי שרוצה עותק עצמאי של האתר יכול להזמין גרסה סטטית ב-1,000 ₪ + מע״מ.'),
 ];

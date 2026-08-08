@@ -19,11 +19,18 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
   const first = (lead.name ?? '').trim().split(/\s+/)[0] || '';
   switch (event) {
     case 'send_personal_link':
-      // Fallback is 30, not 14: the owner unified every funnel window on 30
-      // days (link validity, the questionnaire cutoff, the materials window),
-      // so a payload with no valid_days must not tell the client a shorter
-      // deadline than the one actually enforced.
-      return `היי ${first} 👋\nהכנתי לך קישור אישי לבניית הצעת המחיר שלך:\n${payload.link_url}\n\nהקישור אישי אלייך ותקף ל-${payload.valid_days ?? 30} ימים. אפשר לשחק עם התוספות ולראות מחיר מעודכן בכל שלב 🙂`;
+      // valid_days is the PRE-SIGNATURE LINK window — how long the client has
+      // to open the link and sign. 14 days on express, 30 on the
+      // questionnaire/self_serve track, so the payload always wins and the
+      // fallback is the express default.
+      //
+      // Do NOT "unify" this to 30. Three windows in this funnel wear the same
+      // two digits while measuring different things from different events:
+      //   1. THIS one — the link, counted from when it was issued (14 express)
+      //   2. quote validity — 30 days, counted FROM THE SIGNATURE
+      //   3. the payment deadline — 14 days, contractual
+      // A previous pass moved this to 30 by reading (2) as if it were (1).
+      return `היי ${first} 👋\nהכנתי לך קישור אישי לבניית הצעת המחיר שלך:\n${payload.link_url}\n\nהקישור אישי אלייך ותקף ל-${payload.valid_days ?? 14} ימים. אפשר לשחק עם התוספות ולראות מחיר מעודכן בכל שלב 🙂`;
     case 'send_signed_summary':
       return `תודה ${first}! ההצעה ${payload.quote_number} נחתמה 🎉\nסה"כ לתשלום: ${nis(payload.total)} (כולל מע"מ).\nעותק חתום נשלח אלייך במייל.\n\n${nextStepLine(payload)}`;
     case 'send_meeting_reminder': {
@@ -38,10 +45,13 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
       return `תזכורת קטנה 🙂 ההצעה ${payload.quote_number} (${nis(payload.total)}) ממתינה להשלמת תשלום. אם כבר שילמתם — שלחו לי צילום של האישור ואקדם את הפרויקט.`;
     case 'send_expiry_notice':
       // booster's app/api/express/expiry route enqueues this with reason
-      // 'unsigned_30d' (the unified 30-day link window — the legacy
-      // 'unsigned_14d' may still arrive from rows enqueued before the change)
-      // | 'materials_30d' (see divaz_booster
-      // lib/express/leads.ts + app/api/express/expiry/route.ts). materials_30d means
+      // 'unsigned_14d' | 'unsigned_30d' | 'materials_30d' (see divaz_booster
+      // lib/express/leads.ts + app/api/express/expiry/route.ts).
+      //
+      // Both unsigned_* reasons are LIVE and neither is legacy: they are the
+      // same clock — the PRE-SIGNATURE link window — on two tracks, express
+      // expiring at 14 days and questionnaire/self_serve at 30. Both mean
+      // "your link expired" and take the same text. materials_30d means
       // the client DID pay and send some materials, but the 30-day window to finish
       // closed — that is not "your link expired," it's "we closed the order and kept
       // your payment as a credit," so it needs its own text. Any other reason (both

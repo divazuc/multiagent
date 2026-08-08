@@ -53,7 +53,7 @@ async function post(server, body, { bearer = process.env.BOT_WEBHOOK_SECRET } = 
 }
 
 const lead = { name: 'PWTEST Lead', phone: '0520000000' };
-const validBody = (event_id, event = 'send_personal_link', payload = { link_url: 'https://x/y', valid_days: 30 }) =>
+const validBody = (event_id, event = 'send_personal_link', payload = { link_url: 'https://x/y', valid_days: 14 }) =>
   ({ event_id, lead_id: 'PWTEST-lead', event, payload, lead });
 
 test('a successful send acks 200, and a repeat of the same event_id dedupes', async () => {

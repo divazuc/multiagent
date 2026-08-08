@@ -21,9 +21,17 @@
 // whole feature.) In production the id is DIVAZ_BUSINESS_ID, checked at boot by
 // lib/booster-client.js#warnOnIncompleteBoosterEnv.
 //
-// FRESHNESS — maxAgeDays defaults to 30, matching the unified 30-day link
-// window (see lib/booster-messages.js). Within that window the LATEST referral
-// wins. That is a deliberate LAST-TOUCH policy, not an oversight: a lead who
+// FRESHNESS — maxAgeDays defaults to 30. This is an ATTRIBUTION window in its
+// own right, deliberately NOT pegged to any of the funnel's contractual clocks
+// (pre-signature link validity, 14 express / 30 questionnaire; post-signature
+// quote validity, 30 from the signature; the 14-day payment deadline). Those
+// answer "how long may the client still act on this offer"; this one answers
+// "is this ad still plausibly what brought them here", and a click older than
+// a month is not credibly the cause of today's lead. Change it on attribution
+// grounds, never to chase one of those other numbers.
+//
+// Within the window the LATEST referral wins. That is a deliberate LAST-TOUCH
+// policy, not an oversight: a lead who
 // clicks a second ad a week later is telling us which creative actually moved
 // them, and the booster's reporting question is "which ad produced this order",
 // asked at signature time. Please do not "fix" this to first-touch — that is a

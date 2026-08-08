@@ -12,23 +12,41 @@ import { boosterMessageFor, toWaNumber } from '../lib/booster-messages.js';
 
 const lead = { name: 'דנה כהן', phone: '0521234567' };
 
+// ── THREE CLOCKS WEAR THE SAME DIGITS — never unify them ─────────────────────
+//
+//   1. PRE-SIGNATURE LINK validity — what `valid_days` carries, and what
+//      send_personal_link tells the client. 14 days on the express track,
+//      30 on questionnaire/self_serve. Clock starts when the link is issued.
+//   2. POST-SIGNATURE QUOTE validity — 30 days, measured FROM THE SIGNATURE.
+//      Nothing in this file carries it; it lives in the KB copy.
+//   3. PAYMENT deadline — 14 days. Contractual, and confirmed unchanged.
+//
+// A previous pass read (2) as if it were (1) and moved this fallback to 30.
+// The fix is not just the digit: every string that states one of these now
+// names the event it counts from, so the next reader cannot repeat the
+// substitution.
+
 test('send_personal_link carries the link url and greets the lead by first name', () => {
   const msg = boosterMessageFor('send_personal_link',
-    { link_url: 'https://booster.divdev.co/e/abc123', valid_days: 30 }, lead);
+    { link_url: 'https://booster.divdev.co/e/abc123', valid_days: 14 }, lead);
   assert.ok(msg && msg.length > 0);
   assert.match(msg, /https:\/\/booster\.divdev\.co\/e\/abc123/);
-  assert.match(msg, /30/, 'the payload\'s own window is what the client is told');
+  assert.match(msg, /14/, 'the payload\'s own window is what the client is told');
   assert.match(msg, /דנה/, 'greets by first name, not the full name');
   assert.doesNotMatch(msg, /דנה כהן/, 'must use the first name only');
 });
 
-// Owner decision: every track's window is 30 days (link validity, the
-// questionnaire cutoff, the materials window). The fallback is what a payload
-// with no valid_days produces, so it must not quietly re-introduce the old 14.
-test('send_personal_link falls back to 30 valid days when the payload omits it — all tracks are 30 days', () => {
+test('send_personal_link carries a questionnaire-track 30-day link window when the payload says so', () => {
+  const msg = boosterMessageFor('send_personal_link', { link_url: 'https://x/y', valid_days: 30 }, lead);
+  assert.match(msg, /30/, 'the fallback is express-shaped, but the payload always wins');
+});
+
+// Clock 1, express default. NOT clock 2 — the post-signature quote window is
+// 30 days and is a different measurement of a different thing.
+test('send_personal_link falls back to 14 valid days — the PRE-signature link window, not the post-signature quote window', () => {
   const msg = boosterMessageFor('send_personal_link', { link_url: 'https://x/y' }, lead);
-  assert.match(msg, /30/);
-  assert.doesNotMatch(msg, /14/, 'the old 14-day default is gone, not merely shadowed');
+  assert.match(msg, /14/);
+  assert.doesNotMatch(msg, /30/, 'the 30-day quote validity must never leak into the link copy');
 });
 
 test('send_signed_summary carries the quote number and a formatted total', () => {
@@ -128,18 +146,23 @@ test('send_expiry_notice returns a non-empty Hebrew string even with no payload 
 // per the super-contract's clause 26). Sending the generic "your link expired" text
 // to the second group would be actively wrong (they don't need a new link, they need
 // to know what happened to money they already paid).
-test('send_expiry_notice: unsigned_30d reason (the unified 30-day link window) returns the generic link-expired text', () => {
-  const msg = boosterMessageFor('send_expiry_notice', { reason: 'unsigned_30d' }, lead);
-  assert.match(msg, /פג תוקף/);
+// BOTH unsigned_* cutoffs are LIVE — neither is legacy. They are the same
+// clock (1, pre-signature link validity) on two tracks: express expires at 14
+// days, questionnaire/self_serve at 30. Both are "your link expired" and both
+// take the generic text.
+test('send_expiry_notice: both live link cutoffs — unsigned_14d (express) and unsigned_30d (questionnaire) — return the generic link-expired text', () => {
+  for (const reason of ['unsigned_14d', 'unsigned_30d']) {
+    const msg = boosterMessageFor('send_expiry_notice', { reason }, lead);
+    assert.match(msg, /פג תוקף/, `reason=${reason} is a pre-signature link expiry`);
+  }
 });
 
 // The catch-all `else` IS the contract, not a convenience: the list of
-// graduated cutoffs belongs to the booster and changes without this repo (the
-// legacy unsigned_14d, a future unsigned_60d, a payload with no reason at all).
-// Anything that is not materials_30d is a plain expired link and must never
-// fall through unhandled.
+// graduated cutoffs belongs to the booster and changes without this repo (a
+// future unsigned_60d, a payload with no reason at all). Anything that is not
+// materials_30d is a plain expired link and must never fall through unhandled.
 test('send_expiry_notice: any UNRECOGNIZED reason still returns the generic link-expired text', () => {
-  for (const reason of ['unsigned_14d', 'unsigned_60d', 'some_future_cutoff', null, undefined]) {
+  for (const reason of ['unsigned_60d', 'some_future_cutoff', null, undefined]) {
     const msg = boosterMessageFor('send_expiry_notice', { reason }, lead);
     assert.match(msg, /פג תוקף/, `reason=${reason} must not fall through unhandled`);
   }
@@ -228,23 +251,34 @@ test('an unknown event returns null so the caller acks and skips rather than ret
   assert.equal(boosterMessageFor(undefined, {}, lead), null);
 });
 
-// ── The 30-day unification, in the knowledge-base seed script ────────────────
+// ── The three clocks, in the knowledge-base seed script ──────────────────────
 //
 // scripts/update-divaost-from-spec.mjs seeds the FAQ rows the bot actually
 // answers from. Those rows are ALREADY live in Supabase, so editing the script
-// changes nothing on its own — but a stale 14 left in the file is exactly how
-// the old number comes back the next time anyone re-runs it.
+// changes nothing on its own — but a wrong number left in the file is how it
+// comes back the next time anyone re-runs it.
 //
-// The asymmetry below is deliberate and is the whole reason this is pinned:
-// offer VALIDITY moved to 30 days; the CONTRACTUAL PAYMENT DEADLINE has not
-// been moved, because the owner has not decided that yet. A blanket
-// search-and-replace of "14" would silently change a contract term.
-test('the KB seed script promises 30-day offer validity, while keeping the payment deadline distinct', () => {
+// Only ONE of the three clocks moved. Each answer now names the event it
+// counts from, because "14" and "30" alone are what let a 30-day post-
+// signature window get pasted over a 14-day pre-signature one.
+test('the KB seed script keeps the three clocks distinct, each anchored to the event it counts from', () => {
   const src = fs.readFileSync(new URL('../scripts/update-divaost-from-spec.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /ההצעה בתוקף 14 יום מרגע/, 'offer validity is 30 days now');
-  assert.doesNotMatch(src, /ההצעה בתוקף 14 יום\./, 'offer validity is 30 days now');
+
+  // Clock 2 — post-signature quote validity. The one that moved to 30, and the
+  // only one the owner's "30 יום מרגע שנחתמה" was ever about.
+  assert.match(src, /ההצעה בתוקף 30 יום מרגע החתימה/,
+    'the 30-day quote window must name the SIGNATURE as its anchor, not a vague "אישור"');
+  assert.doesNotMatch(src, /ההצעה בתוקף 30 יום מרגע האישור/,
+    '"מרגע האישור" is the ambiguity that caused this — it reads as either clock');
+
+  // Clock 1 — pre-signature link validity. Stays 14 on express, and now says
+  // out loud that it is the LINK being measured.
+  assert.match(src, /הקישור להצעה בתוקף 14 יום מרגע קבלתו/,
+    'the link window stays 14 and must name the link, so it cannot be read as the quote window');
+
+  // Clock 3 — contractual payment deadline. Confirmed unchanged at 14.
   assert.match(src, /בתוקף 14 יום לתשלום/,
-    'the contractual payment deadline is deliberately NOT moved — pending the owner\'s decision. Do not blanket-replace it.');
+    'the contractual payment deadline stays 14 — never blanket-replace it');
 });
 
 test('toWaNumber expands a leading Israeli 0 to the international prefix', () => {
