@@ -98,6 +98,10 @@ export async function getLatestMeetingEvent({ businessId = null, type, phone }) 
   if (!normalized) return null;
   try {
     if (db) {
+      // A fake may supply latestEvent to mimic the real store's async read
+      // (e.g. a PostgREST connection that stalls); otherwise the plain
+      // in-memory rows stand in, insertion order for created_at.
+      if (typeof db.latestEvent === 'function') return await db.latestEvent({ businessId, type, phone: normalized });
       const rows = db.events.filter(r =>
         r.module_key === 'booster' && r.event_type === type &&
         r.detail?.phone === normalized &&

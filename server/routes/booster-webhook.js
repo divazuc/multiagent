@@ -38,10 +38,18 @@ function bearerOk(req) {
   }
 }
 
-// The booster expects a 2xx within 8s and retries otherwise, so a send that
-// hangs must not hold the response open past that SLA. 6s leaves headroom
-// for the response itself to reach the booster inside its 8s budget.
-const SEND_TIMEOUT_MS = 6000;
+// The booster expects a 2xx within 8s and retries otherwise, and a retry that
+// lands before `seen` holds the event_id is a DOUBLE SEND on the client's
+// phone. So the handler runs on ONE shared deadline rather than per-step
+// timeouts that stack: every optional prefix step (the notes read, the slot
+// fetch) is subtracted from what the send has left, never added on top of it.
+// 7s leaves ~1s for the response itself to reach the booster inside its 8s
+// window.
+const REQUEST_BUDGET_MS = 7000;
+
+// Caps for the two prefix steps. Each is also min'd against whatever is left
+// of the shared deadline, so neither can ever push the send past the SLA.
+const NOTES_READ_TIMEOUT_MS = 400;
 const TIMED_OUT = Symbol('booster-webhook-send-timeout');
 function withTimeout(promise, ms) {
   let timer;
@@ -57,10 +65,10 @@ function withTimeout(promise, ms) {
 // after the order (F5 — by-ref doesn't return the quote number).
 const MEETING_EVENTS = new Set(['send_signed_summary', 'send_meeting_reminder']);
 
-// The slot fetch must not eat the 8s SLA that the send itself needs: 2.5s is
-// generous for a freeBusy round-trip, and on ANY miss (timeout, error, no
-// calendar module, no slots) the event degrades to today's copy — scheduling
-// help is a bonus, delivery is the contract.
+// 2.5s is generous for a freeBusy round-trip, and on ANY miss (timeout,
+// error, no calendar module, no slots) the event degrades to today's copy —
+// scheduling help is a bonus, delivery is the contract. Whatever it spends
+// comes out of the send's share of REQUEST_BUDGET_MS, never on top of it.
 const SLOTS_TIMEOUT_MS = 2500;
 
 async function fetchMeetingSlotsReal() {
@@ -77,9 +85,9 @@ async function fetchMeetingSlotsReal() {
 let fetchMeetingSlots = fetchMeetingSlotsReal;
 export const _setSlotsFetcherForTest = (fn) => { fetchMeetingSlots = fn ?? fetchMeetingSlotsReal; };
 
-async function slotOfferFor(payload) {
+async function slotOfferFor(payload, timeoutMs) {
   try {
-    const slots = await withTimeout(fetchMeetingSlots(), SLOTS_TIMEOUT_MS);
+    const slots = await withTimeout(fetchMeetingSlots(), timeoutMs);
     if (slots === TIMED_OUT) {
       console.error('[booster-webhook] slot fetch timed out — sending the base copy');
       return null;
@@ -92,6 +100,11 @@ async function slotOfferFor(payload) {
 }
 
 router.post('/booster-webhook', async (req, res) => {
+  // One deadline for the whole request — see REQUEST_BUDGET_MS.
+  const deadline = Date.now() + REQUEST_BUDGET_MS;
+  const remaining = () => Math.max(0, deadline - Date.now());
+  const budget = (cap) => Math.min(cap, remaining());
+
   if (!bearerOk(req)) {
     return res.status(401).json({ ok: false });
   }
@@ -112,14 +125,21 @@ router.post('/booster-webhook', async (req, res) => {
   // client who already booked in chat. A meeting_booked note suppresses the
   // reminder here — acked and remembered like any legitimately-skipped event.
   // getLatestMeetingEvent fails SOFT to null, so an unreadable notes store
-  // sends the reminder (fail-open) rather than silently losing it.
+  // sends the reminder (fail-open) rather than silently losing it — but
+  // "fails soft" only covers a REJECTION. supabase-js has no client-side
+  // timeout, so a stalled PostgREST connection would hold this response open
+  // indefinitely (and every booster retry would open another one). The read is
+  // therefore time-boxed too, a timeout meaning "no note" — the same
+  // fail-open direction.
   if (event === 'send_meeting_reminder') {
-    const booked = await getLatestMeetingEvent({
+    const booked = await withTimeout(getLatestMeetingEvent({
       businessId: process.env.DIVAZ_BUSINESS_ID ?? null,
       type: 'meeting_booked',
       phone: lead?.phone,
-    });
-    if (booked) {
+    }), budget(NOTES_READ_TIMEOUT_MS));
+    if (booked === TIMED_OUT) {
+      console.error('[booster-webhook] notes read timed out — sending the reminder (fail-open)', event_id);
+    } else if (booked) {
       console.log('[booster-webhook] reminder suppressed — meeting already booked', event_id);
       remember(event_id);
       return res.json({ ok: true, skipped: true });
@@ -130,7 +150,7 @@ router.post('/booster-webhook', async (req, res) => {
   // effort — a null offer (no calendar, no slots, error, timeout) sends the
   // base copy unchanged.
   if (MEETING_EVENTS.has(event)) {
-    const offer = await slotOfferFor(payload);
+    const offer = await slotOfferFor(payload, budget(SLOTS_TIMEOUT_MS));
     if (offer) text = `${text}\n\n${offer}`;
   }
 
@@ -148,7 +168,7 @@ router.post('/booster-webhook', async (req, res) => {
   try {
     result = await withTimeout(
       sendFn({ to, text, businessId: process.env.DIVAZ_BUSINESS_ID ?? null }),
-      SEND_TIMEOUT_MS,
+      remaining(), // whatever the prefix steps left of the shared deadline
     );
   } catch (e) {
     console.error('[booster-webhook] send threw unexpectedly', event_id, e.message);

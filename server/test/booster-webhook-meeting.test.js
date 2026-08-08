@@ -153,6 +153,48 @@ test('a slot fetch that hangs is cut off by the internal budget and the existing
   }
 });
 
+// The slot fetch is a serial PREFIX to the send, so the two budgets must
+// SHARE one deadline rather than stack: 2.5s + 6s = 8.5s would blow the
+// booster's 8s cutoff, earning a retry — and a retry that lands before `seen`
+// holds the event_id is a double-send window on the client's phone.
+test('slow slot fetch + slow send: the SHARED deadline keeps the whole handler inside the booster 8s SLA', async () => {
+  const server = await startServer();
+  freshMeetingDb();
+  _setSlotsFetcherForTest(() => new Promise(() => {}));  // eats its full sub-budget
+  _setSendForTest(() => new Promise(() => {}));          // then hangs on what is left
+  try {
+    const started = Date.now();
+    const r = await post(server, body('evt-mtg-sla-1', 'send_signed_summary', { quote_number: 'DZ-1', total: 100 }));
+    const elapsed = Date.now() - started;
+    assert.equal(r.status, 502, 'a send that never lands must surface as a retryable failure');
+    assert.ok(elapsed < 7900,
+      `the slot fetch must be SUBTRACTED from the send budget, not added to it (took ${elapsed}ms)`);
+  } finally {
+    server.close();
+  }
+});
+
+test('a stalled notes read cannot hold the response open — the reminder still goes out in time', async () => {
+  const server = await startServer();
+  // A PostgREST connection that never answers: supabase-js has no client-side
+  // timeout, so without one here the handler would hang until the booster
+  // gave up and retried — each retry opening another hanging request.
+  meeting._setDbForTest({ events: [], latestEvent: () => new Promise(() => {}) });
+  const sent = [];
+  _setSendForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.OK' }] }; });
+  _setSlotsFetcherForTest(async () => []);
+  try {
+    const started = Date.now();
+    const r = await post(server, body('evt-mtg-stalled-read-1', 'send_meeting_reminder', { quote_number: 'DZ-1' }));
+    const elapsed = Date.now() - started;
+    assert.deepEqual(r.json, { ok: true });
+    assert.equal(sent.length, 1, 'an unreadable note means "no note" — the reminder is sent, never lost');
+    assert.ok(elapsed < 3000, `the notes read must be time-boxed, not unbounded (took ${elapsed}ms)`);
+  } finally {
+    server.close();
+  }
+});
+
 test('a non-meeting event never touches the slot fetcher and records nothing', async () => {
   const server = await startServer();
   const db = freshMeetingDb();
