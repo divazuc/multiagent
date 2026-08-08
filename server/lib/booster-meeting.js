@@ -90,6 +90,10 @@ async function recordMeetingEvent(eventType, { businessId, phone, quoteNumber, s
     business_id: businessId,
     module_key: 'booster',
     event_type: eventType,
+    // Written explicitly (the column defaults to now() anyway) so the note is
+    // self-describing and noteCoversOrder can order two notes by recency
+    // without a second round-trip.
+    created_at: new Date().toISOString(),
     detail: { phone: normalized, quote_number: quoteNumber ?? null, ...(slot ? { slot } : {}) },
   };
   try {
@@ -138,6 +142,36 @@ export async function getLatestMeetingEvent({ businessId = null, type, phone }) 
     return null;
   }
 }
+
+// ── "Is this note about the order in front of us?" ───────────────────────────
+//
+// A meeting note only ever means something RELATIVE TO AN ORDER. Asking the
+// unscoped question — "is there ANY meeting_booked row for this phone" —
+// locks a repeat customer out permanently: a client who booked in August and
+// signs a second order in November could never schedule the new order's
+// meeting, and that new order's 3-day reminders would be silently killed too.
+//
+// The webhook writes a fresh meeting_invite per order, so the current order is
+// identified by its quote number: carried on the invite note (the gate's
+// reference) or on the webhook payload (the reminder's). Rules, in order:
+//   · no note at all                → not covered (nothing has happened yet)
+//   · no reference to compare to    → covered (conservative: F7 stands)
+//   · both carry a quote number     → covered iff they are the SAME order
+//   · either quote number missing   → fall back to recency: a note older than
+//     the current order's marker belongs to the previous order
+export function noteCoversOrder(note, order) {
+  if (!note) return false;
+  if (!order) return true;
+  const noteQuote = quoteOf(note);
+  const orderQuote = quoteOf(order);
+  if (noteQuote && orderQuote) return noteQuote === orderQuote;
+  return !(stampOf(order) > stampOf(note));
+}
+
+// Both a note row ({detail:{quote_number}, created_at}) and a raw webhook
+// payload ({quote_number}) are accepted as "the order".
+const quoteOf = (o) => o?.detail?.quote_number ?? o?.quote_number ?? null;
+const stampOf = (o) => Date.parse(o?.created_at ?? '') || 0;
 
 // ── Slot offer copy ──────────────────────────────────────────────────────────
 
@@ -208,9 +242,14 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
   if (!lead) return { allow: true };
 
   if (lead.status === 'awaiting_meeting') {
-    const booked = await getLatestMeetingEvent({ businessId: business.id, type: 'meeting_booked', phone });
-    if (!booked) {
-      const invite = await getLatestMeetingEvent({ businessId: business.id, type: 'meeting_invite', phone });
+    // The invite note IS the current order (a fresh one per order), so it is
+    // both the title source and the yardstick a previous booking is measured
+    // against — see noteCoversOrder.
+    const [invite, booked] = await Promise.all([
+      getLatestMeetingEvent({ businessId: business.id, type: 'meeting_invite', phone }),
+      getLatestMeetingEvent({ businessId: business.id, type: 'meeting_booked', phone }),
+    ]);
+    if (!noteCoversOrder(booked, invite)) {
       const quoteNumber = invite?.detail?.quote_number ?? null;
       const eventTitleOverride = quoteNumber
         ? `פגישת אפיון — הזמנה ${quoteNumber}`

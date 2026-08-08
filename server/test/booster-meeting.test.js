@@ -237,6 +237,55 @@ test('gate: awaiting_meeting lead with no meeting_booked → allowed with the ch
   assert.equal(withName.eventTitleOverride, 'פגישת אפיון — דנה כהן');
 });
 
+// "Already booked" has to mean "already booked FOR THIS ORDER". Asking only
+// "is there ANY meeting_booked row for this phone" locks a repeat customer out
+// permanently — sign a second order in November and the August booking still
+// blocks it. The webhook writes a fresh meeting_invite per order, so that note
+// is what says which order is current.
+test('gate: a repeat customer\'s SECOND order is bookable — a fresh invite supersedes the previous order\'s booking', async () => {
+  freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+
+  // August, order DZ-1: invited, then booked.
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1' });
+  await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
+  const sameOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(sameOrder.allow, false, 'F7 preserved: the SAME order still gets exactly one meeting');
+  assert.equal(sameOrder.replyText, BLOCKED_REPLY);
+
+  // November, order DZ-2: the webhook recorded a fresh invite for the new order.
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2' });
+  const newOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(newOrder.allow, true, 'a returning client must not be locked out of their new order\'s meeting');
+  assert.equal(newOrder.eventTitleOverride, 'פגישת אפיון — הזמנה DZ-2');
+  assert.equal(newOrder.expressLead.quoteNumber, 'DZ-2');
+});
+
+test('gate: with no quote number to compare, the booking is ordered against the invite by recency', async () => {
+  const db = freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  // A booking made when no invite was on record carries no quote number (the
+  // gate fell back to the lead's name), so only recency can order the two.
+  const note = (event_type, created_at) => ({
+    business_id: 'b1', module_key: 'booster', event_type, created_at,
+    detail: { phone: '0521234567', quote_number: null },
+  });
+  db.events.push(note('meeting_booked', '2026-08-01T09:00:00.000Z'));
+  db.events.push(note('meeting_invite', '2026-11-01T09:00:00.000Z'));
+  const newOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(newOrder.allow, true, 'an invite NEWER than the booking means a new order started');
+
+  db.events.push(note('meeting_booked', '2026-11-02T09:00:00.000Z'));
+  const sameOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(sameOrder.allow, false, 'a booking made AFTER the latest invite is the current order — still blocked');
+});
+
 test('gate: any other status — and a second booking after meeting_booked — is blocked with the exact fixed reply', async () => {
   freshDb();
   const engineEvents = seedEngine();

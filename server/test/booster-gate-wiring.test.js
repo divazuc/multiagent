@@ -130,6 +130,32 @@ test('send_meeting_reminder is suppressed (acked + remembered) when a meeting_bo
   }
 });
 
+test("send_meeting_reminder for a NEW order is not suppressed by the previous order's booking", async () => {
+  const server = await startServer();
+  _setDbForTest({ events: [] });
+  _setSlotsFetcherForTest(async () => []); // keep the meeting-slot path quiet
+  const sent = [];
+  _setSendForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.OK' }] }; });
+  await recordMeetingBooked({ businessId: 'biz-diva-test', phone: '0520000000', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
+  try {
+    // Same order (payload DZ-1) — the client really did already book.
+    const sameOrder = await post(server, reminderBody('evt-gate-order-same-1'));
+    assert.deepEqual(sameOrder.json, { ok: true, skipped: true });
+    assert.equal(sent.length, 0);
+
+    // A second order's reminder must not be silently killed by the first
+    // order's booking — that is the same repeat-customer lockout the gate has.
+    const newOrder = await post(server, {
+      event_id: 'evt-gate-order-new-1', lead_id: 'PWTEST-lead',
+      event: 'send_meeting_reminder', payload: { quote_number: 'DZ-2' }, lead,
+    });
+    assert.deepEqual(newOrder.json, { ok: true });
+    assert.equal(sent.length, 1, "the new order's reminder must reach the client");
+  } finally {
+    server.close();
+  }
+});
+
 test('send_meeting_reminder still goes out when the note is for another phone or the store is unreadable (fail-open)', async () => {
   const server = await startServer();
   const sent = [];

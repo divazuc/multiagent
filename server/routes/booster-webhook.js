@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { sendWhatsAppMessage } from '../lib/wa-send.js';
 import { boosterMessageFor, toWaNumber } from '../lib/booster-messages.js';
-import { formatSlotOffer, recordMeetingInvite, getLatestMeetingEvent } from '../lib/booster-meeting.js';
+import { formatSlotOffer, recordMeetingInvite, getLatestMeetingEvent, noteCoversOrder } from '../lib/booster-meeting.js';
 import { getEnabledModules } from '../lib/modules/engine.js';
 import { MODULES } from '../lib/modules/registry.js';
 
@@ -144,7 +144,9 @@ router.post('/booster-webhook', async (req, res) => {
     }), budget(NOTES_READ_TIMEOUT_MS));
     if (booked === TIMED_OUT) {
       console.error('[booster-webhook] notes read timed out — sending the reminder (fail-open)', event_id);
-    } else if (booked) {
+      // Scoped to THIS order (payload.quote_number): a booking made for the
+      // client's PREVIOUS order must not kill the new order's reminders.
+    } else if (noteCoversOrder(booked, payload)) {
       console.log('[booster-webhook] reminder suppressed — meeting already booked', event_id);
       remember(event_id);
       return res.json({ ok: true, skipped: true });
