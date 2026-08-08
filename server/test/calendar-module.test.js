@@ -74,6 +74,39 @@ test('race: slot busy on re-check → failure text, no event', async () => {
   assert.equal(created.length, 0);
 });
 
+// T6 (funnel track 1): a general seam — the caller (the reply pipeline, via
+// the booking gate) can hand a fully-formed event title through sessionCtx.
+// The calendar module stays generic: no booster knowledge in here, just
+// "the decision layer already named this meeting".
+test('sessionCtx.event_title_override replaces the configured event title verbatim', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev3', htmlLink: '' }; },
+  });
+  created.length = 0;
+  const slots = await calendar._computeCurrentSlots(row());
+  const slot = `${slots[0].date}T${slots[0].from}`;
+  const r = await calendar.actions.book.handler(BIZ, row(), { slot, name: 'דנה' },
+    { session_id: '0501234567', event_title_override: 'פגישת אפיון — הזמנה DZ-2026-1042' });
+  assert.ok(r.confirmationText);
+  assert.equal(created[0].title, 'פגישת אפיון — הזמנה DZ-2026-1042',
+    'the override is used verbatim — settings.event_title and {name} templating are bypassed');
+});
+
+test('event_title_override still gets the tentative prefix under owner_confirmed', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev4', htmlLink: '' }; },
+  });
+  created.length = 0;
+  const r = row({ mode: 'owner_confirmed' });
+  const slots = await calendar._computeCurrentSlots(r);
+  await calendar.actions.book.handler(BIZ, r, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' },
+    { session_id: '0501234567', event_title_override: 'פגישת אפיון — הזמנה DZ-1' });
+  assert.equal(created[0].title, '⏳ ממתין לאישור: פגישת אפיון — הזמנה DZ-1',
+    'owner-confirmed mode must still mark the event as pending, override or not');
+});
+
 test('owner_confirmed creates tentative title and notifies softly', async () => {
   _setProviderForTest({
     freeBusy: async () => [],

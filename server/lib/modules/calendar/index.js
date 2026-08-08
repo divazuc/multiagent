@@ -113,7 +113,14 @@ const calendarModule = {
         // 3. Create the event
         const phone = payload.phone || sessionCtx?.session_id || '';
         const tentative = settings.mode === 'owner_confirmed';
-        const title = (tentative ? '⏳ ממתין לאישור: ' : '') + settings.event_title.replace('{name}', payload.name);
+        // General seam (T6): the reply pipeline's decision layer may hand a
+        // fully-formed title through sessionCtx (e.g. the express booking gate
+        // names the characterization meeting after its order). Used verbatim —
+        // the {name} templating only applies to the configured default. The
+        // model never controls this: sessionCtx is server-built, not payload.
+        const baseTitle = sessionCtx?.event_title_override
+          || settings.event_title.replace('{name}', payload.name);
+        const title = (tentative ? '⏳ ממתין לאישור: ' : '') + baseTitle;
         await provider(settings).createEvent(secrets, {
           startUtcISO: startUtc.toISOString(), endUtcISO: endUtc.toISOString(),
           title,
