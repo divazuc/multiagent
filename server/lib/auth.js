@@ -7,7 +7,9 @@
 
 import crypto from 'node:crypto';
 
-const PUBLIC_PATHS = ['/health', '/wa-inbound'];
+// '/booster-webhook' carries its own bearer (BOT_WEBHOOK_SECRET, checked in
+// the route itself) — it is the booster's outbox push, not an operator call.
+const PUBLIC_PATHS = ['/health', '/wa-inbound', '/booster-webhook'];
 // '/c/' is the short connect link a CLIENT opens — same public surface as
 // '/oauth/', and it only redirects to a signed state that is validated there.
 const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/'];
