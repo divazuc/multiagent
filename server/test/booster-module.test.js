@@ -99,6 +99,42 @@ test('contextProvider caches the status lookup for 60s — one lookup for two bu
   assert.equal(lookups, 1, 'a second build inside the TTL must not re-hit the booster');
 });
 
+test('the status cache is keyed per sender — one client\'s stage is never served to another', async () => {
+  const looked = [];
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async (phone) => {
+      looked.push(phone);
+      return { leadId: `l-${phone}`, status: phone.endsWith('7') ? 'awaiting_meeting' : 'awaiting_materials' };
+    },
+  }));
+  const a1 = await booster.contextProvider(BIZ, ROW, { session_id: '972501234567' });
+  const b1 = await booster.contextProvider(BIZ, ROW, { session_id: '972529999999' });
+  const a2 = await booster.contextProvider(BIZ, ROW, { session_id: '972501234567' });
+
+  assert.deepEqual(looked, ['972501234567', '972529999999'],
+    'a second sender is a second lookup; a repeat of the first is served from cache');
+  assert.ok(a1.includes('<<ACTION:booster.request_callback{}>>'));
+  assert.ok(b1.includes('<<ACTION:booster.materials_done{}>>'), 'the second sender gets their OWN stage');
+  assert.equal(a2, a1, 'the cached hit is the first sender\'s own context, not the last one looked up');
+});
+
+test('a failed status lookup is NOT cached — the very next message retries', async () => {
+  let calls = 0;
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => {
+      calls++;
+      if (calls === 1) throw new Error('booster down');
+      return { leadId: 'l1', status: 'awaiting_materials' };
+    },
+  }));
+  const first = await booster.contextProvider(BIZ, ROW, SENDER);
+  assert.ok(!first.includes('materials_done'), 'the error falls back to the static context');
+
+  const second = await booster.contextProvider(BIZ, ROW, SENDER);
+  assert.equal(calls, 2, 'caching the error would leave the client stage-blind for a full minute');
+  assert.ok(second.includes('<<ACTION:booster.materials_done{}>>'), 'the retry picks the real status up');
+});
+
 test('contextProvider fail-soft: a status lookup error still returns the static context', async () => {
   _setBoosterClientForTest(stubClient({
     lookupBoosterLeadByPhone: async () => { throw new Error('booster down'); },
