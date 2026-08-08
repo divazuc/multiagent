@@ -56,6 +56,23 @@ export async function lookupBoosterLeadByPhone(phone) {
 // it to the booster, which owns storage, the payment_proof_sent transition, and
 // Diva's Telegram alert. Payload shape mirrors the booster's bot-friendly JSON+
 // base64 route (app/api/leads/[id]/payment-proof/route.ts), not multipart.
+// T5 (funnel track 1): the client said "סיימתי" in chat — tell the booster,
+// which owns the awaiting_materials → materials_declared transition and
+// Diva's Telegram ping (no ack_materials back: the bot already acked in
+// chat). Contract: 200 {ok, status} / {ok, already:true} on a repeat;
+// 409 wrong_status and 401/404 throw so the caller can answer honestly.
+export async function declareMaterialsDone({ leadId, note }) {
+  const trimmed = typeof note === 'string' && note.trim() ? note.slice(0, 2000) : null;
+  const res = await fetch(`${BASE()}/api/leads/${leadId}/materials-declared`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, 'Content-Type': 'application/json', ...cfAccessHeaders() },
+    body: JSON.stringify(trimmed ? { note: trimmed } : {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`booster-client: materials-declared ${res.status} ${data.error ?? ''}`);
+  return { already: data.already === true, status: data.status ?? null };
+}
+
 export async function forwardPaymentProof({ leadId, imageBase64, mime, caption }) {
   const res = await fetch(`${BASE()}/api/leads/${leadId}/payment-proof`, {
     method: 'POST',
