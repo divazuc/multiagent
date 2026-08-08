@@ -7,6 +7,7 @@
 // skip it rather than retry forever.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { boosterMessageFor, toWaNumber } from '../lib/booster-messages.js';
 
 const lead = { name: 'דנה כהן', phone: '0521234567' };
@@ -225,6 +226,25 @@ test('the materials/start/live templates never print a ₪ or talk about payment
 test('an unknown event returns null so the caller acks and skips rather than retries forever', () => {
   assert.equal(boosterMessageFor('some_future_event', {}, lead), null);
   assert.equal(boosterMessageFor(undefined, {}, lead), null);
+});
+
+// ── The 30-day unification, in the knowledge-base seed script ────────────────
+//
+// scripts/update-divaost-from-spec.mjs seeds the FAQ rows the bot actually
+// answers from. Those rows are ALREADY live in Supabase, so editing the script
+// changes nothing on its own — but a stale 14 left in the file is exactly how
+// the old number comes back the next time anyone re-runs it.
+//
+// The asymmetry below is deliberate and is the whole reason this is pinned:
+// offer VALIDITY moved to 30 days; the CONTRACTUAL PAYMENT DEADLINE has not
+// been moved, because the owner has not decided that yet. A blanket
+// search-and-replace of "14" would silently change a contract term.
+test('the KB seed script promises 30-day offer validity, while keeping the payment deadline distinct', () => {
+  const src = fs.readFileSync(new URL('../scripts/update-divaost-from-spec.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /ההצעה בתוקף 14 יום מרגע/, 'offer validity is 30 days now');
+  assert.doesNotMatch(src, /ההצעה בתוקף 14 יום\./, 'offer validity is 30 days now');
+  assert.match(src, /בתוקף 14 יום לתשלום/,
+    'the contractual payment deadline is deliberately NOT moved — pending the owner\'s decision. Do not blanket-replace it.');
 });
 
 test('toWaNumber expands a leading Israeli 0 to the international prefix', () => {
