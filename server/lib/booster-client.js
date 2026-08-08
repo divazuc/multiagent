@@ -97,10 +97,6 @@ export async function lookupBoosterLeadByPhone(phone) {
   return { leadId: data.lead_id, name: data.name, packageId: data.package_id, quoteUrl: data.quote_url, status: data.status };
 }
 
-// Task 17: the client sent a payment-confirmation screenshot in WhatsApp — forward
-// it to the booster, which owns storage, the payment_proof_sent transition, and
-// Diva's Telegram alert. Payload shape mirrors the booster's bot-friendly JSON+
-// base64 route (app/api/leads/[id]/payment-proof/route.ts), not multipart.
 // T5 (funnel track 1): the client said "סיימתי" in chat — tell the booster,
 // which owns the awaiting_materials → materials_declared transition and
 // Diva's Telegram ping (no ack_materials back: the bot already acked in
@@ -114,10 +110,22 @@ export async function declareMaterialsDone({ leadId, note }) {
     body: JSON.stringify(trimmed ? { note: trimmed } : {}),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`booster-client: materials-declared ${res.status} ${data.error ?? ''}`);
+  if (!res.ok) {
+    // Carry the status/code on the error: 409 wrong_status is a permanent
+    // "this lead is not at the materials stage", not a hiccup worth retrying,
+    // and the caller answers differently for the two.
+    const e = new Error(`booster-client: materials-declared ${res.status} ${data.error ?? ''}`);
+    e.status = res.status;
+    e.code = data.error ?? null;
+    throw e;
+  }
   return { already: data.already === true, status: data.status ?? null };
 }
 
+// Task 17: the client sent a payment-confirmation screenshot in WhatsApp — forward
+// it to the booster, which owns storage, the payment_proof_sent transition, and
+// Diva's Telegram alert. Payload shape mirrors the booster's bot-friendly JSON+
+// base64 route (app/api/leads/[id]/payment-proof/route.ts), not multipart.
 export async function forwardPaymentProof({ leadId, imageBase64, mime, caption }) {
   const res = await fetch(`${BASE()}/api/leads/${leadId}/payment-proof`, {
     method: 'POST',

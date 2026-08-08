@@ -56,6 +56,9 @@ const CALLBACK_REPLY = 'דיוה תחזור אליך בהקדם 🙂';
 const MATERIALS_ACK = 'קיבלתי! עדכנתי את דיוה — היא תעבור על החומרים ותאשר שמתחילים 🙏';
 const MATERIALS_ALREADY = 'כבר עדכנתי את דיוה, היא בודקת 🙏';
 const MATERIALS_FAIL = 'אופס, לא הצלחתי לעדכן — נסו שוב עוד רגע 🙏';
+// A 409 wrong_status will never succeed on a retry, so it must not be answered
+// with "נסו שוב עוד רגע" — the lead simply is not at the materials stage.
+const MATERIALS_WRONG_STATUS = 'עוד לא פתחנו אצלך את שלב החומרים — דיוה תחזור אליך בהקדם 🙂';
 
 // Any known express lead: one characterization meeting per order (handoff §2)
 // — an extra-meeting request routes to Diva, never to the calendar.
@@ -80,6 +83,13 @@ const STAGE_GUIDANCE = {
 
 // 60s cache per sender: one booster round-trip per conversation turn burst,
 // and one more a minute later. Bounded like the webhook's dedup Set.
+//
+// KNOWN LIMITATION (accepted for v1, noted in review): the key is the phone
+// alone, not (business_id, phone). The booster is Diva's tenant only and its
+// leads are global to the booster anyway, so today every hit is the same
+// answer — but if a second tenant ever enables this module, a sender who talks
+// to both would share one cache entry. Key it on the business too at that
+// point.
 const STATUS_TTL_MS = 60_000;
 const statusCache = new Map(); // session_id -> { at, lead }
 export function _clearStatusCacheForTest() { statusCache.clear(); }
@@ -203,6 +213,7 @@ const boosterModule = {
           return { confirmationText: r.already ? MATERIALS_ALREADY : MATERIALS_ACK };
         } catch (e) {
           console.error('[booster] materials-declared failed:', e.message);
+          if (e.status === 409) return { failureText: MATERIALS_WRONG_STATUS };
           return { failureText: MATERIALS_FAIL };
         }
       },

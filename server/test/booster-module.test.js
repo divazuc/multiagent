@@ -184,17 +184,35 @@ test('materials_done: an already-declared lead gets the exact idempotent line', 
   assert.equal(r.confirmationText, 'כבר עדכנתי את דיוה, היא בודקת 🙏');
 });
 
-test('materials_done failure (409/network/no lead) → the exact failure line, never a success claim', async () => {
+test('materials_done failure (network/no lead) → the retry line, never a success claim', async () => {
   _setBoosterClientForTest(stubClient({
-    lookupBoosterLeadByPhone: async () => ({ leadId: 'l7', status: 'awaiting_meeting' }),
-    declareMaterialsDone: async () => { throw new Error('booster-client: materials-declared 409 wrong_status'); },
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l7', status: 'awaiting_materials' }),
+    declareMaterialsDone: async () => { throw new Error('fetch failed'); },
   }));
   const failed = await booster.actions.materials_done.handler(BIZ, ROW, {}, SENDER);
   assert.equal(failed.failureText, 'אופס, לא הצלחתי לעדכן — נסו שוב עוד רגע 🙏');
 
+  _clearStatusCacheForTest();
   _setBoosterClientForTest(stubClient({ lookupBoosterLeadByPhone: async () => null }));
   const noLead = await booster.actions.materials_done.handler(BIZ, ROW, {}, SENDER);
   assert.equal(noLead.failureText, 'אופס, לא הצלחתי לעדכן — נסו שוב עוד רגע 🙏');
+});
+
+test('materials_done on a 409 wrong_status does not invite a retry that can never succeed', async () => {
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l7', status: 'awaiting_meeting' }),
+    declareMaterialsDone: async () => {
+      const e = new Error('booster-client: materials-declared 409 wrong_status');
+      e.status = 409; e.code = 'wrong_status';
+      throw e;
+    },
+  }));
+  const r = await booster.actions.materials_done.handler(BIZ, ROW, {}, SENDER);
+  assert.notEqual(r.failureText, 'אופס, לא הצלחתי לעדכן — נסו שוב עוד רגע 🙏',
+    'the lead is not at the materials stage — "נסו שוב עוד רגע" will never come true');
+  assert.ok(r.failureText, 'the client is still answered');
+  assert.doesNotMatch(r.failureText, /₪/);
+  assert.ok(!r.failureText.includes('אושר'), 'never claims an approval');
 });
 
 // ── create_quote_lead: schema ────────────────────────────────────────────────

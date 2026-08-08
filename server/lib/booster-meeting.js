@@ -208,8 +208,10 @@ export function formatSlotOffer(slots, { quoteNumber } = {}) {
     if (times.length < MAX_TIMES_PER_DAY) times.push(s.from);
   }
   if (!byDay.size) return null;
-  const lines = [...byDay.entries()].map(([date, times]) =>
-    `- ${HEB_DAYS[new Date(`${date}T00:00:00`).getDay()]} ${date}: ${times.join(', ')}`);
+  const lines = [...byDay.entries()].map(([date, times]) => {
+    const day = HEB_DAYS[new Date(`${date}T00:00:00`).getDay()]; // NaN index → undefined
+    return `- ${day ? `${day} ` : ''}${date}: ${times.join(', ')}`;
+  });
   const orderRef = quoteNumber ? ` (הזמנה ${quoteNumber})` : '';
   return `יש לי כמה מועדים פנויים לפגישת האפיון שלנו${orderRef}:\n${lines.join('\n')}\nאיזה מועד נוח לך? אפשר פשוט לענות לי כאן 🙂`;
 }

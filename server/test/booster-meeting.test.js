@@ -165,6 +165,15 @@ test("formatSlotOffer returns null when there are no slots so the caller keeps t
   assert.equal(formatSlotOffer(undefined, {}), null);
 });
 
+test('formatSlotOffer never prints "undefined" for a date it cannot name', () => {
+  // getDay() on an unparseable date is NaN, and HEB_DAYS[NaN] is undefined —
+  // which would have gone out to the client as literal "undefined 2026-13-45".
+  const text = formatSlotOffer([{ date: '2026-13-45', from: '10:00', to: '10:30' }], { quoteNumber: 'DZ-1' });
+  assert.ok(text);
+  assert.doesNotMatch(text, /undefined/);
+  assert.match(text, /2026-13-45: 10:00/, 'the slot itself is still offered');
+});
+
 test('formatSlotOffer never prints a price or a ₪ sign', () => {
   const text = formatSlotOffer(SLOTS, { quoteNumber: 'DZ-2026-1042' });
   assert.doesNotMatch(text, /₪/, 'the bot never prints prices of its own');

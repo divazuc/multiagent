@@ -36,6 +36,10 @@ export async function runModuleActionStep({
   if (!action) return { text: finalResponse, moduleText: null, blocked: false, booking: null };
 
   const sessionCtx = { session_id };
+  // KNOWN INEFFICIENCY (accepted for v1, noted in review): the gate and
+  // executeModuleAction each run their own getEnabledModules query, so an
+  // allowed action costs two identical reads. Harmless at this volume; the fix
+  // is to thread the loaded rows through rather than to cache them.
   const gate = await gateCalendarBooking({ business, action, sessionCtx });
   if (!gate.allow) {
     const replyText = await handleBlockedBooking({ business, session_id, question, history, persona });
