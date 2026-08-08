@@ -13,6 +13,7 @@ import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import { buildModulesContext } from './lib/modules/engine.js';
 import { runModuleActionStep } from './lib/module-action-step.js';
 import { warnOnIncompleteBoosterEnv } from './lib/booster-client.js';
+import { extractReferral, recordCtwaReferral } from './lib/ctwa.js';
 import { runFollowUpsAndNudges } from './lib/followup-orchestrator.js';
 import { healthPayload } from './lib/health.js';
 import dataRouter from './routes/data.js';
@@ -299,6 +300,23 @@ async function runAgentPipeline(body) {
           { id: business_id, name: context.business_profile?.business_name ?? '' },
           { session_id }); // who is talking — status-aware modules (booster) need it
       } catch (e) { console.error('[modules] context failed:', e.message); }
+
+      // Step 2d — Meta Click-to-WhatsApp attribution (funnel entry).
+      // The ad identity rides on the FIRST inbound message only; the lead is
+      // created many turns later, so it is persisted now and read back at
+      // create_quote_lead time (lib/ctwa.js). extractReferral is pure and
+      // returns null for ordinary messages, so the ~99% path never reaches the
+      // database. Fire-and-forget: attribution is reporting, and a reply must
+      // never wait on it — nor fail because of it.
+      //
+      // KNOWN ACCEPTED GAP: the `kind === 'unsupported'` early-return above
+      // never reaches this line, so a conversation opened by an ad click whose
+      // first message is an image/sticker loses its referral. Rare (CTWA opens
+      // with a prefilled text message) and deliberately not built for.
+      const referral = extractReferral(body);
+      if (referral) {
+        recordCtwaReferral({ businessId: business_id, phone: session_id, referral }).catch(() => {});
+      }
     }
 
     // Step 3 — Route by session mode
