@@ -2,13 +2,30 @@
 // booster's outbox (see divaz_booster lib/express/freeze.ts + leads.ts).
 const nis = (n) => `₪${Math.round(Number(n) || 0).toLocaleString('he-IL')}`;
 
+// v3 (meeting-before-payment): the bot now schedules the characterization
+// meeting itself, in-conversation — `meeting_link` is only a fallback for
+// channels without the bot (email / the quote screen). So when the payload
+// carries no link, the copy invites the client to schedule right here in the
+// chat instead of pointing at a URL. See docs/booster-meeting-scheduling-handoff.md.
+const hasMeetingLink = (payload) =>
+  typeof payload.meeting_link === 'string' && payload.meeting_link.trim() !== '';
+
+const nextStepLine = (payload) =>
+  hasMeetingLink(payload)
+    ? `השלב הבא — פגישת אפיון קצרה איתי. אפשר לקבוע כאן: ${payload.meeting_link}`
+    : `השלב הבא — פגישת אפיון קצרה איתי. בואו נתאם כאן בהודעות 🙂`;
+
 export function boosterMessageFor(event, payload = {}, lead = {}) {
   const first = (lead.name ?? '').trim().split(/\s+/)[0] || '';
   switch (event) {
     case 'send_personal_link':
       return `היי ${first} 👋\nהכנתי לך קישור אישי לבניית הצעת המחיר שלך:\n${payload.link_url}\n\nהקישור אישי אלייך ותקף ל-${payload.valid_days ?? 14} ימים. אפשר לשחק עם התוספות ולראות מחיר מעודכן בכל שלב 🙂`;
     case 'send_signed_summary':
-      return `תודה ${first}! ההצעה ${payload.quote_number} נחתמה 🎉\nסה"כ לתשלום: ${nis(payload.total)} (כולל מע"מ).\nעותק חתום נשלח אלייך במייל.`;
+      return `תודה ${first}! ההצעה ${payload.quote_number} נחתמה 🎉\nסה"כ לתשלום: ${nis(payload.total)} (כולל מע"מ).\nעותק חתום נשלח אלייך במייל.\n\n${nextStepLine(payload)}`;
+    case 'send_meeting_reminder': {
+      const orderRef = payload.quote_number ? ` להזמנה ${payload.quote_number}` : '';
+      return `תזכורת עדינה 🙂 עדיין לא קבענו את פגישת האפיון${orderRef}. ${nextStepLine(payload)}`;
+    }
     case 'send_payment_details':
       return payload.payment_details
         ? `להשלמת התשלום עבור ${payload.quote_number}:\n${payload.payment_details}\n\nאחרי התשלום — שלחו לי כאן צילום מסך של האישור, ונאשר תוך יום עסקים 🙏`

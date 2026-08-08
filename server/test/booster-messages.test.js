@@ -32,6 +32,54 @@ test('send_signed_summary carries the quote number and a formatted total', () =>
   assert.match(msg, /₪500/);
 });
 
+// v3 (meeting-before-payment): the bot schedules the characterization meeting
+// itself, in-conversation — meeting_link is only a fallback for channels
+// without the bot. See docs/booster-meeting-scheduling-handoff.md.
+test('send_signed_summary with a meeting_link invites scheduling via that link', () => {
+  const msg = boosterMessageFor('send_signed_summary',
+    { quote_number: 'Q-1042', total: 500, meeting_link: 'https://cal.divdev.co/dz-1042' }, lead);
+  assert.match(msg, /פגישת אפיון/);
+  assert.match(msg, /https:\/\/cal\.divdev\.co\/dz-1042/);
+});
+
+test('send_signed_summary without a meeting_link invites scheduling in the chat instead of a link', () => {
+  const msg = boosterMessageFor('send_signed_summary', { quote_number: 'Q-1042', total: 500 }, lead);
+  assert.match(msg, /פגישת אפיון/);
+  assert.match(msg, /נתאם כאן/);
+  assert.doesNotMatch(msg, /https?:\/\//, 'no link when the payload has none');
+});
+
+test('send_signed_summary treats an empty-string meeting_link as absent', () => {
+  const msg = boosterMessageFor('send_signed_summary', { quote_number: 'Q-1042', total: 500, meeting_link: '' }, lead);
+  assert.match(msg, /נתאם כאן/);
+});
+
+test('send_meeting_reminder references the order and offers the link when present', () => {
+  const msg = boosterMessageFor('send_meeting_reminder',
+    { quote_number: 'Q-1042', meeting_link: 'https://cal.divdev.co/dz-1042' }, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.match(msg, /Q-1042/);
+  assert.match(msg, /https:\/\/cal\.divdev\.co\/dz-1042/);
+  assert.match(msg, /פגישת/);
+});
+
+test('send_meeting_reminder omits the order reference gracefully when quote_number is null', () => {
+  const msg = boosterMessageFor('send_meeting_reminder', { quote_number: null }, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.match(msg, /נתאם כאן/);
+  assert.doesNotMatch(msg, /null/);
+});
+
+test('send_meeting_reminder never mentions payment', () => {
+  const withLink = boosterMessageFor('send_meeting_reminder',
+    { quote_number: 'Q-1042', meeting_link: 'https://cal.divdev.co/dz-1042' }, lead);
+  const withoutLink = boosterMessageFor('send_meeting_reminder', { quote_number: 'Q-1042' }, lead);
+  for (const msg of [withLink, withoutLink]) {
+    assert.doesNotMatch(msg, /תשלום/, 'meeting reminder must not talk about payment');
+    assert.doesNotMatch(msg, /₪/, 'meeting reminder must not carry a price');
+  }
+});
+
 // C1 fix: the booster now formats app_settings.express_payment_details (a raw JSON
 // string) into Hebrew lines BEFORE it reaches the outbox (lib/express/payment-details.ts)
 // — the bot stays dumb and just interpolates the already-formatted string verbatim. Feed
