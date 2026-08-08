@@ -16,7 +16,18 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
     case 'send_payment_reminder':
       return `תזכורת קטנה 🙂 ההצעה ${payload.quote_number} (${nis(payload.total)}) ממתינה להשלמת תשלום. אם כבר שילמתם — שלחו לי צילום של האישור ואקדם את הפרויקט.`;
     case 'send_expiry_notice':
-      return `הקישור להצעת המחיר שלך פג תוקף ⏳ אם עדיין רלוונטי — כתבו לי כאן ונשמח לחדש אותו.`;
+      // booster's app/api/express/expiry route enqueues this with reason
+      // 'unsigned_14d' | 'unsigned_30d' | 'materials_30d' (see divaz_booster
+      // lib/express/leads.ts + app/api/express/expiry/route.ts). materials_30d means
+      // the client DID pay and send some materials, but the 30-day window to finish
+      // closed — that is not "your link expired," it's "we closed the order and kept
+      // your payment as a credit," so it needs its own text. Any other reason (both
+      // unsigned_ variants, or a payload with no reason at all) is a plain link-expired
+      // notice — matched with a catch-all `else` rather than an explicit list, so a new
+      // graduated cutoff (e.g. a future unsigned_60d) never falls through unhandled.
+      return payload.reason === 'materials_30d'
+        ? `חלון 30 הימים להעברת החומרים חלף, ולכן ההזמנה נסגרה — התשלום ששולם נזקף כקרדיט לשנה מהיום 💳\nרוצים לחדש ולהמשיך? רק תכתבו לי כאן ונסדר את זה יחד 🙂`
+        : `הקישור להצעת המחיר שלך פג תוקף ⏳ אם עדיין רלוונטי — כתבו לי כאן ונשמח לחדש אותו.`;
     default:
       return null; // unknown event → acked and skipped, never retried forever
   }

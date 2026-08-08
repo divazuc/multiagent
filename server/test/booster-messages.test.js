@@ -32,12 +32,20 @@ test('send_signed_summary carries the quote number and a formatted total', () =>
   assert.match(msg, /₪500/);
 });
 
-test('send_payment_details carries the quote number and the raw payment details when provided', () => {
+// C1 fix: the booster now formats app_settings.express_payment_details (a raw JSON
+// string) into Hebrew lines BEFORE it reaches the outbox (lib/express/payment-details.ts)
+// — the bot stays dumb and just interpolates the already-formatted string verbatim. Feed
+// the actual multi-line shape the booster now sends, and assert no raw JSON leaks through.
+test('send_payment_details carries the quote number and the formatted (multi-line) payment details when provided', () => {
+  const formatted = 'העברה בנקאית: בנק פועלים · סניף 123 · ח-ן 456\nביט: 050-1234567\nפייבוקס: paybox.co.il/pwtest';
   const msg = boosterMessageFor('send_payment_details',
-    { quote_number: 'Q-1042', payment_details: 'ביט: 050-0000000' }, lead);
+    { quote_number: 'Q-1042', payment_details: formatted }, lead);
   assert.ok(msg && msg.length > 0);
   assert.match(msg, /Q-1042/);
-  assert.match(msg, /ביט: 050-0000000/);
+  assert.match(msg, /העברה בנקאית: בנק פועלים · סניף 123 · ח-ן 456/);
+  assert.match(msg, /ביט: 050-1234567/);
+  assert.match(msg, /פייבוקס: paybox\.co\.il\/pwtest/);
+  assert.doesNotMatch(msg, /[{}]/, 'must never leak raw JSON braces into the WhatsApp message');
 });
 
 test('send_payment_details falls back to the total when payment_details is missing', () => {
@@ -58,6 +66,29 @@ test('send_expiry_notice returns a non-empty Hebrew string even with no payload 
   const msg = boosterMessageFor('send_expiry_notice', {}, lead);
   assert.ok(msg && msg.length > 0);
   assert.match(msg, /[֐-׿]/, 'must be Hebrew copy');
+});
+
+// I1: the same event carries very different facts depending on `reason` — a client
+// who never signed vs. one who paid, sent some materials, then went dark past the
+// 30-day window (whose payment converts to a one-year credit rather than a refund,
+// per the super-contract's clause 26). Sending the generic "your link expired" text
+// to the second group would be actively wrong (they don't need a new link, they need
+// to know what happened to money they already paid).
+test('send_expiry_notice: unsigned_14d reason returns the generic link-expired text', () => {
+  const msg = boosterMessageFor('send_expiry_notice', { reason: 'unsigned_14d' }, lead);
+  assert.match(msg, /פג תוקף/);
+});
+
+test('send_expiry_notice: unsigned_30d reason (questionnaire-track cutoff) also returns the link-expired text', () => {
+  const msg = boosterMessageFor('send_expiry_notice', { reason: 'unsigned_30d' }, lead);
+  assert.match(msg, /פג תוקף/);
+});
+
+test('send_expiry_notice: materials_30d reason acknowledges the closed order + one-year credit and invites renewal', () => {
+  const msg = boosterMessageFor('send_expiry_notice', { reason: 'materials_30d' }, lead);
+  assert.match(msg, /קרדיט/);
+  assert.match(msg, /שנה/);
+  assert.doesNotMatch(msg, /פג תוקף/, 'must not reuse the generic expired-link text for a paying client');
 });
 
 test('an unknown event returns null so the caller acks and skips rather than retries forever', () => {
