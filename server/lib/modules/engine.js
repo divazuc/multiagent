@@ -67,27 +67,37 @@ export async function buildModulesContext(business, sessionCtx) {
   return blocks.length ? blocks.join('\n\n') : null;
 }
 
+// A handler may return, alongside its text, a STRUCTURED `result` describing
+// what actually happened (e.g. calendar.book's {ok, tentative}). The decision
+// layer gates on that rather than on the reply copy, so a module is free to
+// reword itself without silently changing pipeline behaviour. `result` is null
+// whenever the action did not run or made no claim — never a guess.
+const noOutcome = () => ({ text: null, result: null });
+
 export async function executeModuleAction(business, action, sessionCtx) {
-  if (!action) return { text: null };
+  if (!action) return noOutcome();
   const { module: moduleKey, name, payload } = action;
   const def = MODULES[moduleKey];
   const actionDef = def?.actions?.[name];
   try {
     const rows = await getEnabledModules(business.id);
     const row = rows.find(r => r.module_key === moduleKey);
-    if (!def || !actionDef || !row) return { text: null };
+    if (!def || !actionDef || !row) return noOutcome();
 
     const parsed = actionDef.schema.safeParse(payload);
     if (!parsed.success) {
       logModuleEvent(business.id, moduleKey, `action.${name}_failed`, { reason: 'invalid_payload', issues: parsed.error.issues });
-      return { text: null };
+      return noOutcome();
     }
-    const result = await actionDef.handler(business, row, parsed.data, sessionCtx);
-    logModuleEvent(business.id, moduleKey, `action.${name}`, { payload: parsed.data, ok: !result?.failureText });
-    return { text: result?.confirmationText ?? result?.failureText ?? null };
+    const out = await actionDef.handler(business, row, parsed.data, sessionCtx);
+    logModuleEvent(business.id, moduleKey, `action.${name}`, { payload: parsed.data, ok: !out?.failureText });
+    return {
+      text: out?.confirmationText ?? out?.failureText ?? null,
+      result: out?.result ?? null,
+    };
   } catch (e) {
     logModuleEvent(business.id, moduleKey, `action.${name}_failed`, { reason: 'handler_error', error: e.message });
     if (e.code === 'TOKEN_ERROR') markModuleError(business.id, moduleKey, e.message);
-    return { text: null };
+    return noOutcome();
   }
 }

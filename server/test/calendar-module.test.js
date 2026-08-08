@@ -107,6 +107,54 @@ test('event_title_override still gets the tentative prefix under owner_confirmed
     'owner-confirmed mode must still mark the event as pending, override or not');
 });
 
+// The reply pipeline used to infer "booked" from this module's Hebrew copy
+// (!includes('נתפס') && !includes('לא זמין')), so any new failure string here
+// would silently have become a booking upstream. Every path now reports a
+// structured result too — and the text stays byte-for-byte what it was.
+test('book reports a structured result on every path, with its existing text unchanged', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev5', htmlLink: '' }; },
+  });
+  created.length = 0;
+  const auto = row();
+  const slots = await calendar._computeCurrentSlots(auto);
+
+  const ok = await calendar.actions.book.handler(BIZ, auto, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
+  assert.deepEqual(ok.result, { ok: true, tentative: false });
+  assert.ok(ok.confirmationText.includes('נקבעה'), 'existing autonomous copy is unchanged');
+
+  const gone = await calendar.actions.book.handler(BIZ, auto, { slot: '2030-01-01T03:00', name: 'דנה' }, {});
+  assert.deepEqual(gone.result, { ok: false });
+  assert.ok(gone.failureText.includes('לא זמין'));
+});
+
+test('book under owner_confirmed reports tentative:true — a request, not a booking', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev6', htmlLink: '' }; },
+  });
+  created.length = 0;
+  const pending = row({ mode: 'owner_confirmed' });
+  const slots = await calendar._computeCurrentSlots(pending);
+  const r = await calendar.actions.book.handler(BIZ, pending, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
+  assert.deepEqual(r.result, { ok: true, tentative: true },
+    'the DEFAULT mode returns a pending request — a caller must be able to tell it from a confirmed meeting');
+  assert.ok(r.confirmationText.includes('נאשר לך סופית'), 'existing owner-confirmed copy is unchanged');
+});
+
+test('book reports ok:false when the slot is taken in the race re-check', async () => {
+  _setProviderForTest({
+    freeBusy: async (_s, from, to) => (new Date(to) - new Date(from) <= 3600000) ? [{ start: from, end: to }] : [],
+    createEvent: async () => { throw new Error('must not be called'); },
+  });
+  const auto = row();
+  const slots = await calendar._computeCurrentSlots(auto);
+  const r = await calendar.actions.book.handler(BIZ, auto, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
+  assert.deepEqual(r.result, { ok: false });
+  assert.ok(r.failureText.includes('נתפס'));
+});
+
 test('owner_confirmed creates tentative title and notifies softly', async () => {
   _setProviderForTest({
     freeBusy: async () => [],

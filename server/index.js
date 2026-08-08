@@ -10,8 +10,8 @@ import { sendWhatsAppMessage, sendWhatsAppTemplate } from './lib/wa-send.js';
 import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedFallback } from './lib/wa-webhook.js';
 import { handlePaymentProofImage } from './lib/payment-proof.js';
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
-import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
-import { gateCalendarBooking, handleBlockedBooking, recordMeetingBooked } from './lib/booster-meeting.js';
+import { buildModulesContext } from './lib/modules/engine.js';
+import { runModuleActionStep } from './lib/module-action-step.js';
 import { warnOnIncompleteBoosterEnv } from './lib/booster-client.js';
 import { runFollowUpsAndNudges } from './lib/followup-orchestrator.js';
 import { healthPayload } from './lib/health.js';
@@ -344,38 +344,23 @@ async function runAgentPipeline(body) {
     // the characterization-meeting title through sessionCtx and, on success,
     // is noted as meeting_booked (blocks a second one — F7 — and suppresses
     // the booster's 3-day reminder — F2).
-    let moduleText = null;
-    let responseOverride = null;
+    let moduleStep = { text: final_response, moduleText: null, blocked: false, booking: null };
     if (session_mode === 'live' && business_id && r?.module_action) {
       h = stepStart(run, 'module_action', { action: r.module_action });
-      const moduleBiz = { id: business_id, name: context.business_profile?.business_name ?? '' };
-      const sessionCtx = { session_id };
-      const gate = await gateCalendarBooking({ business: moduleBiz, action: r.module_action, sessionCtx });
-      if (!gate.allow) {
-        responseOverride = await handleBlockedBooking({
-          business: moduleBiz, session_id, question: message,
-          history: context.conversation_history, persona: context.persona,
-        });
-        await stepDone(h, { blocked: true, text: responseOverride });
-      } else {
-        if (gate.eventTitleOverride) sessionCtx.event_title_override = gate.eventTitleOverride;
-        const exec = await executeModuleAction(moduleBiz, r.module_action, sessionCtx);
-        moduleText = exec.text;
-        const bookingSucceeded = r.module_action.module === 'calendar' && moduleText
-          && !moduleText.includes('נתפס') && !moduleText.includes('לא זמין');
-        if (gate.expressLead && bookingSucceeded) {
-          // fire-and-forget: recordMeetingBooked never throws (logs internally)
-          recordMeetingBooked({
-            businessId: business_id, phone: session_id,
-            quoteNumber: gate.expressLead.quoteNumber,
-            slot: r.module_action.payload?.slot ?? null,
-          });
-        }
-        await stepDone(h, { text: moduleText });
-      }
+      moduleStep = await runModuleActionStep({
+        business: { id: business_id, name: context.business_profile?.business_name ?? '' },
+        action: r.module_action,
+        session_id,
+        question: message,
+        history: context.conversation_history,
+        persona: context.persona,
+        finalResponse: final_response,
+      });
+      await stepDone(h, moduleStep.blocked
+        ? { blocked: true, text: moduleStep.text }
+        : { text: moduleStep.moduleText });
     }
-    const outbound_response = responseOverride ??
-      (moduleText ? `${final_response}\n${moduleText}`.trim() : final_response);
+    const outbound_response = moduleStep.text;
 
     // Step 4 — Persist state
     if (session_mode === 'live') {
@@ -402,10 +387,11 @@ async function runAgentPipeline(body) {
         );
       }
 
-      // Non-blocking contact upsert + AI summary
-      const _bookingSucceeded = r?.module_action?.module === 'calendar' && moduleText
-        && !moduleText.includes('נתפס') && !moduleText.includes('לא זמין');
-      const _contactStatus = _bookingSucceeded ? 'meeting_booked'
+      // Non-blocking contact upsert + AI summary. The CRM status comes from
+      // the same structured booking result the notes do — a request still
+      // awaiting Diva's approval is not a booked meeting on her board either.
+      const _confirmedBooking = moduleStep.booking?.ok === true && !moduleStep.booking.tentative;
+      const _contactStatus = _confirmedBooking ? 'meeting_booked'
         : r?.cta_triggered ? 'cta_triggered' : 'in_conversation';
       upsertContact({ business_id, phone: session_id, status: _contactStatus, incrementMessage: true }).catch(() => {});
       generateContactSummary({ business_id, phone: session_id, session_id }).catch(() => {});

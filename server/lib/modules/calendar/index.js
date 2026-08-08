@@ -94,8 +94,12 @@ const calendarModule = {
         const match = slots.find(s => s.date === date && s.from === from);
         const alternatives = (list) => list.slice(0, 2)
           .map(s => `${HEB_DAYS[new Date(`${s.date}T00:00:00`).getDay()]} ${s.date} בשעה ${s.from}`).join(' או ');
+        // Every path also returns a STRUCTURED result. The decision layer used
+        // to infer success from this Hebrew copy, so a new failure string here
+        // would silently have read as "booked" upstream; the text itself is
+        // unchanged for every existing caller.
         if (!match) {
-          return { failureText: slots.length
+          return { result: { ok: false }, failureText: slots.length
             ? `המועד הזה כבר לא זמין 😕 אפשר במקום: ${alternatives(slots)}?`
             : 'המועד הזה כבר לא זמין וכרגע אין מועדים פנויים — נציג יחזור אליך לתיאום.' };
         }
@@ -107,7 +111,7 @@ const calendarModule = {
         const busyNow = await provider(settings).freeBusy(secrets, startUtc.toISOString(), endUtc.toISOString());
         if (busyNow.length) {
           const fresh = slots.filter(s => !(s.date === date && s.from === from));
-          return { failureText: `אוי, המועד הזה בדיוק נתפס 😅 אפשר במקום: ${alternatives(fresh)}?` };
+          return { result: { ok: false }, failureText: `אוי, המועד הזה בדיוק נתפס 😅 אפשר במקום: ${alternatives(fresh)}?` };
         }
 
         // 3. Create the event
@@ -138,7 +142,10 @@ const calendarModule = {
         }
 
         const dayName = HEB_DAYS[new Date(`${date}T00:00:00`).getDay()];
-        return { confirmationText: tentative
+        // tentative:true is a REQUEST awaiting the owner's approval, not a
+        // booking — the copy says so ("נאשר לך סופית בהקדם") and now the
+        // result does too, so a caller cannot mistake one for the other.
+        return { result: { ok: true, tentative }, confirmationText: tentative
           ? `רשמתי בקשה לפגישה ביום ${dayName} ${date} בשעה ${from} — נאשר לך סופית בהקדם 🙏`
           : `הפגישה נקבעה! 🎉 יום ${dayName} ${date} בשעה ${from}. נתראה!` };
       },

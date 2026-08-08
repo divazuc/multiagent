@@ -19,7 +19,7 @@ process.env.MODULE_SECRETS_KEY = crypto.randomBytes(32).toString('base64');
 const meeting = await import('../lib/booster-meeting.js');
 const engine = await import('../lib/modules/engine.js');
 const {
-  recordMeetingInvite, recordMeetingBooked, getLatestMeetingEvent,
+  recordMeetingInvite, recordMeetingBooked, recordMeetingRequested, getLatestMeetingEvent,
   formatSlotOffer, gateCalendarBooking, BLOCKED_REPLY,
   _setDbForTest, _setBoosterClientForTest,
 } = meeting;
@@ -284,6 +284,30 @@ test('gate: with no quote number to compare, the booking is ordered against the 
   db.events.push(note('meeting_booked', '2026-11-02T09:00:00.000Z'));
   const sameOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
   assert.equal(sameOrder.allow, false, 'a booking made AFTER the latest invite is the current order — still blocked');
+});
+
+// Policy for a booking still awaiting Diva's approval (the calendar module's
+// DEFAULT owner_confirmed mode): it holds the order's one meeting slot exactly
+// like a confirmed booking does — a second attempt would put a second pending
+// hold on her calendar — but it does NOT suppress the booster's 3-day
+// reminder (asserted in booster-gate-wiring.test.js), so a request that never
+// gets confirmed still ends with slots being re-offered.
+test('gate: a pending meeting_requested holds the order\'s one meeting, and a new order clears it', async () => {
+  freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1' });
+  await recordMeetingRequested({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
+
+  const second = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(second.allow, false, 'one characterization meeting per order, pending or confirmed');
+  assert.equal(second.replyText, BLOCKED_REPLY);
+
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2' });
+  const nextOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(nextOrder.allow, true, 'a pending request scopes to its own order too');
 });
 
 test('gate: any other status — and a second booking after meeting_booked — is blocked with the exact fixed reply', async () => {

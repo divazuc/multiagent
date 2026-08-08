@@ -23,7 +23,8 @@ import fs from 'node:fs';
 import express from 'express';
 
 const meeting = await import('../lib/booster-meeting.js');
-const { handleBlockedBooking, BLOCKED_REPLY, recordMeetingBooked, _setRelayForTest, _setDbForTest } = meeting;
+const { handleBlockedBooking, BLOCKED_REPLY, recordMeetingBooked, recordMeetingRequested,
+  _setRelayForTest, _setDbForTest } = meeting;
 const { default: boosterWebhookRouter, _setSendForTest, _setSlotsFetcherForTest } =
   await import('../routes/booster-webhook.js');
 
@@ -87,25 +88,20 @@ test('handleBlockedBooking returns the fixed reply even when the relay throws �
 
 // ── index.js wiring (source pins — the pipeline boots a full server) ─────────
 
-test('index.js gates calendar bookings before executeModuleAction and swaps in the blocked reply', () => {
+// The step's BEHAVIOUR is asserted for real in module-action-step.test.js
+// (these pins used to be all there was, and `gateIdx < execIdx` would pass
+// even with an inverted condition). What is left here is only the wiring a
+// unit test cannot see: index.js delegates to the step, and sends the composed
+// reply exactly once.
+test('index.js delegates the module action to the tested step and sends its reply exactly once', () => {
   const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-  const gateIdx = src.indexOf('gateCalendarBooking(');
-  const execIdx = src.indexOf('executeModuleAction(');
-  assert.ok(gateIdx > -1, 'the gate must be called in the pipeline');
-  assert.ok(execIdx > -1);
-  assert.ok(gateIdx < execIdx, 'the gate must run BEFORE the action executes');
-  assert.match(src, /handleBlockedBooking\(/, 'a block relays to Diva and produces the fixed reply');
-  assert.match(src, /responseOverride \?\?/, 'a block replaces the model text entirely, not appended to it');
-  assert.match(src, /event_title_override = gate\.eventTitleOverride/,
-    'the characterization title must reach the calendar module through sessionCtx');
-});
-
-test('index.js records meeting_booked after a successful gated express booking', () => {
-  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-  const execIdx = src.indexOf('executeModuleAction(');
-  const bookedIdx = src.indexOf('recordMeetingBooked(');
-  assert.ok(bookedIdx > execIdx, 'the note is written only AFTER the action succeeded');
-  assert.match(src, /gate\.expressLead/, 'only an express lead booking is noted — regular tenants unaffected');
+  assert.match(src, /runModuleActionStep\(/, 'the pipeline must go through the tested step');
+  assert.doesNotMatch(src, /נתפס|לא זמין/,
+    'the pipeline must not sniff the calendar module\'s Hebrew copy to detect success');
+  assert.match(src, /const outbound_response = moduleStep\.text/,
+    'the step composes the whole reply — a block replaces it rather than being appended to');
+  const sends = src.match(/sendWhatsAppMessage\(\{ to: session_id, text: outbound_response/g) ?? [];
+  assert.equal(sends.length, 1, 'exactly one outbound send per reply, blocked or not');
 });
 
 // ── reminder suppression (F2) ────────────────────────────────────────────────
@@ -125,6 +121,25 @@ test('send_meeting_reminder is suppressed (acked + remembered) when a meeting_bo
 
     const again = await post(server, reminderBody('evt-gate-suppress-1'));
     assert.deepEqual(again.json, { ok: true, deduped: true }, 'a suppressed event is remembered, never retried forever');
+  } finally {
+    server.close();
+  }
+});
+
+test('a PENDING meeting_requested does not suppress the reminder — only a confirmed meeting does', async () => {
+  const server = await startServer();
+  _setDbForTest({ events: [] });
+  _setSlotsFetcherForTest(async () => []);
+  const sent = [];
+  _setSendForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.OK' }] }; });
+  // owner_confirmed booking: the client was told "נאשר לך סופית בהקדם" and
+  // Diva may yet decline. If that killed the reminder too, a declined request
+  // would leave the client with nothing at all.
+  await recordMeetingRequested({ businessId: 'biz-diva-test', phone: '0520000000', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
+  try {
+    const r = await post(server, reminderBody('evt-gate-pending-1'));
+    assert.deepEqual(r.json, { ok: true });
+    assert.equal(sent.length, 1, 'the reminder is the safety net for a request that never got confirmed');
   } finally {
     server.close();
   }

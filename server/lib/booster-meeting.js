@@ -109,6 +109,18 @@ async function recordMeetingEvent(eventType, { businessId, phone, quoteNumber, s
 export const recordMeetingInvite = (args) => recordMeetingEvent('meeting_invite', args);
 export const recordMeetingBooked = (args) => recordMeetingEvent('meeting_booked', args);
 
+// A booking made under the calendar module's owner_confirmed mode is a
+// REQUEST, not a meeting: the client is told "נאשר לך סופית בהקדם" and Diva
+// may yet decline. Recorded under its own type so the two policies can differ:
+//   · the GATE treats it like a booking — one characterization meeting per
+//     order means one hold on Diva's calendar, pending or not. A client who
+//     tries again reaches the block path, which pings Diva through the relay,
+//     so a declined request ends with a human rather than with silence.
+//   · the booster's 3-day REMINDER is NOT suppressed by it — only a confirmed
+//     meeting_booked does that. If the request never becomes a meeting, the
+//     reminder is the safety net that re-offers slots.
+export const recordMeetingRequested = (args) => recordMeetingEvent('meeting_requested', args);
+
 // Latest row per (type, phone), or null — including on ANY failure. Both
 // callers want exactly that: the webhook's reminder suppression sends the
 // reminder when it cannot know (fail-open), and the gate treats "can't read
@@ -245,11 +257,15 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
     // The invite note IS the current order (a fresh one per order), so it is
     // both the title source and the yardstick a previous booking is measured
     // against — see noteCoversOrder.
-    const [invite, booked] = await Promise.all([
+    const [invite, booked, requested] = await Promise.all([
       getLatestMeetingEvent({ businessId: business.id, type: 'meeting_invite', phone }),
       getLatestMeetingEvent({ businessId: business.id, type: 'meeting_booked', phone }),
+      getLatestMeetingEvent({ businessId: business.id, type: 'meeting_requested', phone }),
     ]);
-    if (!noteCoversOrder(booked, invite)) {
+    // A pending request holds the order's one meeting slot just like a
+    // confirmed one does — see recordMeetingRequested for the full policy.
+    const held = noteCoversOrder(booked, invite) || noteCoversOrder(requested, invite);
+    if (!held) {
       const quoteNumber = invite?.detail?.quote_number ?? null;
       const eventTitleOverride = quoteNumber
         ? `פגישת אפיון — הזמנה ${quoteNumber}`
