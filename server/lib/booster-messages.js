@@ -45,6 +45,49 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
       return payload.reason === 'materials_30d'
         ? `חלון 30 הימים להעברת החומרים חלף, ולכן ההזמנה נסגרה — התשלום ששולם נזקף כקרדיט לשנה מהיום 💳\nרוצים לחדש ולהמשיך? רק תכתבו לי כאן ונסדר את זה יחד 🙂`
         : `הקישור להצעת המחיר שלך פג תוקף ⏳ אם עדיין רלוונטי — כתבו לי כאן ונשמח לחדש אותו.`;
+    // ── Materials stage (funnel track 1, T8) ─────────────────────────────────
+    // Payload per the booster's meeting-before-payment plan Task 9:
+    // { quote_number, folder_url, materials_doc_url, content_doc_url } — until
+    // the booster ships that, events arrive with only { package_id }, so every
+    // link line is optional and an empty/missing URL is skipped, never printed
+    // blank. No prices, no payment talk: by this stage payment is behind us.
+    case 'send_materials_checklist': {
+      const links = [
+        ['📁 תיקיית החומרים שלך', payload.folder_url],
+        ['📋 מסמך הנחיות החומרים', payload.materials_doc_url],
+        ['📝 מסמך התכנים למילוי', payload.content_doc_url],
+      ].filter(([, url]) => typeof url === 'string' && url.trim() !== '');
+      const orderRef = payload.quote_number ? ` להזמנה ${payload.quote_number}` : '';
+      const linkBlock = links.length
+        ? `\n${links.map(([label, url]) => `${label}: ${url}`).join('\n')}\n`
+        : '\n';
+      return `עוברים לשלב החומרים${orderRef} 🙌 הכנתי לך את כל מה שצריך כדי שנוכל להתחיל:${linkBlock}\nכשסיימת להעלות את הכל — כתבו לי כאן "סיימתי" ואני אעדכן את דיוה 🙂`;
+    }
+    case 'ack_materials':
+      // The client declared completion on the /q screen (the chat path acks
+      // via the bot's own materials_done action instead). Never "אושר" — only
+      // Diva's review approves; the bot announces the review, not its result.
+      return `קיבלתי את העדכון שהחומרים מוכנים 🙏 דיוה תעבור עליהם ותוודא שאפשר להתחיל — נעדכן אותך כאן.`;
+    case 'send_start_date': {
+      // The booster validates start_date as ISO before enqueueing; format it
+      // for Hebrew eyes when it parses, otherwise interpolate VERBATIM — a
+      // booster payload string is never "fixed" on this side.
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(payload.start_date ?? ''));
+      const day = m ? `${m[3]}.${m[2]}.${m[1]}` : String(payload.start_date ?? '').trim();
+      return day
+        ? `יש תאריך 🎉 מתחילים לעבוד על הפרויקט שלך ב-${day}. מתרגשים לצאת לדרך 🙂`
+        : `יש תאריך התחלה לפרויקט 🎉 אעדכן אותך כאן בפרטים ממש בקרוב.`;
+    }
+    case 'notify_live':
+      // Enqueued on the panel's start_production action (work_confirmed →
+      // in_production). No payload facts — so no invented links or dates.
+      return `יצאנו לדרך 🚀 התחלנו לעבוד על הפרויקט שלך — אעדכן אותך כאן בכל שלב חשוב 🙂`;
+    case 'ack_payment_proof':
+      // DELIBERATELY null (plan flag F3): lib/payment-proof.js already sent
+      // the one approved ack ('קיבלתי, בודקת ומעדכנת 🙏') the moment the
+      // screenshot arrived — relaying the booster's ack too would
+      // double-message the client. Null → acked and skipped, never retried.
+      return null;
     default:
       return null; // unknown event → acked and skipped, never retried forever
   }

@@ -139,6 +139,77 @@ test('send_expiry_notice: materials_30d reason acknowledges the closed order + o
   assert.doesNotMatch(msg, /פג תוקף/, 'must not reuse the generic expired-link text for a paying client');
 });
 
+// ── T8 (funnel track 1): the materials-stage templates ───────────────────────
+// Payload shapes verified against the booster repo: send_materials_checklist
+// will carry { quote_number, folder_url, materials_doc_url, content_doc_url }
+// (meeting-before-payment plan Task 9); ack_materials / notify_live carry
+// nothing; send_start_date carries { start_date: 'YYYY-MM-DD' }.
+
+test('send_materials_checklist carries the links and quote number, skipping any empty link line', () => {
+  const msg = boosterMessageFor('send_materials_checklist', {
+    quote_number: 'DZ-2026-1042',
+    folder_url: 'https://drive.google.com/drive/folders/fake123',
+    materials_doc_url: 'https://docs.google.com/document/d/fake-materials',
+    content_doc_url: '', // empty ⇒ the whole line is skipped, not printed blank
+  }, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.match(msg, /DZ-2026-1042/);
+  assert.match(msg, /https:\/\/drive\.google\.com\/drive\/folders\/fake123/);
+  assert.match(msg, /https:\/\/docs\.google\.com\/document\/d\/fake-materials/);
+  assert.doesNotMatch(msg, /תכנים.*:\s*($|\n)/m, 'an empty link must not leave a dangling labelled line');
+  assert.match(msg, /סיימתי/, 'tells the client how to declare completion in chat');
+});
+
+test('send_materials_checklist with no links at all (today\'s payload) still opens the materials stage', () => {
+  const msg = boosterMessageFor('send_materials_checklist', { package_id: 'landing' }, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.match(msg, /[֐-׿]/, 'Hebrew copy');
+  assert.match(msg, /סיימתי/);
+  assert.doesNotMatch(msg, /https?:\/\//, 'no invented links');
+  assert.doesNotMatch(msg, /null|undefined/);
+});
+
+test('ack_materials acknowledges without ever claiming the materials were approved', () => {
+  const msg = boosterMessageFor('ack_materials', {}, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.doesNotMatch(msg, /אושר/, 'only Diva approves — the bot never announces an approval');
+  assert.match(msg, /דיוה/, 'names who actually reviews');
+});
+
+test('send_start_date presents the start date in IL format and passes a non-ISO date through verbatim', () => {
+  const msg = boosterMessageFor('send_start_date', { start_date: '2026-08-20' }, lead);
+  assert.match(msg, /20\.08\.2026/);
+  const odd = boosterMessageFor('send_start_date', { start_date: 'מחר' }, lead);
+  assert.match(odd, /מחר/, 'a booster payload string is interpolated verbatim, never "fixed"');
+});
+
+test('notify_live announces the work has started without inventing details', () => {
+  const msg = boosterMessageFor('notify_live', {}, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.match(msg, /[֐-׿]/);
+  assert.doesNotMatch(msg, /https?:\/\//, 'no payload facts — no invented links');
+});
+
+test('ack_payment_proof deliberately stays null — the bot already acked the screenshot in chat', () => {
+  // payment-proof.js replies 'קיבלתי, בודקת ומעדכנת 🙏' at upload time; a
+  // second ack from the booster's outbox would double-message the client.
+  assert.equal(boosterMessageFor('ack_payment_proof', {}, lead), null);
+});
+
+test('the materials/start/live templates never print a ₪ or talk about payment', () => {
+  const msgs = [
+    boosterMessageFor('send_materials_checklist', { quote_number: 'DZ-1', folder_url: 'https://x/f' }, lead),
+    boosterMessageFor('ack_materials', {}, lead),
+    boosterMessageFor('send_start_date', { start_date: '2026-08-20' }, lead),
+    boosterMessageFor('notify_live', {}, lead),
+  ];
+  for (const msg of msgs) {
+    assert.ok(msg);
+    assert.doesNotMatch(msg, /₪/, 'the bot never prints prices of its own');
+    assert.doesNotMatch(msg, /תשלום/, 'the materials stage never re-opens payment talk');
+  }
+});
+
 test('an unknown event returns null so the caller acks and skips rather than retries forever', () => {
   assert.equal(boosterMessageFor('some_future_event', {}, lead), null);
   assert.equal(boosterMessageFor(undefined, {}, lead), null);
