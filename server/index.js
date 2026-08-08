@@ -240,6 +240,41 @@ async function runAgentPipeline(body) {
     const { session_mode, business_id } = context;
     run.business_id = business_id;
 
+    // Step 2a — Meta Click-to-WhatsApp attribution (funnel entry).
+    //
+    // The ad identity rides on the FIRST inbound message of the conversation
+    // and never again, while the lead is created many turns later — so it is
+    // banked here and read back at create_quote_lead time (lib/ctwa.js).
+    //
+    // THIS SITS ABOVE THE STEP 2b GATES ON PURPOSE — do not "tidy" it down
+    // next to the other module work. Every one of those pre-checks returns
+    // straight out of the pipeline, and they fire exactly when ad traffic
+    // does: answer_after_hours kills evening and night clicks, which is when
+    // people actually tap ads. Capturing is pure data preservation with no
+    // customer-visible effect, so it must happen whether or not the bot goes
+    // on to reply. A referral we banked but didn't answer is recoverable; one
+    // we never wrote is gone forever.
+    //
+    // The earliest it CAN sit: business_id and session_id are both resolved
+    // one line above, and module_events.business_id is NOT NULL.
+    // extractReferral is pure and returns null for ordinary messages, so the
+    // ~99% path never reaches the database. Fire-and-forget: a reply must
+    // never wait on an attribution write, nor fail because of one.
+    //
+    // KNOWN ACCEPTED GAP: only the /wa-inbound paths that reach this pipeline
+    // are covered. The `kind === 'unsupported'` early return above (image,
+    // sticker, audio, ...) never gets here, so a conversation whose very first
+    // message is non-text loses its referral. CTWA opens with a prefilled text
+    // message, so this is rare, and it is deliberately not built for. The
+    // relay contact-intercept return is not a gap — a listed business contact
+    // is never an ad click.
+    if (session_mode === 'live' && business_id) {
+      const referral = extractReferral(body);
+      if (referral) {
+        recordCtwaReferral({ businessId: business_id, phone: session_id, referral }).catch(() => {});
+      }
+    }
+
     // Step 2b — Agent activation pre-checks (live mode only)
     if (session_mode === 'live' && business_id) {
       const { supabase } = await import('./lib/supabase.js');
@@ -300,23 +335,6 @@ async function runAgentPipeline(body) {
           { id: business_id, name: context.business_profile?.business_name ?? '' },
           { session_id }); // who is talking — status-aware modules (booster) need it
       } catch (e) { console.error('[modules] context failed:', e.message); }
-
-      // Step 2d — Meta Click-to-WhatsApp attribution (funnel entry).
-      // The ad identity rides on the FIRST inbound message only; the lead is
-      // created many turns later, so it is persisted now and read back at
-      // create_quote_lead time (lib/ctwa.js). extractReferral is pure and
-      // returns null for ordinary messages, so the ~99% path never reaches the
-      // database. Fire-and-forget: attribution is reporting, and a reply must
-      // never wait on it — nor fail because of it.
-      //
-      // KNOWN ACCEPTED GAP: the `kind === 'unsupported'` early-return above
-      // never reaches this line, so a conversation opened by an ad click whose
-      // first message is an image/sticker loses its referral. Rare (CTWA opens
-      // with a prefilled text message) and deliberately not built for.
-      const referral = extractReferral(body);
-      if (referral) {
-        recordCtwaReferral({ businessId: business_id, phone: session_id, referral }).catch(() => {});
-      }
     }
 
     // Step 3 — Route by session mode

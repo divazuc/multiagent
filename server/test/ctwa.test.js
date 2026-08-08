@@ -250,19 +250,49 @@ test('toBoosterAttribution nulls the fields a partial referral does not carry, a
 // Same technique as booster-gate-wiring.test.js: index.js cannot be imported
 // in a unit test, so the wiring that a unit test cannot see is pinned here.
 
-test('index.js captures the CTWA referral after the modules-context step, fire-and-forget', () => {
+// WHERE the hook sits is the whole point, so it is pinned against BEHAVIOUR
+// (the activation gates' own skip reasons) rather than against a comment.
+//
+// Each Step 2b pre-check `return`s straight out of the pipeline. Banking the
+// referral below them would destroy attribution for exactly the clicks most
+// likely to happen — ad traffic skews to evenings and nights, which is when
+// answer_after_hours fires — and it would do it silently. A referral we banked
+// but chose not to reply to is recoverable; one we never wrote is gone forever.
+// Capturing is pure data preservation with no customer-visible effect, so it
+// belongs above every decision about WHETHER to answer.
+test('index.js banks the CTWA referral ABOVE every activation gate — an after-hours ad click is still attributed', () => {
   const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   assert.match(src, /extractReferral/, 'the pure extractor gates the DB write');
   assert.match(src, /recordCtwaReferral\(/, 'the capture goes through the tested recorder');
 
-  const modulesIdx = src.indexOf('buildModulesContext(');
   const ctwaIdx = src.indexOf('recordCtwaReferral(');
-  assert.ok(modulesIdx > 0 && ctwaIdx > modulesIdx,
-    'the hook sits after the modules-context step — the first point where business_id and session_id are both resolved');
+  assert.ok(ctwaIdx > 0);
+  // Matched on `skipped: '<reason>'` — the literal each gate hands completeRun
+  // — rather than the bare reason, which also occurs in the prose explaining
+  // why the hook sits where it does.
+  for (const gate of ['agent_inactive', 'after_hours', 'known_contact', 'business_initiated']) {
+    const gateIdx = src.indexOf(`skipped: '${gate}'`);
+    assert.ok(gateIdx > 0 && ctwaIdx < gateIdx,
+      `the referral must be banked before the ${gate} gate can return out of the pipeline`);
+  }
+  assert.ok(ctwaIdx < src.indexOf('buildModulesContext('),
+    'and therefore also above the modules-context step');
+});
+
+test('index.js still guards the capture on live mode + a business id, and never awaits it', () => {
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  const ctwaIdx = src.indexOf('recordCtwaReferral(');
+  const block = src.slice(Math.max(0, ctwaIdx - 1200), ctwaIdx + 400);
+
+  assert.match(block, /session_mode === 'live' && business_id/,
+    'module_events.business_id is NOT NULL — the capture stays gated on a resolved business id');
+  assert.match(block, /extractReferral\(body\)/,
+    'the pure extractor still short-circuits ordinary messages before any DB call');
 
   // Fire-and-forget: the capture must never be awaited into the reply path,
   // and must never leave an unhandled rejection behind.
-  const call = src.slice(ctwaIdx, ctwaIdx + 400);
-  assert.doesNotMatch(call, /await\s+recordCtwaReferral/, 'the reply must never wait on an attribution write');
-  assert.match(src.slice(ctwaIdx - 200, ctwaIdx + 400), /\.catch\(/, 'fire-and-forget still has to swallow its own rejection');
+  assert.doesNotMatch(src.slice(ctwaIdx - 20, ctwaIdx + 400), /await\s+recordCtwaReferral/,
+    'the reply must never wait on an attribution write');
+  assert.match(src.slice(ctwaIdx, ctwaIdx + 400), /\.catch\(/,
+    'fire-and-forget still has to swallow its own rejection');
 });
