@@ -233,7 +233,7 @@ test('a non-meeting event never touches the slot fetcher and records nothing', a
   _setSendForTest(async () => ({ messages: [{ id: 'wamid.OK' }] }));
   _setSlotsFetcherForTest(async () => { fetches++; return SLOTS; });
   try {
-    await post(server, body('evt-mtg-other-1', 'send_personal_link', { link_url: 'https://x/y', valid_days: 14 }));
+    await post(server, body('evt-mtg-other-1', 'send_personal_link', { link_url: 'https://x/y', valid_days: 30 }));
     assert.equal(fetches, 0);
     assert.equal(db.events.length, 0);
   } finally {

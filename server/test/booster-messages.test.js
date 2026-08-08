@@ -13,16 +13,21 @@ const lead = { name: 'דנה כהן', phone: '0521234567' };
 
 test('send_personal_link carries the link url and greets the lead by first name', () => {
   const msg = boosterMessageFor('send_personal_link',
-    { link_url: 'https://booster.divdev.co/e/abc123', valid_days: 14 }, lead);
+    { link_url: 'https://booster.divdev.co/e/abc123', valid_days: 30 }, lead);
   assert.ok(msg && msg.length > 0);
   assert.match(msg, /https:\/\/booster\.divdev\.co\/e\/abc123/);
+  assert.match(msg, /30/, 'the payload\'s own window is what the client is told');
   assert.match(msg, /דנה/, 'greets by first name, not the full name');
   assert.doesNotMatch(msg, /דנה כהן/, 'must use the first name only');
 });
 
-test('send_personal_link falls back to 14 valid days when the payload omits it', () => {
+// Owner decision: every track's window is 30 days (link validity, the
+// questionnaire cutoff, the materials window). The fallback is what a payload
+// with no valid_days produces, so it must not quietly re-introduce the old 14.
+test('send_personal_link falls back to 30 valid days when the payload omits it — all tracks are 30 days', () => {
   const msg = boosterMessageFor('send_personal_link', { link_url: 'https://x/y' }, lead);
-  assert.match(msg, /14/);
+  assert.match(msg, /30/);
+  assert.doesNotMatch(msg, /14/, 'the old 14-day default is gone, not merely shadowed');
 });
 
 test('send_signed_summary carries the quote number and a formatted total', () => {
@@ -122,14 +127,21 @@ test('send_expiry_notice returns a non-empty Hebrew string even with no payload 
 // per the super-contract's clause 26). Sending the generic "your link expired" text
 // to the second group would be actively wrong (they don't need a new link, they need
 // to know what happened to money they already paid).
-test('send_expiry_notice: unsigned_14d reason returns the generic link-expired text', () => {
-  const msg = boosterMessageFor('send_expiry_notice', { reason: 'unsigned_14d' }, lead);
+test('send_expiry_notice: unsigned_30d reason (the unified 30-day link window) returns the generic link-expired text', () => {
+  const msg = boosterMessageFor('send_expiry_notice', { reason: 'unsigned_30d' }, lead);
   assert.match(msg, /פג תוקף/);
 });
 
-test('send_expiry_notice: unsigned_30d reason (questionnaire-track cutoff) also returns the link-expired text', () => {
-  const msg = boosterMessageFor('send_expiry_notice', { reason: 'unsigned_30d' }, lead);
-  assert.match(msg, /פג תוקף/);
+// The catch-all `else` IS the contract, not a convenience: the list of
+// graduated cutoffs belongs to the booster and changes without this repo (the
+// legacy unsigned_14d, a future unsigned_60d, a payload with no reason at all).
+// Anything that is not materials_30d is a plain expired link and must never
+// fall through unhandled.
+test('send_expiry_notice: any UNRECOGNIZED reason still returns the generic link-expired text', () => {
+  for (const reason of ['unsigned_14d', 'unsigned_60d', 'some_future_cutoff', null, undefined]) {
+    const msg = boosterMessageFor('send_expiry_notice', { reason }, lead);
+    assert.match(msg, /פג תוקף/, `reason=${reason} must not fall through unhandled`);
+  }
 });
 
 test('send_expiry_notice: materials_30d reason acknowledges the closed order + one-year credit and invites renewal', () => {
