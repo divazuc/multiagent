@@ -38,6 +38,32 @@ test('buildModulesContext concatenates provider output', async () => {
   assert.ok(ctx.includes('CTX for עסק'));
 });
 
+// T3 (funnel track 1): a module's context can now depend on WHO is talking
+// (the booster module tailors its block to the lead's funnel status), so the
+// engine passes the session ctx through to every contextProvider. Providers
+// that ignore the third argument are untouched.
+test('buildModulesContext passes the sessionCtx through to each contextProvider', async () => {
+  let seenCtx = null;
+  _setModuleForTest('fake', fakeDef({
+    contextProvider: async (biz, _row, sessionCtx) => { seenCtx = sessionCtx; return `CTX for ${biz.name}`; },
+  }));
+  const ctx = await engine.buildModulesContext(BIZ, { session_id: '972521234567' });
+  assert.ok(ctx.includes('CTX for עסק'));
+  assert.deepEqual(seenCtx, { session_id: '972521234567' });
+  // and a caller that passes nothing still works — providers see undefined
+  seenCtx = 'sentinel';
+  await engine.buildModulesContext(BIZ);
+  assert.equal(seenCtx, undefined);
+  _setModuleForTest('fake', fakeDef());
+});
+
+test('index.js hands the live session ctx to buildModulesContext', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  assert.match(src, /buildModulesContext\([\s\S]{0,120}?\{ session_id \}\)/,
+    'the pipeline must pass { session_id } so status-aware modules know who is talking');
+});
+
 test('executeModuleAction runs a valid action and logs', async () => {
   const r = await engine.executeModuleAction(BIZ, { module: 'fake', name: 'ping', payload: { msg: 'hi' } }, {});
   assert.equal(r.text, 'pong:hi');

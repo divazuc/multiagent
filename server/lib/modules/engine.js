@@ -43,7 +43,11 @@ export function markModuleError(businessId, moduleKey, detail) {
   ).catch(e => console.error('[modules] markError failed:', e.message));
 }
 
-export async function buildModulesContext(business) {
+// sessionCtx ({ session_id }) lets a module tailor its context block to WHO
+// is talking — e.g. the booster module reads the lead's funnel status from
+// the sender's phone. Optional third argument: providers that don't care
+// simply ignore it.
+export async function buildModulesContext(business, sessionCtx) {
   let rows;
   try { rows = await getEnabledModules(business.id); } catch (e) {
     console.error('[modules] load failed:', e.message); return null;
@@ -53,7 +57,7 @@ export async function buildModulesContext(business) {
     const def = MODULES[row.module_key];
     if (!def) continue;
     try {
-      const block = await def.contextProvider(business, row);
+      const block = await def.contextProvider(business, row, sessionCtx);
       if (block) blocks.push(block);
     } catch (e) {
       logModuleEvent(business.id, row.module_key, 'context_error', { error: e.message });

@@ -293,7 +293,9 @@ async function runAgentPipeline(body) {
     // Step 2c — Modules context (live mode only, non-fatal)
     if (session_mode === 'live' && business_id) {
       try {
-        context.modules_context = await buildModulesContext({ id: business_id, name: context.business_profile?.business_name ?? '' });
+        context.modules_context = await buildModulesContext(
+          { id: business_id, name: context.business_profile?.business_name ?? '' },
+          { session_id }); // who is talking — status-aware modules (booster) need it
       } catch (e) { console.error('[modules] context failed:', e.message); }
     }
 
