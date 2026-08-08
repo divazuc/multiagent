@@ -200,3 +200,28 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
   });
   return { allow: false, replyText: BLOCKED_REPLY };
 }
+
+// ── Blocked-booking handling (T7) ────────────────────────────────────────────
+
+// Relay seam — lazy import like conversation.js: lib/relay pulls in modules a
+// unit test must never load.
+let relayRaise = null;
+export function _setRelayForTest(fn) { relayRaise = fn; }
+
+// A blocked booking REPLACES the model's reply with the fixed line and pings
+// Diva through the relay so she can call the client back. The relay is
+// best-effort by design: with WHATSAPP_ESCALATION_TEMPLATE unset (F1, today's
+// production state) raiseEscalation refuses and the client still gets the
+// fixed reply — Diva's ping is her action item, never the client's problem.
+export async function handleBlockedBooking({ business, session_id, question, history = null, persona = {} }) {
+  try {
+    const raise = relayRaise ?? (await import('./relay/index.js')).raiseEscalation;
+    await raise({
+      business, session_id, question,
+      reason: 'express_meeting_guardrail', history, persona,
+    });
+  } catch (e) {
+    console.error('[booster-meeting] block escalation failed — the client still gets the fixed reply:', e.message);
+  }
+  return BLOCKED_REPLY;
+}

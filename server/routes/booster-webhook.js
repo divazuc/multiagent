@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { sendWhatsAppMessage } from '../lib/wa-send.js';
 import { boosterMessageFor, toWaNumber } from '../lib/booster-messages.js';
-import { formatSlotOffer, recordMeetingInvite } from '../lib/booster-meeting.js';
+import { formatSlotOffer, recordMeetingInvite, getLatestMeetingEvent } from '../lib/booster-meeting.js';
 import { getEnabledModules } from '../lib/modules/engine.js';
 import { MODULES } from '../lib/modules/registry.js';
 
@@ -105,6 +105,25 @@ router.post('/booster-webhook', async (req, res) => {
     console.warn('[booster-webhook] skipped event', event, event_id, 'to:', to);
     remember(event_id);
     return res.json({ ok: true, skipped: true }); // ack — a malformed event must not retry forever
+  }
+
+  // F2 mitigation (T7): the booster can't know a meeting was scheduled (no
+  // meeting-scheduled endpoint until v1.1), so its 3-day reminder would nag a
+  // client who already booked in chat. A meeting_booked note suppresses the
+  // reminder here — acked and remembered like any legitimately-skipped event.
+  // getLatestMeetingEvent fails SOFT to null, so an unreadable notes store
+  // sends the reminder (fail-open) rather than silently losing it.
+  if (event === 'send_meeting_reminder') {
+    const booked = await getLatestMeetingEvent({
+      businessId: process.env.DIVAZ_BUSINESS_ID ?? null,
+      type: 'meeting_booked',
+      phone: lead?.phone,
+    });
+    if (booked) {
+      console.log('[booster-webhook] reminder suppressed — meeting already booked', event_id);
+      remember(event_id);
+      return res.json({ ok: true, skipped: true });
+    }
   }
 
   // Meeting events: append the real slot offer to this same message. Best

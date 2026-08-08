@@ -11,6 +11,7 @@ import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedF
 import { handlePaymentProofImage } from './lib/payment-proof.js';
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
+import { gateCalendarBooking, handleBlockedBooking, recordMeetingBooked } from './lib/booster-meeting.js';
 import { runFollowUpsAndNudges } from './lib/followup-orchestrator.js';
 import { healthPayload } from './lib/health.js';
 import dataRouter from './routes/data.js';
@@ -335,18 +336,45 @@ async function runAgentPipeline(body) {
 
     // Execute a module action the model requested (live mode only). The
     // server is the only side-effect executor — the model just asks.
+    //
+    // T7 (funnel track 1): calendar bookings pass the express one-meeting gate
+    // first (lib/booster-meeting.js). A block REPLACES the whole reply with
+    // the fixed line and relays to Diva; an allowed express booking carries
+    // the characterization-meeting title through sessionCtx and, on success,
+    // is noted as meeting_booked (blocks a second one — F7 — and suppresses
+    // the booster's 3-day reminder — F2).
     let moduleText = null;
+    let responseOverride = null;
     if (session_mode === 'live' && business_id && r?.module_action) {
       h = stepStart(run, 'module_action', { action: r.module_action });
-      const exec = await executeModuleAction(
-        { id: business_id, name: context.business_profile?.business_name ?? '' },
-        r.module_action,
-        { session_id },
-      );
-      moduleText = exec.text;
-      await stepDone(h, { text: moduleText });
+      const moduleBiz = { id: business_id, name: context.business_profile?.business_name ?? '' };
+      const sessionCtx = { session_id };
+      const gate = await gateCalendarBooking({ business: moduleBiz, action: r.module_action, sessionCtx });
+      if (!gate.allow) {
+        responseOverride = await handleBlockedBooking({
+          business: moduleBiz, session_id, question: message,
+          history: context.conversation_history, persona: context.persona,
+        });
+        await stepDone(h, { blocked: true, text: responseOverride });
+      } else {
+        if (gate.eventTitleOverride) sessionCtx.event_title_override = gate.eventTitleOverride;
+        const exec = await executeModuleAction(moduleBiz, r.module_action, sessionCtx);
+        moduleText = exec.text;
+        const bookingSucceeded = r.module_action.module === 'calendar' && moduleText
+          && !moduleText.includes('נתפס') && !moduleText.includes('לא זמין');
+        if (gate.expressLead && bookingSucceeded) {
+          // fire-and-forget: recordMeetingBooked never throws (logs internally)
+          recordMeetingBooked({
+            businessId: business_id, phone: session_id,
+            quoteNumber: gate.expressLead.quoteNumber,
+            slot: r.module_action.payload?.slot ?? null,
+          });
+        }
+        await stepDone(h, { text: moduleText });
+      }
     }
-    const outbound_response = moduleText ? `${final_response}\n${moduleText}`.trim() : final_response;
+    const outbound_response = responseOverride ??
+      (moduleText ? `${final_response}\n${moduleText}`.trim() : final_response);
 
     // Step 4 — Persist state
     if (session_mode === 'live') {
