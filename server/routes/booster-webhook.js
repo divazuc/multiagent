@@ -2,6 +2,9 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { sendWhatsAppMessage } from '../lib/wa-send.js';
 import { boosterMessageFor, toWaNumber } from '../lib/booster-messages.js';
+import { formatSlotOffer, recordMeetingInvite } from '../lib/booster-meeting.js';
+import { getEnabledModules } from '../lib/modules/engine.js';
+import { MODULES } from '../lib/modules/registry.js';
 
 const router = express.Router();
 
@@ -46,6 +49,48 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// ── Meeting events (funnel track 1, T2) ──────────────────────────────────────
+// send_signed_summary / send_meeting_reminder now open the in-chat scheduling
+// flow: real free slots from Diva's calendar module ride the SAME message
+// (one send — a second bubble would race the first and read like spam), and a
+// meeting_invite note is recorded so the booking gate can title the event
+// after the order (F5 — by-ref doesn't return the quote number).
+const MEETING_EVENTS = new Set(['send_signed_summary', 'send_meeting_reminder']);
+
+// The slot fetch must not eat the 8s SLA that the send itself needs: 2.5s is
+// generous for a freeBusy round-trip, and on ANY miss (timeout, error, no
+// calendar module, no slots) the event degrades to today's copy — scheduling
+// help is a bonus, delivery is the contract.
+const SLOTS_TIMEOUT_MS = 2500;
+
+async function fetchMeetingSlotsReal() {
+  const businessId = process.env.DIVAZ_BUSINESS_ID;
+  if (!businessId) return null;
+  const rows = await getEnabledModules(businessId);
+  const row = rows.find(r => r.module_key === 'calendar');
+  if (!row) return null;
+  // Same gate as the module's own contextProvider: an unconnected calendar
+  // (except the network-free fake provider) has no slots to offer.
+  if (row.status !== 'connected' && row.settings?.provider !== 'fake') return null;
+  return MODULES.calendar._computeCurrentSlots(row);
+}
+let fetchMeetingSlots = fetchMeetingSlotsReal;
+export const _setSlotsFetcherForTest = (fn) => { fetchMeetingSlots = fn ?? fetchMeetingSlotsReal; };
+
+async function slotOfferFor(payload) {
+  try {
+    const slots = await withTimeout(fetchMeetingSlots(), SLOTS_TIMEOUT_MS);
+    if (slots === TIMED_OUT) {
+      console.error('[booster-webhook] slot fetch timed out — sending the base copy');
+      return null;
+    }
+    return formatSlotOffer(slots, { quoteNumber: payload?.quote_number });
+  } catch (e) {
+    console.error('[booster-webhook] slot fetch failed — sending the base copy:', e.message);
+    return null;
+  }
+}
+
 router.post('/booster-webhook', async (req, res) => {
   if (!bearerOk(req)) {
     return res.status(401).json({ ok: false });
@@ -54,12 +99,20 @@ router.post('/booster-webhook', async (req, res) => {
   if (!event_id || !event) return res.status(400).json({ ok: false, error: 'bad_shape' });
   if (seen.has(event_id)) return res.json({ ok: true, deduped: true });
 
-  const text = boosterMessageFor(event, payload, lead);
+  let text = boosterMessageFor(event, payload, lead);
   const to = toWaNumber(lead?.phone);
   if (!text || !to || to.length < 11) {
     console.warn('[booster-webhook] skipped event', event, event_id, 'to:', to);
     remember(event_id);
     return res.json({ ok: true, skipped: true }); // ack — a malformed event must not retry forever
+  }
+
+  // Meeting events: append the real slot offer to this same message. Best
+  // effort — a null offer (no calendar, no slots, error, timeout) sends the
+  // base copy unchanged.
+  if (MEETING_EVENTS.has(event)) {
+    const offer = await slotOfferFor(payload);
+    if (offer) text = `${text}\n\n${offer}`;
   }
 
   // wa-send.js deliberately never rejects (other call sites rely on that
@@ -89,6 +142,17 @@ router.post('/booster-webhook', async (req, res) => {
     console.error('[booster-webhook] send failed', event_id,
       timedOut ? 'timeout' : JSON.stringify(result ?? null));
     return res.status(502).json({ ok: false }); // booster retries (≤5 attempts) — event_id intentionally NOT remembered
+  }
+
+  // Delivered — for meeting events, note the invite (phone + quote number) in
+  // module_events. Best-effort and non-blocking: the note only feeds the
+  // event-title fallback and the gate; losing one must not fail the delivery.
+  if (MEETING_EVENTS.has(event)) {
+    Promise.resolve(recordMeetingInvite({
+      businessId: process.env.DIVAZ_BUSINESS_ID ?? null,
+      phone: lead?.phone,
+      quoteNumber: payload?.quote_number ?? null,
+    })).catch(() => {}); // recordMeetingInvite already logs its own failures
   }
 
   remember(event_id);
