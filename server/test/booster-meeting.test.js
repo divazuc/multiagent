@@ -1,0 +1,219 @@
+// server/test/booster-meeting.test.js
+//
+// Track 1 (funnel v1) T1 — the meeting layer of the express funnel:
+//   · meeting notes in module_events (meeting_invite / meeting_booked, no
+//     migration — schema verified against wa-studio/docs/sql/2026-07-24-modules.sql)
+//   · formatSlotOffer — the slot text appended to the booster's own WhatsApp
+//     message (send_signed_summary / send_meeting_reminder)
+//   · gateCalendarBooking — the one-characterization-meeting guardrail for
+//     express clients (docs/booster-meeting-scheduling-handoff.md §2-3)
+//
+// Same seam conventions as booster-module.test.js / payment-proof.test.js:
+// stubbed booster client + an in-memory module_events store, never a network
+// call or a real Supabase row.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+process.env.MODULE_SECRETS_KEY = crypto.randomBytes(32).toString('base64');
+
+const meeting = await import('../lib/booster-meeting.js');
+const engine = await import('../lib/modules/engine.js');
+const {
+  recordMeetingInvite, recordMeetingBooked, getLatestMeetingEvent,
+  formatSlotOffer, gateCalendarBooking, BLOCKED_REPLY,
+  _setDbForTest, _setBoosterClientForTest,
+} = meeting;
+
+const BIZ = { id: 'b1', name: 'Diva Ost' };
+
+function freshDb() {
+  const db = { events: [] };
+  _setDbForTest(db);
+  return db;
+}
+
+function stubClient(overrides = {}) {
+  return {
+    lookupBoosterLeadByPhone: async () => { throw new Error('lookupBoosterLeadByPhone not stubbed'); },
+    ...overrides,
+  };
+}
+
+// The gate consults the module engine for "is the booster module enabled here"
+// — seed it the same way booster-module.test.js does.
+function seedEngine({ boosterEnabled = true, businessId = 'b1' } = {}) {
+  const engineEvents = [];
+  engine._setDbForTest({
+    enabledRows: boosterEnabled
+      ? [{ business_id: businessId, module_key: 'booster', enabled: true, settings: {}, secrets: {}, status: 'connected' }]
+      : [],
+    onEvent: (e) => engineEvents.push(e),
+  });
+  return engineEvents;
+}
+
+test.afterEach(() => {
+  _setDbForTest(null);
+  _setBoosterClientForTest(null);
+  engine._setDbForTest(null);
+});
+
+// ── notes in module_events ───────────────────────────────────────────────────
+
+test('recordMeetingInvite writes a booster module_events row carrying phone + quote_number', async () => {
+  const db = freshDb();
+  const ok = await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2026-1042' });
+  assert.equal(ok, true);
+  assert.equal(db.events.length, 1);
+  const row = db.events[0];
+  assert.equal(row.business_id, 'b1');
+  assert.equal(row.module_key, 'booster');
+  assert.equal(row.event_type, 'meeting_invite');
+  assert.equal(row.detail.phone, '0521234567');
+  assert.equal(row.detail.quote_number, 'DZ-2026-1042');
+});
+
+test('recordMeetingBooked writes the slot, and getLatestMeetingEvent returns the NEWEST row per (type, phone)', async () => {
+  freshDb();
+  await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
+  await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2', slot: '2026-08-11T11:00' });
+  // a different phone and a different type must never shadow the read
+  await recordMeetingBooked({ businessId: 'b1', phone: '0509999999', quoteNumber: 'DZ-3', slot: '2026-08-12T12:00' });
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-4' });
+
+  // phone read WhatsApp-style (972…) must still match the stored 05… form
+  const latest = await getLatestMeetingEvent({ businessId: 'b1', type: 'meeting_booked', phone: '972521234567' });
+  assert.equal(latest.detail.slot, '2026-08-11T11:00');
+  assert.equal(latest.detail.quote_number, 'DZ-2');
+});
+
+test('getLatestMeetingEvent fails soft: no match → null, a broken store → null (never throws)', async () => {
+  freshDb();
+  assert.equal(await getLatestMeetingEvent({ businessId: 'b1', type: 'meeting_booked', phone: '0500000001' }), null);
+  // an unparseable phone can never match anything — null, not a throw
+  assert.equal(await getLatestMeetingEvent({ businessId: 'b1', type: 'meeting_booked', phone: 'not-a-phone' }), null);
+  _setDbForTest({ get events() { throw new Error('store down'); } });
+  assert.equal(await getLatestMeetingEvent({ businessId: 'b1', type: 'meeting_booked', phone: '0521234567' }), null);
+});
+
+// ── formatSlotOffer ──────────────────────────────────────────────────────────
+
+const SLOTS = [
+  { date: '2026-08-10', from: '10:00', to: '10:30' },
+  { date: '2026-08-10', from: '10:30', to: '11:00' },
+  { date: '2026-08-11', from: '12:00', to: '12:30' },
+];
+
+test('formatSlotOffer lists real slots grouped by day and carries the quote number verbatim', () => {
+  const text = formatSlotOffer(SLOTS, { quoteNumber: 'DZ-2026-1042' });
+  assert.ok(text && text.length > 0);
+  assert.match(text, /DZ-2026-1042/, 'the quote number is interpolated verbatim');
+  assert.match(text, /2026-08-10.*10:00, 10:30/, 'same-day slots are grouped on one line');
+  assert.match(text, /2026-08-11.*12:00/);
+  assert.match(text, /פגישת האפיון/, 'names the characterization meeting');
+  // a payload with no quote number still produces a usable offer
+  const noQuote = formatSlotOffer(SLOTS, {});
+  assert.ok(noQuote && noQuote.length > 0);
+  assert.doesNotMatch(noQuote, /null|undefined/);
+});
+
+test("formatSlotOffer returns null when there are no slots so the caller keeps today's copy", () => {
+  assert.equal(formatSlotOffer([], { quoteNumber: 'DZ-1' }), null);
+  assert.equal(formatSlotOffer(null, { quoteNumber: 'DZ-1' }), null);
+  assert.equal(formatSlotOffer(undefined, {}), null);
+});
+
+test('formatSlotOffer never prints a price or a ₪ sign', () => {
+  const text = formatSlotOffer(SLOTS, { quoteNumber: 'DZ-2026-1042' });
+  assert.doesNotMatch(text, /₪/, 'the bot never prints prices of its own');
+  assert.doesNotMatch(text, /תשלום/, 'the meeting offer never talks about payment');
+});
+
+// ── gateCalendarBooking ──────────────────────────────────────────────────────
+
+const bookAction = { module: 'calendar', name: 'book', payload: { slot: '2026-08-10T10:00', name: 'דנה' } };
+const SESSION = { session_id: '972521234567' };
+
+test('gate: a non-calendar.book action (and a business without the booster module) passes without any lead lookup', async () => {
+  freshDb();
+  seedEngine();
+  let lookedUp = false;
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => { lookedUp = true; return null; },
+  }));
+
+  const other = await gateCalendarBooking({ business: BIZ, action: { module: 'booster', name: 'resend_quote_link', payload: {} }, sessionCtx: SESSION });
+  assert.deepEqual(other, { allow: true });
+  assert.equal(lookedUp, false, 'non-book actions must never trigger a booster lookup');
+
+  seedEngine({ boosterEnabled: false });
+  const noModule = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.deepEqual(noModule, { allow: true });
+  assert.equal(lookedUp, false, 'a tenant without the booster module keeps its calendar untouched');
+});
+
+test('gate: no booster lead for the sender → allowed untouched (non-express calendar is protected)', async () => {
+  freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({ lookupBoosterLeadByPhone: async () => null }));
+  const r = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(r.allow, true);
+  assert.equal(r.eventTitleOverride, undefined, 'no lead → no title override');
+});
+
+test('gate: lead lookup failure → fail-open allow + log, never a block', async () => {
+  freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => { throw new Error('booster unreachable'); },
+  }));
+  const r = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(r.allow, true, 'a lookup error must never block a real booking (fail-open)');
+  assert.equal(r.eventTitleOverride, undefined);
+});
+
+test('gate: awaiting_meeting lead with no meeting_booked → allowed with the characterization title (quote number, fallback to the lead name)', async () => {
+  freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+
+  // the invite note (recorded when the booster's signed-summary was delivered)
+  // is what carries the quote number — by-ref deliberately doesn't (F5)
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2026-1042' });
+  const withQuote = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(withQuote.allow, true);
+  assert.equal(withQuote.eventTitleOverride, 'פגישת אפיון — הזמנה DZ-2026-1042');
+  assert.equal(withQuote.expressLead.leadId, 'l1');
+  assert.equal(withQuote.expressLead.quoteNumber, 'DZ-2026-1042');
+
+  // no invite note on record → fall back to the lead's name
+  freshDb();
+  const withName = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(withName.allow, true);
+  assert.equal(withName.eventTitleOverride, 'פגישת אפיון — דנה כהן');
+});
+
+test('gate: any other status — and a second booking after meeting_booked — is blocked with the exact fixed reply', async () => {
+  freshDb();
+  const engineEvents = seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'signed' }),
+  }));
+  const wrongStage = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(wrongStage.allow, false);
+  assert.equal(wrongStage.replyText, 'דיוה תחזור אליך בהקדם 🙂');
+  assert.equal(wrongStage.replyText, BLOCKED_REPLY);
+  assert.ok(engineEvents.some(e => e.event_type === 'calendar_book_blocked'),
+    'a block must be visible in module_events');
+
+  // F7: even at awaiting_meeting, a SECOND booking (meeting_booked on record) is blocked
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
+  const second = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(second.allow, false);
+  assert.equal(second.replyText, BLOCKED_REPLY);
+});
