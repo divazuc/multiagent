@@ -74,11 +74,20 @@ export async function createBoosterLead({ name, phone, email, packageId, busines
   return { leadId: data.lead_id, linkUrl: data.link_url, created: data.status === 'created' };
 }
 
+// The booster module's context provider runs this on EVERY inbound message,
+// in front of the model, so it is the one booster call that sits directly in
+// the reply path. Unbounded, a hung booster just stalls the answer — there are
+// no Meta retries to cut it short, because /wa-inbound fast-acks; the client
+// simply waits. Give up quickly instead and let the callers' existing
+// fail-soft paths (static context, fail-open gate) do their job.
+export const LOOKUP_TIMEOUT_MS = 1500;
+
 export async function lookupBoosterLeadByPhone(phone) {
   const normalized = normalizeIlPhone(phone);
   if (!normalized) return null;
   const res = await fetch(`${BASE()}/api/leads/by-ref/${boosterClientRef(normalized)}`, {
     headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, ...cfAccessHeaders() },
+    signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
   });
   if (res.status === 404) return null;
   const data = await res.json().catch(() => ({}));
