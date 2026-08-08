@@ -4,6 +4,15 @@
 // always the same lead (idempotent create + trivial link recovery).
 const BASE = () => (process.env.BOOSTER_BASE_URL ?? 'https://booster.divdev.co').replace(/\/$/, '');
 
+// Production sits behind a Cloudflare Access app that requires service-token
+// headers (booster repo memory: 'divazuc-lead-intake-access'); local dev has
+// no Access in front of it, so the headers are optional there.
+const cfAccessHeaders = () => {
+  const id = process.env.BOOSTER_CF_ACCESS_CLIENT_ID;
+  const secret = process.env.BOOSTER_CF_ACCESS_CLIENT_SECRET;
+  return id && secret ? { 'CF-Access-Client-Id': id, 'CF-Access-Client-Secret': secret } : {};
+};
+
 export function normalizeIlPhone(raw) {
   let d = String(raw ?? '').replace(/\D/g, '');
   if (d.startsWith('972')) d = '0' + d.slice(3);
@@ -17,7 +26,7 @@ export async function createBoosterLead({ name, phone, email, packageId, busines
   if (!normalized) throw new Error(`booster-client: bad phone ${phone}`);
   const res = await fetch(`${BASE()}/api/leads`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.BOOSTER_LEAD_INTAKE_SECRET}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${process.env.BOOSTER_LEAD_INTAKE_SECRET}`, 'Content-Type': 'application/json', ...cfAccessHeaders() },
     body: JSON.stringify({
       client_ref: boosterClientRef(normalized), name, phone: normalized, email,
       package_id: packageId, business_note: businessNote ?? undefined,
@@ -33,7 +42,7 @@ export async function lookupBoosterLeadByPhone(phone) {
   const normalized = normalizeIlPhone(phone);
   if (!normalized) return null;
   const res = await fetch(`${BASE()}/api/leads/by-ref/${boosterClientRef(normalized)}`, {
-    headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}` },
+    headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, ...cfAccessHeaders() },
   });
   if (res.status === 404) return null;
   const data = await res.json().catch(() => ({}));
@@ -50,7 +59,7 @@ export async function lookupBoosterLeadByPhone(phone) {
 export async function forwardPaymentProof({ leadId, imageBase64, mime, caption }) {
   const res = await fetch(`${BASE()}/api/leads/${leadId}/payment-proof`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, 'Content-Type': 'application/json', ...cfAccessHeaders() },
     body: JSON.stringify({ image_base64: imageBase64, mime, ...(caption ? { caption } : {}) }),
   });
   const data = await res.json().catch(() => ({}));
