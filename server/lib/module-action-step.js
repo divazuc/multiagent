@@ -67,6 +67,12 @@ export async function runModuleActionStep({
     if (booking.tentative) recordMeetingRequested(note); else recordMeetingBooked(note);
   }
 
-  const text = moduleText ? `${finalResponse}\n${moduleText}`.trim() : finalResponse;
+  // An action may claim the whole reply instead of being appended to it —
+  // honoured exactly like a gate block. Pinned copy such as the callback line
+  // must not arrive stapled under a model answer that contradicts it
+  // ("בטח, אשריין לך שלישי ב-10" + "דיוה תחזור אליך בהקדם 🙂").
+  const text = moduleText
+    ? (exec.replaceResponse ? moduleText : `${finalResponse}\n${moduleText}`.trim())
+    : finalResponse;
   return { text, moduleText, blocked: false, booking };
 }

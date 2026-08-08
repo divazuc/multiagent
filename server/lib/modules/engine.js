@@ -72,7 +72,11 @@ export async function buildModulesContext(business, sessionCtx) {
 // layer gates on that rather than on the reply copy, so a module is free to
 // reword itself without silently changing pipeline behaviour. `result` is null
 // whenever the action did not run or made no claim — never a guess.
-const noOutcome = () => ({ text: null, result: null });
+//
+// A handler may also set `replaceResponse: true` to say its text IS the whole
+// reply — for pinned copy that a model answer would contradict rather than
+// introduce. The default stays "append to the model's text".
+const noOutcome = () => ({ text: null, result: null, replaceResponse: false });
 
 export async function executeModuleAction(business, action, sessionCtx) {
   if (!action) return noOutcome();
@@ -94,6 +98,7 @@ export async function executeModuleAction(business, action, sessionCtx) {
     return {
       text: out?.confirmationText ?? out?.failureText ?? null,
       result: out?.result ?? null,
+      replaceResponse: out?.replaceResponse === true,
     };
   } catch (e) {
     logModuleEvent(business.id, moduleKey, `action.${name}_failed`, { reason: 'handler_error', error: e.message });

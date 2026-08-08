@@ -140,6 +140,13 @@ test('request_callback raises the relay escalation for the SENDER and replies th
   assert.ok(raised[0].question, 'Diva must see WHAT to do — a callback request');
 });
 
+test('request_callback asks to REPLACE the reply rather than be appended to it', async () => {
+  _setRelayForTest(async () => ({ holdingLine: 'x' }));
+  const r = await booster.actions.request_callback.handler(BIZ, ROW, {}, { session_id: '972501234567' });
+  assert.equal(r.replaceResponse, true,
+    'appending the pinned line under a model answer like "בטח, אשריין לך שלישי ב-10" contradicts it');
+});
+
 test('request_callback still replies the pinned line when the relay fails or is unavailable (F1)', async () => {
   _setRelayForTest(async () => { throw new Error('no escalation template'); });
   const r = await booster.actions.request_callback.handler(BIZ, ROW, {}, { session_id: '972501234567' });

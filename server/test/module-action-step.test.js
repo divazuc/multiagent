@@ -187,6 +187,26 @@ test('a non-calendar action passes the gate untouched and is appended to the mod
   }
 });
 
+test('request_callback REPLACES the reply — the pinned line is sent once, not stapled under a contradicting answer', async () => {
+  const notes = seed();
+  const boosterMod = await import('../lib/modules/booster.js');
+  boosterMod._setRelayForTest(async () => ({ holdingLine: 'x' }));
+  try {
+    const step = await runModuleActionStep({
+      business: BIZ, action: { module: 'booster', name: 'request_callback', payload: {} },
+      session_id: SESSION, finalResponse: MODEL_TEXT,
+    });
+    // The gate replaces; this must too. `${model text}\nדיוה תחזור אליך בהקדם`
+    // reads as a promise immediately contradicted.
+    assert.equal(step.text, 'דיוה תחזור אליך בהקדם 🙂');
+    assert.ok(!step.text.includes('שלישי'), 'the model\'s improvised appointment must not survive');
+    assert.equal((step.text.match(/דיוה תחזור אליך בהקדם/g) ?? []).length, 1, 'the pinned line appears exactly once');
+    assert.equal(notes.events.length, 0);
+  } finally {
+    boosterMod._setRelayForTest(null);
+  }
+});
+
 test('no module action at all leaves the model reply exactly as it was', async () => {
   seed();
   const step = await runModuleActionStep({ business: BIZ, action: null, session_id: SESSION, finalResponse: MODEL_TEXT });

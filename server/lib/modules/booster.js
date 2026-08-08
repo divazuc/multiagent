@@ -179,7 +179,12 @@ const boosterModule = {
         } catch (e) {
           console.error('[booster] callback escalation failed — the client still gets the fixed reply:', e.message);
         }
-        return { confirmationText: CALLBACK_REPLY };
+        // replaceResponse: this line IS the answer. The model's own text is
+        // what triggered the escalation in the first place — often an
+        // improvised "בטח, אשריין לך שלישי ב-10" — so appending the pinned
+        // line under it hands the client a promise and its retraction in one
+        // message. The gate replaces; so does this.
+        return { confirmationText: CALLBACK_REPLY, replaceResponse: true };
       },
     },
 
