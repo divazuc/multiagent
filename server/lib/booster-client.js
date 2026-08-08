@@ -13,6 +13,42 @@ const cfAccessHeaders = () => {
   return id && secret ? { 'CF-Access-Client-Id': id, 'CF-Access-Client-Secret': secret } : {};
 };
 
+// ── Deploy visibility (plan T17) ─────────────────────────────────────────────
+//
+// Every one of these degrades the express funnel SILENTLY when it is missing,
+// which is exactly how a skipped deploy step survives unnoticed:
+//   · BOT_WEBHOOK_SECRET        — the booster's events all bounce off as 401
+//   · BOOSTER_*_SECRET          — lead creation / lookup / materials calls fail
+//   · DIVAZ_BUSINESS_ID         — the quietest of all: module_events.business_id
+//     is NOT NULL, so every meeting note is skipped, the slot-offer append
+//     no-ops, and the reminder-suppression read refuses. Nothing 500s; the
+//     funnel just stops doing half its job.
+// So say it once, loudly, at boot.
+export const REQUIRED_BOOSTER_ENV = [
+  'BOT_WEBHOOK_SECRET',
+  'BOOSTER_LEAD_INTAKE_SECRET',
+  'BOOSTER_BOT_LOOKUP_SECRET',
+  'DIVAZ_BUSINESS_ID',
+];
+
+export function missingBoosterEnv(env = process.env) {
+  const missing = REQUIRED_BOOSTER_ENV.filter(k => !env[k]);
+  // The Cloudflare Access pair is production-only, so absent is fine — but
+  // HALF a pair never is: cfAccessHeaders() drops both and every call 403s.
+  const hasId = !!env.BOOSTER_CF_ACCESS_CLIENT_ID;
+  const hasSecret = !!env.BOOSTER_CF_ACCESS_CLIENT_SECRET;
+  if (hasId !== hasSecret) missing.push(hasId ? 'BOOSTER_CF_ACCESS_CLIENT_SECRET' : 'BOOSTER_CF_ACCESS_CLIENT_ID');
+  return missing;
+}
+
+export function warnOnIncompleteBoosterEnv(env = process.env) {
+  const missing = missingBoosterEnv(env);
+  if (missing.length) {
+    console.warn('[booster] env incomplete — the express funnel is degraded. Missing:', missing.join(', '));
+  }
+  return missing;
+}
+
 export function normalizeIlPhone(raw) {
   let d = String(raw ?? '').replace(/\D/g, '');
   if (d.startsWith('972')) d = '0' + d.slice(3);

@@ -12,6 +12,7 @@ import { handlePaymentProofImage } from './lib/payment-proof.js';
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
 import { gateCalendarBooking, handleBlockedBooking, recordMeetingBooked } from './lib/booster-meeting.js';
+import { warnOnIncompleteBoosterEnv } from './lib/booster-client.js';
 import { runFollowUpsAndNudges } from './lib/followup-orchestrator.js';
 import { healthPayload } from './lib/health.js';
 import dataRouter from './routes/data.js';
@@ -1216,6 +1217,11 @@ app.patch('/admin/business/:id', async (req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+// A missed booster env key degrades the express funnel without failing
+// anything, so make the deploy gap visible at boot rather than leaving it to
+// be inferred from a caught insert error weeks later (plan T17).
+warnOnIncompleteBoosterEnv();
+
 const PORT = process.env.PORT ?? 8080;
 loadAgents().then(() => {
   app.listen(PORT, () => console.log(`[server] listening on :${PORT}`));

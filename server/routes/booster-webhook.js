@@ -73,7 +73,12 @@ const SLOTS_TIMEOUT_MS = 2500;
 
 async function fetchMeetingSlotsReal() {
   const businessId = process.env.DIVAZ_BUSINESS_ID;
-  if (!businessId) return null;
+  if (!businessId) {
+    // Not a silent no-op: without this id the whole slot-append feature is off
+    // on this deploy, and the base copy going out looks entirely normal.
+    console.error('[booster-webhook] slot offer disabled — DIVAZ_BUSINESS_ID is not set');
+    return null;
+  }
   const rows = await getEnabledModules(businessId);
   const row = rows.find(r => r.module_key === 'calendar');
   if (!row) return null;

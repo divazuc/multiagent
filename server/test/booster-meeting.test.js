@@ -96,6 +96,48 @@ test('getLatestMeetingEvent fails soft: no match → null, a broken store → nu
   assert.equal(await getLatestMeetingEvent({ businessId: 'b1', type: 'meeting_booked', phone: '0521234567' }), null);
 });
 
+// module_events.business_id is `uuid not null` (wa-studio/docs/sql/2026-07-24-modules.sql:21),
+// so a business id is a hard precondition on BOTH sides of the notes store:
+// a write without one can only produce a constraint violation, and a read
+// without one would have to drop the tenant filter — matching another
+// tenant's note for the same phone.
+
+test('recordMeetingEvent without a business id skips the insert entirely and names the missing env var', async () => {
+  const db = freshDb();
+  const logs = [];
+  const realError = console.error;
+  console.error = (...a) => logs.push(a.join(' '));
+  try {
+    assert.equal(await recordMeetingInvite({ businessId: null, phone: '0521234567', quoteNumber: 'DZ-1' }), false);
+    assert.equal(await recordMeetingBooked({ phone: '0521234567', quoteNumber: 'DZ-1' }), false);
+  } finally {
+    console.error = realError;
+  }
+  assert.equal(db.events.length, 0, 'a NOT NULL business_id cannot be satisfied — no doomed insert is attempted');
+  assert.equal(logs.length, 2);
+  assert.ok(logs.every(l => l.includes('DIVAZ_BUSINESS_ID')),
+    'the log must name the missed deploy step, not just "could not record"');
+});
+
+test('getLatestMeetingEvent refuses a read with no business id rather than widening it across tenants', async () => {
+  const db = freshDb();
+  await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
+  assert.equal(db.events.length, 1, 'the row itself is stored normally');
+  assert.equal(await getLatestMeetingEvent({ type: 'meeting_booked', phone: '0521234567' }), null,
+    'no business id → no read at all, never a tenant-wide one');
+  assert.equal(await getLatestMeetingEvent({ businessId: null, type: 'meeting_booked', phone: '0521234567' }), null);
+});
+
+test('two tenants, one phone: a read never crosses into the other tenant', async () => {
+  freshDb();
+  await recordMeetingBooked({ businessId: 'tenant-a', phone: '0521234567', quoteNumber: 'DZ-A', slot: '2026-08-10T10:00' });
+  const mine = await getLatestMeetingEvent({ businessId: 'tenant-a', type: 'meeting_booked', phone: '0521234567' });
+  assert.equal(mine.detail.quote_number, 'DZ-A');
+  const theirs = await getLatestMeetingEvent({ businessId: 'tenant-b', type: 'meeting_booked', phone: '0521234567' });
+  assert.equal(theirs, null,
+    "tenant B must not see tenant A's booking — it would suppress a reminder that should have been sent");
+});
+
 // ── formatSlotOffer ──────────────────────────────────────────────────────────
 
 const SLOTS = [

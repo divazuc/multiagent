@@ -3,14 +3,21 @@
 // Three concerns, one seam-friendly module (see the plan's T1 and
 // docs/booster-meeting-scheduling-handoff.md):
 //
-//   1. Meeting NOTES — meeting_invite / meeting_booked rows in module_events
-//      (no migration: the table already exists, schema verified against
-//      wa-studio/docs/sql/2026-07-24-modules.sql — id, business_id,
-//      module_key, event_type, detail jsonb, created_at). detail carries
-//      {phone, quote_number, slot?}; a read means "the latest row per
-//      (type, phone)". The invite note is also the ONLY place the bot knows
-//      a lead's quote number from — the booster's by-ref lookup deliberately
-//      doesn't return it (F5), so the event-title fallback chain lives here.
+//   1. Meeting NOTES — meeting_invite / meeting_booked / meeting_requested
+//      rows in module_events. No migration: the table already exists
+//      (wa-studio/docs/sql/2026-07-24-modules.sql). Note what that schema
+//      actually says, because it is a precondition and not a formality:
+//      `business_id uuid not null`. A business id is therefore REQUIRED on
+//      both sides here — a write without one can only raise a constraint
+//      violation, and a read without one would have to drop the tenant filter
+//      and could then match another tenant's note for the same phone. Both
+//      refuse instead. In production that id is DIVAZ_BUSINESS_ID, which is
+//      checked at boot (lib/booster-client.js#warnOnIncompleteBoosterEnv).
+//      detail carries {phone, quote_number, slot?}; a read means "the latest
+//      row per (type, phone)". The invite note is also the ONLY place the bot
+//      knows a lead's quote number from — the booster's by-ref lookup
+//      deliberately doesn't return it (F5), so the event-title fallback chain
+//      lives here.
 //
 //   2. formatSlotOffer — the Hebrew slot text the booster webhook appends to
 //      its own send_signed_summary / send_meeting_reminder message (one send,
@@ -46,13 +53,14 @@ async function realDb() {
     async latestEvent({ businessId, type, phone }) {
       // created_at exists (NOT NULL DEFAULT now()) — order by it, with id as
       // the tiebreaker for same-timestamp rows.
-      let q = supabase.from('module_events').select('*')
+      // business_id is always filtered — never conditionally. The caller
+      // guarantees it is set (see getLatestMeetingEvent).
+      const { data, error } = await supabase.from('module_events').select('*')
+        .eq('business_id', businessId)
         .eq('module_key', 'booster').eq('event_type', type)
         .eq('detail->>phone', phone)
         .order('created_at', { ascending: false }).order('id', { ascending: false })
         .limit(1);
-      if (businessId) q = q.eq('business_id', businessId);
-      const { data, error } = await q;
       if (error) throw error;
       return data?.[0] ?? null;
     },
@@ -65,13 +73,21 @@ async function realDb() {
 // and WhatsApp's 972XXXXXXXXX (sessionCtx.session_id). Everything is stored
 // and matched in the normalized 05… form so the two always meet.
 async function recordMeetingEvent(eventType, { businessId, phone, quoteNumber, slot }) {
+  // Hard precondition, not a fallback: module_events.business_id is NOT NULL,
+  // so `businessId ?? null` could only ever buy a caught-and-logged constraint
+  // violation on every single insert. Skip the write with a log that names the
+  // missing deploy step instead of pretending to try.
+  if (!businessId) {
+    console.error(`[booster-meeting] not recording ${eventType} — DIVAZ_BUSINESS_ID is not set (booster env incomplete)`);
+    return false;
+  }
   const normalized = normalizeIlPhone(phone);
   if (!normalized) {
     console.error(`[booster-meeting] not recording ${eventType} — unparseable phone:`, phone);
     return false;
   }
   const row = {
-    business_id: businessId ?? null,
+    business_id: businessId,
     module_key: 'booster',
     event_type: eventType,
     detail: { phone: normalized, quote_number: quoteNumber ?? null, ...(slot ? { slot } : {}) },
@@ -94,6 +110,14 @@ export const recordMeetingBooked = (args) => recordMeetingEvent('meeting_booked'
 // reminder when it cannot know (fail-open), and the gate treats "can't read
 // the notes" as "no note" rather than blocking a real client.
 export async function getLatestMeetingEvent({ businessId = null, type, phone }) {
+  // Every stored row belongs to some tenant (business_id is NOT NULL), so a
+  // read without a business id must not simply DROP the filter: it would then
+  // match another tenant's note for the same phone and, for instance,
+  // suppress a reminder that should have been sent. Refuse rather than widen.
+  if (!businessId) {
+    console.error(`[booster-meeting] ${type} read skipped — no business id (a read without one would cross tenants)`);
+    return null;
+  }
   const normalized = normalizeIlPhone(phone);
   if (!normalized) return null;
   try {
@@ -103,9 +127,9 @@ export async function getLatestMeetingEvent({ businessId = null, type, phone }) 
       // in-memory rows stand in, insertion order for created_at.
       if (typeof db.latestEvent === 'function') return await db.latestEvent({ businessId, type, phone: normalized });
       const rows = db.events.filter(r =>
+        r.business_id === businessId &&
         r.module_key === 'booster' && r.event_type === type &&
-        r.detail?.phone === normalized &&
-        (!businessId || r.business_id === businessId));
+        r.detail?.phone === normalized);
       return rows.length ? rows[rows.length - 1] : null;
     }
     return await (await realDb()).latestEvent({ businessId, type, phone: normalized });

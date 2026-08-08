@@ -195,6 +195,37 @@ test('a stalled notes read cannot hold the response open — the reminder still 
   }
 });
 
+// DIVAZ_BUSINESS_ID is the funnel's easiest deploy step to miss — it is not
+// even in .env.local. Without it the slot-offer append no-ops AND every note
+// insert would violate module_events' NOT NULL business_id, so the whole
+// feature must fail visibly and harmlessly: base copy delivered, nothing
+// inserted, the missing key named in the log.
+test('DIVAZ_BUSINESS_ID missing: the slot offer is disabled loudly and no note insert is attempted', async () => {
+  const server = await startServer();
+  const db = freshMeetingDb();
+  const sent = [];
+  const logs = [];
+  const realError = console.error;
+  const realBiz = process.env.DIVAZ_BUSINESS_ID;
+  console.error = (...a) => logs.push(a.join(' '));
+  delete process.env.DIVAZ_BUSINESS_ID;
+  // deliberately NO _setSlotsFetcherForTest — the real fetcher must take the
+  // feature-disabled path rather than reaching the module engine.
+  _setSendForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.OK' }] }; });
+  try {
+    const r = await post(server, body('evt-mtg-nobiz-1', 'send_signed_summary', { quote_number: 'DZ-1', total: 100 }));
+    assert.deepEqual(r.json, { ok: true }, 'delivery is the contract — a missing env var must not lose the message');
+    assert.equal(sent.length, 1);
+    assert.doesNotMatch(sent[0].text, /מועדים פנויים/, 'no slot offer without a business id');
+    assert.equal(db.events.length, 0, 'a NOT NULL business_id cannot be satisfied — no insert is even attempted');
+    assert.ok(logs.some(l => l.includes('DIVAZ_BUSINESS_ID')), 'the missed deploy step must be named in the log');
+  } finally {
+    console.error = realError;
+    if (realBiz) process.env.DIVAZ_BUSINESS_ID = realBiz;
+    server.close();
+  }
+});
+
 test('a non-meeting event never touches the slot fetcher and records nothing', async () => {
   const server = await startServer();
   const db = freshMeetingDb();
