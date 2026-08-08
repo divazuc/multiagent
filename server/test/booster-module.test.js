@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 process.env.MODULE_SECRETS_KEY = crypto.randomBytes(32).toString('base64');
 const booster = (await import('../lib/modules/booster.js')).default;
-const { _setBoosterClientForTest, _setRelayForTest, _clearStatusCacheForTest } =
+const { _setBoosterClientForTest, _setRelayForTest, _clearStatusCacheForTest, _setCtwaLookupForTest } =
   await import('../lib/modules/booster.js');
+const ctwa = await import('../lib/ctwa.js');
 
 const BIZ = { id: 'b1', name: 'Diva Ost' };
 const ROW = { business_id: 'b1', module_key: 'booster', enabled: true, status: 'connected', secrets: {}, settings: {} };
@@ -23,6 +24,8 @@ test.afterEach(() => {
   _setBoosterClientForTest(null);
   _setRelayForTest(null);
   _clearStatusCacheForTest();
+  _setCtwaLookupForTest(null);
+  ctwa._setDbForTest(null);
 });
 
 // ── settingsSchema / contextProvider ─────────────────────────────────────────
@@ -318,6 +321,90 @@ test('create_quote_lead: phone passed to the client is the sender\'s session_id,
   });
   await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, { session_id: '0501234567' });
   assert.equal(capturedPhone, '0501234567');
+});
+
+// ── create_quote_lead: CTWA attribution (the funnel's primary entry) ─────────
+//
+// The Meta ad identity was persisted on message #1 (lib/ctwa.js); lead creation
+// is where it finally gets attached. createBoosterLead already forwards `utm`
+// as `attribution`, so no client change is needed. All ids below are FAKE.
+
+const CTWA_REFERRAL = {
+  source_url: 'https://fb.me/2fakeAdLink',
+  source_id: '120210000000000000',
+  source_type: 'ad',
+  headline: '  אתר תדמית מוכן תוך שבועיים  ',
+  body: 'מיני לנדינג — כל מה שצריך כדי לצאת לדרך',
+  media_type: 'image',
+  ctwa_clid: 'ARAaBbCcDdEeFfGg_fake_clid_0123456789',
+};
+
+const quotePayload = () => booster.actions.create_quote_lead.schema.parse({
+  name: 'דנה כהן', email: 'dana@example.com', package_id: 'landing',
+});
+
+function captureLead() {
+  const captured = {};
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async (args) => {
+      Object.assign(captured, args);
+      return { leadId: 'l1', linkUrl: 'https://booster.divdev.co/flow/tok1', created: true };
+    },
+  }));
+  return captured;
+}
+
+test('create_quote_lead attaches the sender\'s CTWA referral to the lead as attribution', async () => {
+  ctwa._setDbForTest({ events: [] });
+  await ctwa.recordCtwaReferral({ businessId: 'b1', phone: '0501234567', referral: CTWA_REFERRAL });
+  const captured = captureLead();
+
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, quotePayload(), SENDER);
+
+  assert.equal(captured.utm.utm_source, 'meta', 'never a guess between facebook and instagram');
+  assert.equal(captured.utm.utm_medium, 'ad');
+  assert.equal(captured.utm.utm_campaign, null);
+  assert.equal(captured.utm.utm_content, 'אתר תדמית מוכן תוך שבועיים', 'the headline, trimmed');
+  assert.equal(captured.utm.referrer, 'https://fb.me/2fakeAdLink');
+  assert.equal(captured.utm.ad_id, '120210000000000000');
+  assert.equal(captured.utm.ctwa_clid, 'ARAaBbCcDdEeFfGg_fake_clid_0123456789', 'verbatim — the Conversions-API join key');
+  assert.deepEqual(captured.utm.attribution_raw, CTWA_REFERRAL);
+  assert.ok(!('campaign_id' in captured.utm),
+    'campaign_id is matched against campaigns.slug on the booster side — an ad id there mis-credits the lead');
+});
+
+test('create_quote_lead reads the referral written under the WhatsApp 972… id when the lead creates from 05…', async () => {
+  ctwa._setDbForTest({ events: [] });
+  await ctwa.recordCtwaReferral({ businessId: 'b1', phone: '972501234567', referral: CTWA_REFERRAL });
+  const captured = captureLead();
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, quotePayload(), { session_id: '0501234567' });
+  assert.equal(captured.utm.ad_id, '120210000000000000', 'both phone shapes meet in the normalized 05… form');
+});
+
+test('create_quote_lead looks the referral up scoped to the tenant and keyed by the SENDER', async () => {
+  const seen = [];
+  _setCtwaLookupForTest(async (args) => { seen.push(args); return null; });
+  captureLead();
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, quotePayload(), { session_id: '972521234567' });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].businessId, 'b1', 'tenant-scoped — never a global read');
+  assert.equal(seen[0].phone, '972521234567');
+});
+
+test('create_quote_lead sends no attribution at all for a lead with no referral (organic)', async () => {
+  ctwa._setDbForTest({ events: [] });
+  const captured = captureLead();
+  const r = await booster.actions.create_quote_lead.handler(BIZ, ROW, quotePayload(), SENDER);
+  assert.equal(captured.utm, undefined, 'an unattributed lead carries no invented attribution');
+  assert.ok(r.confirmationText.includes('https://booster.divdev.co/flow/tok1'));
+});
+
+test('create_quote_lead still creates the lead when the attribution lookup blows up — losing a tag is a reporting gap, losing a lead is a lost customer', async () => {
+  _setCtwaLookupForTest(async () => { throw new Error('module_events unreachable'); });
+  const captured = captureLead();
+  const r = await booster.actions.create_quote_lead.handler(BIZ, ROW, quotePayload(), SENDER);
+  assert.ok(r.confirmationText.includes('https://booster.divdev.co/flow/tok1'), 'the lead is created regardless');
+  assert.equal(captured.utm, undefined);
 });
 
 // ── resend_quote_link: handler ───────────────────────────────────────────────

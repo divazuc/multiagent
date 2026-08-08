@@ -17,6 +17,7 @@
 // extra-meeting request to the callback escalation instead of the calendar.
 import { z } from 'zod';
 import * as boosterClientReal from '../booster-client.js';
+import { latestCtwaReferral, toBoosterAttribution } from '../ctwa.js';
 
 // Test seam — same convention as booster-webhook.js's _setSendForTest:
 // production always uses the real HTTP client; tests inject a stub so
@@ -32,6 +33,32 @@ export function _setRelayForTest(fn) { relayRaise = fn; }
 async function raiseRelay(args) {
   const raise = relayRaise ?? (await import('../relay/index.js')).raiseEscalation;
   return raise(args);
+}
+
+// CTWA attribution seam — lets a test prove the fail-soft path for real.
+// latestCtwaReferral is documented never to throw; the handler guards anyway,
+// because this call sits in front of lead CREATION and the cost of being wrong
+// is asymmetric (see boosterAttribution).
+let ctwaLookup = null;
+export function _setCtwaLookupForTest(fn) { ctwaLookup = fn; }
+
+// The Meta ad identity was captured on the conversation's FIRST message
+// (lib/ctwa.js) and is read back here, at the only moment it can be attached
+// to anything. Returns undefined — not null, not {} — when there is nothing to
+// attach, so createBoosterLead's own `utm = {}` default applies and an
+// unattributed lead carries no invented attribution.
+//
+// FAIL-SOFT IS THE POINT: losing a tag is a reporting gap; losing a lead is a
+// lost customer. Nothing in here may propagate.
+async function boosterAttribution(business, sessionCtx) {
+  try {
+    const lookup = ctwaLookup ?? latestCtwaReferral;
+    const referral = await lookup({ businessId: business?.id, phone: sessionCtx?.session_id });
+    return toBoosterAttribution(referral) ?? undefined;
+  } catch (e) {
+    console.error('[booster] CTWA attribution lookup failed — creating the lead untagged:', e.message);
+    return undefined;
+  }
 }
 
 const settingsSchema = z.object({}).passthrough();
@@ -144,13 +171,15 @@ const boosterModule = {
         package_id: z.enum(['mini', 'landing', 'corporate']),
         business_note: z.string().trim().optional(),
       }),
-      async handler(_business, _row, payload, sessionCtx) {
+      async handler(business, _row, payload, sessionCtx) {
+        const utm = await boosterAttribution(business, sessionCtx);
         const lead = await boosterClient.createBoosterLead({
           name: payload.name,
           phone: sessionCtx?.session_id,
           email: payload.email,
           packageId: payload.package_id,
           businessNote: payload.business_note,
+          ...(utm ? { utm } : {}),
         });
         const text = lead.created
           ? `מעולה! הכנתי לך קישור אישי להצעת המחיר שלך — אפשר לבחור תוספות ולראות מחיר מעודכן בכל שלב:\n${lead.linkUrl}`
