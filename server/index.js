@@ -8,6 +8,7 @@ import { saveConversation, saveSetupState } from './lib/db.js';
 import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from './lib/wa-send.js';
 import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedFallback } from './lib/wa-webhook.js';
+import { handlePaymentProofImage } from './lib/payment-proof.js';
 import { JEWISH_HOLIDAYS } from './lib/holidays.js';
 import { buildModulesContext, executeModuleAction } from './lib/modules/engine.js';
 import { runFollowUpsAndNudges } from './lib/followup-orchestrator.js';
@@ -162,7 +163,14 @@ app.post('/wa-inbound', async (req, res) => {
     if (seenMessage(msgId)) return res.json({ status: 'duplicate' });
     res.json({ status: 'received' }); // fast-ack before any processing
     if (kind === 'unsupported') {
-      sendUnsupportedFallback(value).catch(() => {});
+      // Task 17: an image from a sender mid-payment is a payment-proof
+      // screenshot, not just "unsupported media" — handlePaymentProofImage
+      // claims that case (forward + its own reply) and returns true; anything
+      // else (non-image, or a sender not in a payment-stage status) falls
+      // through to today's generic fallback, unchanged.
+      handlePaymentProofImage(value)
+        .catch(e => { console.error('[wa-inbound] payment-proof handling failed:', e.message); return false; })
+        .then(handled => { if (!handled) sendUnsupportedFallback(value).catch(() => {}); });
       return;
     }
 

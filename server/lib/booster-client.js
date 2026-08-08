@@ -38,5 +38,22 @@ export async function lookupBoosterLeadByPhone(phone) {
   if (res.status === 404) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`booster-client: by-ref ${res.status}`);
-  return { leadId: data.lead_id, name: data.name, packageId: data.package_id, quoteUrl: data.quote_url };
+  // status (Task 17) lets a caller gate on lifecycle stage — e.g. only a lead
+  // sitting at awaiting_payment/payment_proof_sent accepts a forwarded screenshot.
+  return { leadId: data.lead_id, name: data.name, packageId: data.package_id, quoteUrl: data.quote_url, status: data.status };
+}
+
+// Task 17: the client sent a payment-confirmation screenshot in WhatsApp — forward
+// it to the booster, which owns storage, the payment_proof_sent transition, and
+// Diva's Telegram alert. Payload shape mirrors the booster's bot-friendly JSON+
+// base64 route (app/api/leads/[id]/payment-proof/route.ts), not multipart.
+export async function forwardPaymentProof({ leadId, imageBase64, mime, caption }) {
+  const res = await fetch(`${BASE()}/api/leads/${leadId}/payment-proof`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_base64: imageBase64, mime, ...(caption ? { caption } : {}) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`booster-client: payment-proof ${res.status} ${data.error ?? ''}`);
+  return { screenshotId: data.screenshot_id };
 }
