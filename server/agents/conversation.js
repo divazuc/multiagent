@@ -169,8 +169,16 @@ async function detectIntent({ message, business_profile, missing_qualification_d
   // When automated capabilities (e.g. calendar booking) are active, a customer
   // completing that flow — picking a slot, leaving name/phone for a booking —
   // must NOT be routed to a human; the bot finishes the job itself.
+  //
+  // T9 (funnel track 1): deliberately NOT a blanket "any scheduling request is
+  // a bot flow" — that wording contradicted the express one-meeting guardrail
+  // (an express client asking for an EXTRA meeting must reach the module
+  // layer's own handoff, booster.request_callback, not be force-completed).
+  // Scope is defined by the module context blocks in the reply prompt; the
+  // intent engine's only job here is not to hijack module flows into a human
+  // escalation.
   const modulesHint = has_modules
-    ? '\nThe bot has ACTIVE automated capabilities it completes by itself (e.g. booking meetings from real calendar availability). A customer asking to schedule, choosing an offered slot, or giving their name/phone to complete a booking is a NORMAL bot flow: escalate=false for it. Escalate only on the escalation policy above or an explicit demand for a human.'
+    ? '\nThe bot has ACTIVE automated capabilities it completes by itself (e.g. booking meetings from real calendar availability). A customer moving through one of those flows — choosing an offered slot, or giving their name/phone to complete a booking — is a NORMAL bot flow: escalate=false for it. The module context blocks in the reply prompt define WHICH requests are in scope and which get the modules\' own handoff actions (e.g. an express client asking for an extra meeting) — do not blanket-approve every scheduling request and do not escalate it either; leave it to those blocks. Escalate only on the escalation policy above or an explicit demand for a human.'
     : '';
 
   const system = `You are an intent detection engine for a WhatsApp business agent.
