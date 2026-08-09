@@ -43,24 +43,45 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
         : `להשלמת התשלום עבור ${payload.quote_number} (${nis(payload.total)}) — פרטי התשלום מופיעים בעמוד ההצעה שלך. אחרי התשלום שלחו לי כאן צילום של האישור 🙏`;
     case 'send_payment_reminder':
       return `תזכורת קטנה 🙂 ההצעה ${payload.quote_number} (${nis(payload.total)}) ממתינה להשלמת תשלום. אם כבר שילמתם — שלחו לי צילום של האישור ואקדם את הפרויקט.`;
-    case 'send_expiry_notice':
+    case 'send_expiry_notice': {
       // booster's app/api/express/expiry route enqueues this with reason
-      // 'unsigned_14d' | 'unsigned_30d' | 'materials_30d' (see divaz_booster
+      // 'unsigned_14d' | 'unsigned_30d' | 'materials_3m' (see divaz_booster
       // lib/express/leads.ts + app/api/express/expiry/route.ts).
       //
       // Both unsigned_* reasons are LIVE and neither is legacy: they are the
       // same clock — the PRE-SIGNATURE link window — on two tracks, express
       // expiring at 14 days and questionnaire/self_serve at 30. Both mean
-      // "your link expired" and take the same text. materials_30d means
-      // the client DID pay and send some materials, but the 30-day window to finish
-      // closed — that is not "your link expired," it's "we closed the order and kept
-      // your payment as a credit," so it needs its own text. Any other reason (both
-      // unsigned_ variants, or a payload with no reason at all) is a plain link-expired
-      // notice — matched with a catch-all `else` rather than an explicit list, so a new
-      // graduated cutoff (e.g. a future unsigned_60d) never falls through unhandled.
-      return payload.reason === 'materials_30d'
-        ? `חלון 30 הימים להעברת החומרים חלף, ולכן ההזמנה נסגרה — התשלום ששולם נזקף כקרדיט לשנה מהיום 💳\nרוצים לחדש ולהמשיך? רק תכתבו לי כאן ונסדר את זה יחד 🙂`
-        : `הקישור להצעת המחיר שלך פג תוקף ⏳ אם עדיין רלוונטי — כתבו לי כאן ונשמח לחדש אותו.`;
+      // "your link expired" and take the same text.
+      //
+      // The materials_* reasons are a different animal: the client DID pay, so
+      // "your link expired" is not merely off-tone, it is false — and it buries
+      // the money question they actually have. They get their own copy:
+      //   • materials_3m — the CURRENT contractual window (3 months from
+      //     payment+meeting). The order closes with a refund less a handling
+      //     fee, and the booster puts that already-formatted Hebrew sentence on
+      //     payload.refund. Interpolate it VERBATIM: the booster owns the money
+      //     wording, this side never reformats or re-derives it (same rule as
+      //     payment_details above). With no `refund` we say the details are
+      //     coming from דיוה — an amount is never invented here.
+      //   • materials_30d — the SUPERSEDED 30-day/one-year-credit policy, kept
+      //     only so an outbox row enqueued under the old rule still reads
+      //     truthfully instead of falling through to "your link expired".
+      // Everything else — both unsigned_ variants, a future cutoff, no reason
+      // at all — is a plain link-expired notice, matched with a catch-all
+      // rather than an explicit list so nothing ever falls through unhandled.
+      // A materials-shaped reason we do not know is NOT guessed into a closure.
+      if (payload.reason === 'materials_3m') {
+        const refund = String(payload.refund ?? '').trim();
+        const closed = `ההזמנה נסגרה — החומרים לא התקבלו בתוך שלושת החודשים שנקבעו בהסכם 📄`;
+        return refund
+          ? `${closed}\n${refund}\nלכל שאלה על הסגירה אפשר לכתוב לי כאן ואעביר לדיוה 🙂`
+          : `${closed}\nפרטי הסגירה יגיעו אלייך ישירות מדיוה 🙏 אם יש שאלה — אפשר לכתוב לי כאן.`;
+      }
+      if (payload.reason === 'materials_30d') {
+        return `חלון 30 הימים להעברת החומרים חלף, ולכן ההזמנה נסגרה — התשלום ששולם נזקף כקרדיט לשנה מהיום 💳\nרוצים לחדש ולהמשיך? רק תכתבו לי כאן ונסדר את זה יחד 🙂`;
+      }
+      return `הקישור להצעת המחיר שלך פג תוקף ⏳ אם עדיין רלוונטי — כתבו לי כאן ונשמח לחדש אותו.`;
+    }
     // ── Materials stage (funnel track 1, T8) ─────────────────────────────────
     // Payload per the booster's meeting-before-payment plan Task 9:
     // { quote_number, folder_url, materials_doc_url, content_doc_url } — until

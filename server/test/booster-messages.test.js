@@ -151,21 +151,35 @@ test('send_expiry_notice returns a non-empty Hebrew string even with no payload 
 // days, questionnaire/self_serve at 30. Both are "your link expired" and both
 // take the generic text.
 test('send_expiry_notice: both live link cutoffs — unsigned_14d (express) and unsigned_30d (questionnaire) — return the generic link-expired text', () => {
+  const generic = boosterMessageFor('send_expiry_notice', {}, lead);
   for (const reason of ['unsigned_14d', 'unsigned_30d']) {
     const msg = boosterMessageFor('send_expiry_notice', { reason }, lead);
     assert.match(msg, /פג תוקף/, `reason=${reason} is a pre-signature link expiry`);
+    assert.equal(msg, generic,
+      `reason=${reason} must stay byte-for-byte the generic copy — no closure/refund language may leak onto a lead who never signed`);
+    assert.doesNotMatch(msg, /₪/, 'a lead who never signed neither owes nor is owed money');
   }
 });
 
 // The catch-all `else` IS the contract, not a convenience: the list of
 // graduated cutoffs belongs to the booster and changes without this repo (a
 // future unsigned_60d, a payload with no reason at all). Anything that is not
-// materials_30d is a plain expired link and must never fall through unhandled.
+// a known materials_* closure is a plain expired link and must never fall
+// through unhandled — including a materials-SHAPED reason this repo has never
+// heard of, which must not be pattern-matched into a closure notice on a guess.
 test('send_expiry_notice: any UNRECOGNIZED reason still returns the generic link-expired text', () => {
-  for (const reason of ['unsigned_60d', 'some_future_cutoff', null, undefined]) {
+  const generic = boosterMessageFor('send_expiry_notice', {}, lead);
+  for (const reason of ['unsigned_60d', 'some_future_cutoff', 'materials_6m', '', null, undefined]) {
     const msg = boosterMessageFor('send_expiry_notice', { reason }, lead);
     assert.match(msg, /פג תוקף/, `reason=${reason} must not fall through unhandled`);
+    assert.equal(msg, generic, `reason=${reason} takes the same generic copy, unchanged`);
   }
+  // A refund the bot was never told how to frame is not a licence to improvise:
+  // an unknown reason stays generic even when money rides along in the payload.
+  const stray = boosterMessageFor('send_expiry_notice',
+    { reason: 'materials_9m', refund: 'הסכום ששולם מוחזר בניכוי דמי טיפול בסך 250 ₪ + מע"מ' }, lead);
+  assert.match(stray, /פג תוקף/);
+  assert.doesNotMatch(stray, /₪/, 'an unhandled reason must not leak a refund sentence it has no copy for');
 });
 
 test('send_expiry_notice: materials_30d reason acknowledges the closed order + one-year credit and invites renewal', () => {
@@ -173,6 +187,55 @@ test('send_expiry_notice: materials_30d reason acknowledges the closed order + o
   assert.match(msg, /קרדיט/);
   assert.match(msg, /שנה/);
   assert.doesNotMatch(msg, /פג תוקף/, 'must not reuse the generic expired-link text for a paying client');
+});
+
+// ── materials_3m: the contractual 3-month materials window ───────────────────
+//
+// The booster now closes a PAID order whose materials never arrived within the
+// 3 months the contract gives (the KB answer seeded by
+// scripts/update-divaost-from-spec.mjs states the same policy: "אם החומרים לא
+// הועברו תוך 3 חודשים — ההזמנה נסגרת עם החזר בניכוי דמי טיפול"). Two things
+// make this its own case rather than a shade of the generic notice:
+//   • nothing about a LINK expired — the client paid; telling them otherwise
+//     is simply false, and buries the fact that money is owed back to them;
+//   • the payload carries `refund`, a Hebrew sentence the BOOSTER formatted.
+// That sentence is interpolated verbatim — the identical iron rule as
+// send_payment_details' payment_details and send_start_date's non-ISO date. The
+// bot owns no money copy of its own here: every ₪ in the message is one the
+// booster put there.
+const REFUND_SENTENCE = 'הסכום ששולם מוחזר בניכוי דמי טיפול בסך 250 ₪ + מע"מ'; // fake fixture
+
+test('send_expiry_notice: materials_3m renders the closure message with the booster\'s refund sentence verbatim', () => {
+  const msg = boosterMessageFor('send_expiry_notice', { reason: 'materials_3m', refund: REFUND_SENTENCE }, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.ok(msg.includes(REFUND_SENTENCE),
+    'the booster pre-formats the Hebrew — the bot interpolates it verbatim, never reformats or re-derives it');
+  assert.match(msg, /נסגרה/, 'says plainly that the order was closed');
+  assert.match(msg, /שלושת החודשים/, 'names the contractual window that lapsed');
+  assert.match(msg, /דיוה/, 'the voice is דיוה, not a corporate "אנחנו"');
+  assert.doesNotMatch(msg, /אנחנו/);
+  assert.doesNotMatch(msg, /פג תוקף/, 'a client who PAID must never be told their link expired');
+  assert.doesNotMatch(msg, /undefined|null/);
+});
+
+test('send_expiry_notice: materials_3m without a refund field never invents an amount', () => {
+  const msg = boosterMessageFor('send_expiry_notice', { reason: 'materials_3m' }, lead);
+  assert.ok(msg && msg.length > 0);
+  assert.match(msg, /נסגרה/, 'the closure itself is the bot\'s own fact and still gets said');
+  assert.match(msg, /דיוה/, 'points at who will send the closure details');
+  assert.doesNotMatch(msg, /₪/, 'with no booster sentence there is no amount to print');
+  assert.doesNotMatch(msg, /\d/, 'and none to invent — not a digit the booster did not send');
+  assert.doesNotMatch(msg, /undefined|null/);
+});
+
+// Mirrors the ₪ guard the materials/start/live test uses, minus the one string
+// the booster authored: strip the verbatim sentence, and nothing with a ₪ in it
+// may be left over.
+test('send_expiry_notice: the materials_3m closure prints no ₪ of the bot\'s own', () => {
+  const msg = boosterMessageFor('send_expiry_notice', { reason: 'materials_3m', refund: REFUND_SENTENCE }, lead);
+  assert.doesNotMatch(msg.replace(REFUND_SENTENCE, ''), /₪/,
+    'every ₪ in the closure came from the booster; the bot originates none');
+  assert.equal(msg.split('₪').length - 1, 1, 'exactly the one ₪ the booster sent, no more');
 });
 
 // ── T8 (funnel track 1): the materials-stage templates ───────────────────────
