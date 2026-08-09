@@ -223,7 +223,7 @@ async function runAgentPipeline(body) {
       return { http: 400, body: { status: 'error', message: normalized.error } };
     }
 
-    const { message, session_id, phone_number_id } = normalized.result;
+    const { message, session_id, phone_number_id, profile_name } = normalized.result;
     run.session_id = session_id;
 
     // Step 2 — Load context
@@ -387,6 +387,7 @@ async function runAgentPipeline(body) {
         business: { id: business_id, name: context.business_profile?.business_name ?? '' },
         action: r.module_action,
         session_id,
+        profile_name,
         question: message,
         history: context.conversation_history,
         persona: context.persona,

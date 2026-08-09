@@ -214,3 +214,49 @@ test('no module action at all leaves the model reply exactly as it was', async (
   assert.equal(step.moduleText, null);
   assert.equal(step.booking, null);
 });
+
+// The WhatsApp profile name travels the same route as the phone: from the
+// webhook, through sessionCtx, never from the model. create_quote_lead uses it
+// to name a lead the customer was never interrogated for.
+test('the WhatsApp profile name reaches the module handler on sessionCtx', async () => {
+  seed();
+  let seenCtx = null;
+  _setExecutorForTest(async (_biz, _action, sessionCtx) => {
+    seenCtx = sessionCtx;
+    return { text: 'ok', result: null };
+  });
+  try {
+    await runModuleActionStep({
+      business: BIZ, action: { module: 'booster', name: 'create_quote_lead', payload: { package_id: 'mini' } },
+      session_id: SESSION, profile_name: 'דנה כהן', finalResponse: MODEL_TEXT,
+    });
+    assert.equal(seenCtx.session_id, SESSION);
+    assert.equal(seenCtx.profile_name, 'דנה כהן');
+  } finally {
+    _setExecutorForTest(null);
+  }
+});
+
+test('a step with no profile name puts no profile_name on sessionCtx', async () => {
+  seed();
+  let seenCtx = null;
+  _setExecutorForTest(async (_biz, _action, sessionCtx) => { seenCtx = sessionCtx; return { text: 'ok', result: null }; });
+  try {
+    await runModuleActionStep({
+      business: BIZ, action: { module: 'booster', name: 'create_quote_lead', payload: { package_id: 'mini' } },
+      session_id: SESSION, finalResponse: MODEL_TEXT,
+    });
+    assert.equal(seenCtx.profile_name, undefined, 'absent stays absent — the module falls back to the booster default');
+  } finally {
+    _setExecutorForTest(null);
+  }
+});
+
+test('index.js threads the profile name from the webhook into the action step', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  assert.match(src, /const \{ message, session_id, phone_number_id, profile_name \} = normalized\.result/,
+    'the pipeline must read profile_name out of the normalized message');
+  assert.match(src, /runModuleActionStep\(\{[\s\S]{0,400}?profile_name,/,
+    'and hand it to the module-action step, or create_quote_lead can never see it');
+});

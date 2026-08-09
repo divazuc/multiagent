@@ -30,12 +30,17 @@ export function _setExecutorForTest(fn) { execute = fn ?? executeModuleAction; }
  *   text — the full outbound reply, ready to send as ONE message.
  */
 export async function runModuleActionStep({
-  business, action, session_id, question = '', history = null, persona = {},
+  business, action, session_id, profile_name = null, question = '', history = null, persona = {},
   finalResponse = '',
 }) {
   if (!action) return { text: finalResponse, moduleText: null, blocked: false, booking: null };
 
+  // profile_name is the sender's WhatsApp display name (lib/normalize.js). It
+  // travels on sessionCtx for the same reason the phone does — it is known by
+  // the CHANNEL, not by the model — and is only set when there is one, so a
+  // module reads `sessionCtx.profile_name` as absent rather than as "".
   const sessionCtx = { session_id };
+  if (profile_name) sessionCtx.profile_name = profile_name;
   // KNOWN INEFFICIENCY (accepted for v1, noted in review): the gate and
   // executeModuleAction each run their own getEnabledModules query, so an
   // allowed action costs two identical reads. Harmless at this volume; the fix
