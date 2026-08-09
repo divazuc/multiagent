@@ -44,6 +44,28 @@ test('contextProvider explains both actions and never asks for a phone', async (
   assert.ok(ctx.includes('corporate'));
 });
 
+// The half of the interrogation bug that lives in the prompt: the old block
+// opened with "כשלקוח מבקש הצעת מחיר ומוסר שם מלא + אימייל + בחירת חבילה",
+// i.e. it made the link CONDITIONAL on handing over identity first.
+test('the context text forbids asking for identity before the link', async () => {
+  const ctx = await booster.contextProvider(BIZ, ROW);
+
+  assert.ok(ctx.includes('אל תבקש/י שם או אימייל לפני שליחת הקישור'),
+    'the instruction must be explicit — the model is what actually interrogated the customer');
+  assert.match(ctx, /השאלון והחתימה אוספים את הפרטים/, 'and WHY: identity is collected downstream');
+
+  assert.ok(!ctx.includes('ומוסר שם מלא'),
+    'the old "hand over your full name + email first" precondition must be gone');
+  assert.doesNotMatch(ctx, /שם מלא \+ אימייל/, 'no residue of the collect-details-first phrasing');
+});
+
+test('the context text tells the model package_id is the only required field', async () => {
+  const ctx = await booster.contextProvider(BIZ, ROW);
+  assert.match(ctx, /package_id/);
+  assert.ok(ctx.includes('<<ACTION:booster.create_quote_lead{"package_id":"mini|landing|corporate"}>>'),
+    'the example the model copies must itself be name/email-free');
+});
+
 // ── T4: status-aware context (F4 mitigation) ─────────────────────────────────
 // The webhook's own messages never reach conversation history, so the bot
 // would otherwise not know WHERE in the funnel the sender is. The context
@@ -270,11 +292,50 @@ test('create_quote_lead schema rejects an invalid package_id', () => {
   assert.ok(!parsed.success);
 });
 
-test('create_quote_lead schema rejects a missing/invalid email', () => {
-  const parsed = booster.actions.create_quote_lead.schema.safeParse({
-    name: 'דנה כהן', email: 'not-an-email', package_id: 'mini',
+// ── The interrogation bug (live-demo regression) ─────────────────────────────
+//
+// The express opener ("אשמח לקבל הצעת מחיר למסלול אקספרס — חבילת מיני") used to
+// be answered with "אצטרך שם מלא ואימייל — מה הפרטים?" instead of the link,
+// because the schema REQUIRED name+email and the context text told the model to
+// collect them. Identity is collected by the questionnaire and the signature,
+// not by the bot in chat. package_id is the only required field now.
+
+test('create_quote_lead schema accepts a package on its own — identity comes later, not in chat', () => {
+  const parsed = booster.actions.create_quote_lead.schema.safeParse({ package_id: 'mini' });
+  assert.ok(parsed.success, 'a package alone must be enough to emit the action');
+  assert.equal(parsed.data.name, undefined);
+  assert.equal(parsed.data.email, undefined);
+  assert.equal(parsed.data.package_id, 'mini');
+});
+
+test('a model-supplied invalid email is dropped rather than blocking the action', () => {
+  // executeModuleAction answers a failed parse with invalid_payload and NO
+  // text, so a hallucinated address would cost the customer the link entirely.
+  for (const email of ['not-an-email', '', '   ', 'dana@', null, 123, {}]) {
+    const parsed = booster.actions.create_quote_lead.schema.safeParse({ package_id: 'mini', email });
+    assert.ok(parsed.success, `email ${JSON.stringify(email)} must not fail the action`);
+    assert.equal(parsed.data.email, undefined, `email ${JSON.stringify(email)} must be dropped`);
+  }
+});
+
+test('a blank/unusable name is dropped rather than blocking the action', () => {
+  for (const name of ['', '   ', null, 42]) {
+    const parsed = booster.actions.create_quote_lead.schema.safeParse({ package_id: 'landing', name });
+    assert.ok(parsed.success, `name ${JSON.stringify(name)} must not fail the action`);
+    assert.equal(parsed.data.name, undefined);
+  }
+});
+
+test('a real name and email the customer DID state still come through, trimmed', () => {
+  const parsed = booster.actions.create_quote_lead.schema.parse({
+    name: '  דנה כהן  ', email: '  dana@example.com  ', package_id: 'corporate',
   });
-  assert.ok(!parsed.success);
+  assert.equal(parsed.name, 'דנה כהן');
+  assert.equal(parsed.email, 'dana@example.com');
+});
+
+test('package_id stays REQUIRED — the booster cannot price an unknown package', () => {
+  assert.ok(!booster.actions.create_quote_lead.schema.safeParse({ name: 'דנה כהן' }).success);
 });
 
 test('create_quote_lead schema silently drops a phone the model tries to inject', () => {
@@ -321,6 +382,115 @@ test('create_quote_lead: phone passed to the client is the sender\'s session_id,
   });
   await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, { session_id: '0501234567' });
   assert.equal(capturedPhone, '0501234567');
+});
+
+// ── create_quote_lead: the link goes out without an interrogation ────────────
+
+test('create_quote_lead with only a package creates the lead and returns the link message', async () => {
+  const captured = {};
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async (args) => {
+      Object.assign(captured, args);
+      return { leadId: 'l1', linkUrl: 'https://booster.divdev.co/flow/tok1', created: true };
+    },
+  }));
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+  const r = await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+
+  assert.ok(r.confirmationText.includes('https://booster.divdev.co/flow/tok1'), 'the customer gets the link');
+  assert.equal(captured.packageId, 'mini');
+  assert.equal(captured.phone, '0501234567');
+});
+
+test('create_quote_lead omits name/email entirely when it has none — the booster defaults them', async () => {
+  const captured = captureLead();
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+  assert.ok(!('name' in captured), 'an absent name must not be sent as null/empty — the booster owns the default');
+  assert.ok(!('email' in captured), 'an absent email must not be sent as null/empty');
+});
+
+test('create_quote_lead forwards a name/email the customer really did state', async () => {
+  const captured = captureLead();
+  const payload = booster.actions.create_quote_lead.schema.parse({
+    name: 'דנה כהן', email: 'dana@example.com', package_id: 'landing',
+  });
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+  assert.equal(captured.name, 'דנה כהן');
+  assert.equal(captured.email, 'dana@example.com');
+});
+
+// The WhatsApp profile name rides in on sessionCtx (server/lib/normalize.js →
+// runModuleActionStep), the same channel the phone uses — never from the model.
+test('create_quote_lead falls back to the WhatsApp profile name when the model supplied none', async () => {
+  const captured = captureLead();
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, payload,
+    { session_id: '0501234567', profile_name: 'דנה כהן' });
+  assert.equal(captured.name, 'דנה כהן', 'the lead reaches Diva with a name instead of a placeholder');
+});
+
+test('a name the customer stated beats the WhatsApp profile name', async () => {
+  const captured = captureLead();
+  const payload = booster.actions.create_quote_lead.schema.parse({ name: 'דנה כהן', package_id: 'mini' });
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, payload,
+    { session_id: '0501234567', profile_name: 'iPhone של דנה' });
+  assert.equal(captured.name, 'דנה כהן', 'what the customer said wins over their WhatsApp display name');
+});
+
+test('a blank WhatsApp profile name is not sent as a name', async () => {
+  const captured = captureLead();
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+  await booster.actions.create_quote_lead.handler(BIZ, ROW, payload,
+    { session_id: '0501234567', profile_name: '   ' });
+  assert.ok(!('name' in captured));
+});
+
+// ── create_quote_lead: the confirmation copy ────────────────────────────────
+
+test('the confirmation message explains the process and carries the link', async () => {
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async () => ({ leadId: 'l1', linkUrl: 'https://booster.divdev.co/flow/tok1', created: true }),
+  }));
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+  const { confirmationText: text } = await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+
+  assert.ok(text.includes('https://booster.divdev.co/flow/tok1'), 'the link itself');
+  assert.match(text, /שאלון/, 'the questionnaire step');
+  assert.match(text, /מחשבון/, 'the calculator step');
+  assert.match(text, /חותמים|חתימה/, 'the digital signature step');
+  assert.match(text, /פגישת אפיון/, 'what happens after signing');
+  assert.match(text, /בתוקף/, 'the link validity window');
+  assert.doesNotMatch(text, /₪/, 'the bot never prints a price');
+  assert.doesNotMatch(text, /אזור אישי/, 'never promises the personal area — it is not live');
+  assert.doesNotMatch(text, /נחזור|נתאם לך|אנחנו/, 'Diva is one person, not a company "we"');
+});
+
+test('the confirmation honours the booster\'s own link-validity window, defaulting to the express 14', async () => {
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async () => ({ leadId: 'l1', linkUrl: 'https://x/y', created: true, validDays: 30 }),
+  }));
+  const carried = await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+  assert.match(carried.confirmationText, /30/, 'the payload wins — never hardcode the express number');
+  assert.doesNotMatch(carried.confirmationText, /14/);
+
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async () => ({ leadId: 'l1', linkUrl: 'https://x/y', created: true }),
+  }));
+  const fallback = await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+  assert.match(fallback.confirmationText, /14/, 'no payload → the express default, same rule as booster-messages.js');
+});
+
+test('the resent link keeps the "again" phrasing AND the process explanation', async () => {
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async () => ({ leadId: 'l1', linkUrl: 'https://x/y', created: false }),
+  }));
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+  const { confirmationText: text } = await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+  assert.ok(text.startsWith('הנה שוב'));
+  assert.match(text, /שאלון/);
 });
 
 // ── create_quote_lead: CTWA attribution (the funnel's primary entry) ─────────
@@ -450,6 +620,34 @@ test('engine: executeModuleAction runs create_quote_lead end-to-end and logs suc
   }, SENDER);
   assert.ok(r.text.includes('https://booster.divdev.co/flow/tok2'));
   assert.ok(events.some(e => e.event_type === 'action.create_quote_lead'));
+});
+
+// The whole bug, end to end: the express opener names a package and nothing
+// else, and the customer must come out the other side holding a link.
+test('engine: the express opener (package only, junk email) still ends in a link', async () => {
+  const engine = await import('../lib/modules/engine.js');
+  const events = [];
+  engine._setDbForTest({
+    enabledRows: [{ business_id: 'b1', module_key: 'booster', enabled: true, settings: {}, secrets: {}, status: 'connected' }],
+    onEvent: (e) => events.push(e),
+  });
+  const captured = {};
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async (args) => {
+      Object.assign(captured, args);
+      return { leadId: 'l1', linkUrl: 'https://booster.divdev.co/flow/tok3', created: true };
+    },
+  }));
+  const r = await engine.executeModuleAction(BIZ, {
+    module: 'booster', name: 'create_quote_lead',
+    payload: { package_id: 'mini', email: 'לא-יודע' },
+  }, { session_id: '0501234567', profile_name: 'דנה כהן' });
+
+  assert.ok(r.text.includes('https://booster.divdev.co/flow/tok3'), 'no invalid_payload dead end');
+  assert.ok(events.some(e => e.event_type === 'action.create_quote_lead'));
+  assert.ok(!events.some(e => e.detail?.reason === 'invalid_payload'));
+  assert.equal(captured.name, 'דנה כהן');
+  assert.ok(!('email' in captured), 'the hallucinated address never reached the booster');
 });
 
 test('engine: invalid package_id never reaches the handler (invalid_payload logged, null text)', async () => {

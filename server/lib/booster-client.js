@@ -71,7 +71,18 @@ export async function createBoosterLead({ name, phone, email, packageId, busines
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`booster-client: POST /api/leads ${res.status} ${data.error ?? ''}`);
-  return { leadId: data.lead_id, linkUrl: data.link_url, created: data.status === 'created' };
+  // validDays is the PRE-SIGNATURE LINK window the booster stamped on THIS
+  // lead — the same field its outbox sends as payload.valid_days (see
+  // lib/booster-messages.js, which carries the full three-clocks warning).
+  // Passed through rather than re-derived, so the in-chat confirmation quotes
+  // the booster's own number; undefined when the booster sends none, and the
+  // caller falls back to the express default.
+  return {
+    leadId: data.lead_id,
+    linkUrl: data.link_url,
+    created: data.status === 'created',
+    validDays: data.valid_days,
+  };
 }
 
 // The booster module's context provider runs this on EVERY inbound message,

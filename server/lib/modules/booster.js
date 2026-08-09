@@ -66,10 +66,20 @@ const settingsSchema = z.object({}).passthrough();
 const PACKAGE_LABELS = { mini: 'מיני לנדינג', landing: 'דף נחיתה', corporate: 'אתר תדמית' };
 const packageLegend = Object.entries(PACKAGE_LABELS).map(([id, label]) => `${label}=${id}`).join(', ');
 
+// The quote-flow instructions are half the fix for the interrogation bug.
+// The old opener — "כשלקוח מבקש הצעת מחיר ומוסר שם מלא + אימייל + בחירת חבילה"
+// — made the link CONDITIONAL on identity, and the model did exactly as told:
+// the express opener came back with "אצטרך שם מלא ואימייל — מה הפרטים?" instead
+// of a link. Identity is collected downstream by the questionnaire and the
+// digital signature, so the only thing the bot must extract here is the
+// package. Relaxing the schema alone would not have fixed this; the model has
+// to be told to stop asking.
 const CONTEXT = `## הצעת מחיר אישית (בוסטר)
-כשלקוח מבקש הצעת מחיר ומוסר שם מלא + אימייל + בחירת חבילה (${packageLegend}) —
-הוסף/י בסוף התשובה שורה נפרדת בפורמט המדויק:
-<<ACTION:booster.create_quote_lead{"name":"שם מלא","email":"אימייל","package_id":"mini|landing|corporate","business_note":"הערה קצרה אם רלוונטי"}>>
+כשלקוח מבקש הצעת מחיר, מתעניין במסלול או בוחר חבילה (${packageLegend}) — שלח/י לו את הקישור האישי מיד, כבר בתשובה הזאת. הוסף/י בסוף התשובה שורה נפרדת בפורמט המדויק:
+<<ACTION:booster.create_quote_lead{"package_id":"mini|landing|corporate"}>>
+השדה היחיד שחובה הוא package_id. אם הלקוח כבר אמר את שמו בשיחה — אפשר להוסיף "name":"השם שמסר"; אם לא אמר, אל תוסיף/י את השדה כלל. כנ"ל לגבי "email" (רק אם הלקוח כתב אותו במפורש) ו-"business_note" (רק אם יש הערה קצרה שרלוונטית לדיוה).
+אל תבקש/י שם או אימייל לפני שליחת הקישור — השאלון והחתימה אוספים את הפרטים.
+רק אם לא ברור באיזו חבילה מדובר — שאל/י שאלה קצרה אחת על החבילה בלבד, ואז שלח/י את הקישור.
 אל תמציא/י קישור בעצמך ואל תציג/י את השורה הזאת ללקוח כטקסט רגיל — המערכת מבצעת את הפעולה ומצרפת את הקישור האמיתי לתשובה מיד אחריה. אל תבטיח/י "שלחתי לך קישור" לפני שהפעולה בוצעה בפועל.
 אם לקוח שכבר קיבל קישור בעבר מבקש אותו שוב (איבד אותו, לא מוצא, וכו') ואין צורך במידע נוסף — הוסף/י שורה נפרדת:
 <<ACTION:booster.resend_quote_link{}>>
@@ -80,6 +90,32 @@ const CONTEXT = `## הצעת מחיר אישית (בוסטר)
 // Pinned copy (funnel plan, iron rules): the bot never confirms a payment or
 // an approval of materials — only Diva does — and never prints prices.
 const CALLBACK_REPLY = 'דיוה תחזור אליך בהקדם 🙂';
+
+// What the customer actually receives with the link. It replaces an
+// interrogation, so it has to answer the question the customer was about to
+// ask — "what happens now?" — in one short message: the four steps of the
+// express flow, then the meeting, then how long the link lives.
+//
+// Rules baked in: no ₪ and no totals (only the calculator and Diva quote
+// money), no personal-area promise (not live), and Diva is one person — the
+// scheduling happens here in the chat, per the awaiting_meeting guidance
+// below and docs/booster-meeting-scheduling-handoff.md §1.
+const QUOTE_PROCESS = 'ממלאים שאלון קצר, מרכיבים את החבילה במחשבון וחותמים דיגיטלית — הכול תוך כמה דקות. אחרי החתימה נתאם כאן פגישת אפיון קצרה עם דיוה.';
+
+// The express pre-signature link window. Only a fallback: the booster stamps
+// the real number on the lead and it arrives as lead.validDays. Read the
+// three-clocks warning in lib/booster-messages.js before touching this — 14
+// here is the LINK window, not the 30-day post-signature quote validity and
+// not the 14-day payment deadline.
+const EXPRESS_LINK_VALID_DAYS = 14;
+
+function quoteLinkText(lead) {
+  const opener = lead.created
+    ? 'הנה הקישור האישי שלך להצעת המחיר 👇'
+    : 'הנה שוב הקישור האישי שלך להצעת המחיר 👇';
+  const days = lead.validDays ?? EXPRESS_LINK_VALID_DAYS;
+  return `${opener}\n${lead.linkUrl}\n\n${QUOTE_PROCESS}\nהקישור בתוקף ל-${days} ימים.`;
+}
 const MATERIALS_ACK = 'קיבלתי! עדכנתי את דיוה — היא תעבור על החומרים ותאשר שמתחילים 🙏';
 const MATERIALS_ALREADY = 'כבר עדכנתי את דיוה, היא בודקת 🙏';
 const MATERIALS_FAIL = 'אופס, לא הצלחתי לעדכן — נסו שוב עוד רגע 🙏';
@@ -165,26 +201,41 @@ const boosterModule = {
     // Input never carries a phone — the sender's number comes from the
     // conversation's own session_id (sessionCtx), never from the model.
     create_quote_lead: {
+      // package_id is the ONLY required field. name/email are optional and,
+      // more importantly, UNFAILABLE: executeModuleAction answers a rejected
+      // parse with invalid_payload and no text, so a model that hallucinated
+      // "email":"לא-יודע" would cost the customer the link entirely. .catch()
+      // drops anything unusable instead of blocking the action — the booster
+      // defaults both server-side, and the questionnaire and the signature
+      // collect the real identity later.
       schema: z.object({
-        name: z.string().trim().min(1),
-        email: z.string().trim().email(),
+        name: z.string().trim().min(1).optional().catch(undefined),
+        email: z.string().trim().email().optional().catch(undefined),
         package_id: z.enum(['mini', 'landing', 'corporate']),
-        business_note: z.string().trim().optional(),
+        business_note: z.string().trim().optional().catch(undefined),
       }),
       async handler(business, _row, payload, sessionCtx) {
         const utm = await boosterAttribution(business, sessionCtx);
+        // Name precedence: what the customer actually said > their WhatsApp
+        // display name > nothing (the booster's own default). The profile name
+        // comes from the CHANNEL via sessionCtx, never from the model — same
+        // contract as the phone — so the lead reaches Diva with a name without
+        // the bot having asked for one.
+        // Trimmed here too, not only in normalize.js: this handler is also
+        // reachable from the engine with a sessionCtx built elsewhere, and a
+        // whitespace "name" would overwrite the booster's default with nothing.
+        const name = String(payload.name ?? sessionCtx?.profile_name ?? '').trim();
         const lead = await boosterClient.createBoosterLead({
-          name: payload.name,
           phone: sessionCtx?.session_id,
-          email: payload.email,
           packageId: payload.package_id,
           businessNote: payload.business_note,
+          // Omitted rather than sent as null/"": an absent field lets the
+          // booster apply its default, an empty one overwrites it.
+          ...(name ? { name } : {}),
+          ...(payload.email ? { email: payload.email } : {}),
           ...(utm ? { utm } : {}),
         });
-        const text = lead.created
-          ? `מעולה! הכנתי לך קישור אישי להצעת המחיר שלך — אפשר לבחור תוספות ולראות מחיר מעודכן בכל שלב:\n${lead.linkUrl}`
-          : `הנה שוב הקישור האישי שלך להצעת המחיר:\n${lead.linkUrl}`;
-        return { confirmationText: text };
+        return { confirmationText: quoteLinkText(lead) };
       },
     },
 
