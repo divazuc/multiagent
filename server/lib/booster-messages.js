@@ -30,9 +30,9 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
       //   2. quote validity — 30 days, counted FROM THE SIGNATURE
       //   3. the payment deadline — 14 days, contractual
       // A previous pass moved this to 30 by reading (2) as if it were (1).
-      return `היי ${first} 👋\nהכנתי לך קישור אישי לבניית הצעת המחיר שלך:\n${payload.link_url}\n\nהקישור אישי אלייך ותקף ל-${payload.valid_days ?? 14} ימים. אפשר לשחק עם התוספות ולראות מחיר מעודכן בכל שלב 🙂`;
+      return `היי ${first} 👋\nהכנתי לך קישור אישי לבניית הצעת המחיר שלך:\n${payload.link_url}\n\nהקישור אישי ותקף ל-${payload.valid_days ?? 14} ימים. אפשר לשחק עם התוספות ולראות מחיר מעודכן בכל שלב 🙂`;
     case 'send_signed_summary':
-      return `תודה ${first}! ההצעה ${payload.quote_number} נחתמה 🎉\nסה"כ לתשלום: ${nis(payload.total)} (כולל מע"מ).\nעותק חתום נשלח אלייך במייל.\n\n${nextStepLine(payload)}`;
+      return `תודה ${first}! ההצעה ${payload.quote_number} נחתמה 🎉\nסה"כ לתשלום: ${nis(payload.total)} (כולל מע"מ).\nעותק חתום נשלח למייל שלך.\n\n${nextStepLine(payload)}`;
     case 'send_meeting_reminder': {
       const orderRef = payload.quote_number ? ` להזמנה ${payload.quote_number}` : '';
       return `תזכורת עדינה 🙂 עדיין לא קבענו את פגישת האפיון${orderRef}. ${nextStepLine(payload)}`;
@@ -75,7 +75,7 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
         const closed = `ההזמנה נסגרה — החומרים לא התקבלו בתוך שלושת החודשים שנקבעו בהסכם 📄`;
         return refund
           ? `${closed}\n${refund}\nלכל שאלה על הסגירה אפשר לכתוב לי כאן ואעביר לדיוה 🙂`
-          : `${closed}\nפרטי הסגירה יגיעו אלייך ישירות מדיוה 🙏 אם יש שאלה — אפשר לכתוב לי כאן.`;
+          : `${closed}\nפרטי הסגירה יגיעו ישירות מדיוה 🙏 אם יש שאלה — אפשר לכתוב לי כאן.`;
       }
       if (payload.reason === 'materials_30d') {
         return `חלון 30 הימים להעברת החומרים חלף, ולכן ההזמנה נסגרה — התשלום ששולם נזקף כקרדיט לשנה מהיום 💳\nרוצים לחדש ולהמשיך? רק תכתבו לי כאן ונסדר את זה יחד 🙂`;
