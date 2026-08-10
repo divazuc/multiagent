@@ -160,3 +160,41 @@ export async function forwardPaymentProof({ leadId, imageBase64, mime, caption }
   if (!res.ok) throw new Error(`booster-client: payment-proof ${res.status} ${data.error ?? ''}`);
   return { screenshotId: data.screenshot_id };
 }
+
+// Deep link into the booster's panel for a lead — the secondary line on every
+// owner Telegram notification, so Diva can open the full picture when the
+// one-tap button is not enough.
+export function boosterLeadPanelUrl(leadId) {
+  return `${BASE()}/leads/${encodeURIComponent(leadId)}`;
+}
+
+// Process approvals (funnel — "לאשר תהליכים בטלגרם"): Diva tapped אישור on a
+// process-approval page, and the booster owns the actual transition (verify
+// the payment / start the work). One generic execute endpoint per the
+// two-sided contract being built tonight:
+//   POST /api/bot/approvals/execute
+//   Authorization: Bearer BOOSTER_BOT_LOOKUP_SECRET (+ CF Access service-token
+//   headers in production, same as every other bot→booster call)
+//   body { kind: 'payment_verify' | 'work_confirm', lead_id }
+//   → 200 { ok: true } on success; any other status carries { error } JSON.
+//
+// NEVER throws — resolves { ok:true } | { ok:false, error } so the approval
+// page can show a human reason and leave the token usable for a retry.
+export const EXECUTE_APPROVAL_TIMEOUT_MS = 5000;
+
+export async function executeApproval({ kind, leadId }) {
+  try {
+    const res = await fetch(`${BASE()}/api/bot/approvals/execute`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, 'Content-Type': 'application/json', ...cfAccessHeaders() },
+      body: JSON.stringify({ kind, lead_id: leadId }),
+      signal: AbortSignal.timeout(EXECUTE_APPROVAL_TIMEOUT_MS),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok === true) return { ok: true };
+    return { ok: false, error: data.error ?? `http_${res.status}` };
+  } catch (e) {
+    const timedOut = e?.name === 'TimeoutError' || e?.cause?.name === 'TimeoutError' || /timed?\s*out/i.test(e?.message ?? '');
+    return { ok: false, error: timedOut ? 'timeout' : 'network' };
+  }
+}
