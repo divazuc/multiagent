@@ -7,10 +7,18 @@
 // and a slow one felt broken. Now a slow generation simply consumes the budget
 // and nothing is added.
 
+// Owner, after her live demo: "תעדכן את זמן התגובה בין הודעות בוואטסאפ כ3-4
+// שניות, לא יותר". The bands used to run 4-14s, which felt considered in
+// testing and felt like being ignored in front of a customer.
+//
+// 4000ms is a ceiling, not a target. The bands still differ from one another —
+// a one-line answer landing at the same beat as a long one is its own tell —
+// but the whole ladder now fits inside her window, and the randomness inside
+// each band is what keeps the rhythm from sounding metronomic.
 export const DELAY_WINDOWS = {
-  short:    [4000, 9000],
-  medium:   [6000, 11000],
-  detailed: [8000, 14000],
+  short:    [3000, 3600],
+  medium:   [3200, 3800],
+  detailed: [3400, 4000],
 };
 
 function bandFor(words, answerLength) {
