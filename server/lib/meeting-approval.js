@@ -11,10 +11,13 @@
 // booking that already succeeded. requestOwnerApproval never throws into the
 // booking path, and a missing Telegram env degrades to the pre-Telegram
 // WhatsApp owner notify rather than to silence.
-import crypto from 'node:crypto';
+import { hashToken, mintToken, TOKEN_RE, telegramConfigured, publicBaseUrl, sendTelegramText } from './approvals.js';
 import { normalizeIlPhone } from './booster-client.js';
 
-export const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+// The token/Telegram plumbing moved to lib/approvals.js when process
+// approvals (lib/process-approval.js) arrived — re-exported here so this
+// module's public API (and its tests) stay exactly what they were.
+export { hashToken, telegramConfigured, publicBaseUrl, TELEGRAM_TIMEOUT_MS, _setTelegramFetchForTest } from './approvals.js';
 
 // module_events store seam — same convention as lib/booster-meeting.js: the
 // fake is { events: [] } (insertion order stands in for created_at);
@@ -53,7 +56,7 @@ export async function createMeetingApproval({ businessId, eventId, calendarRowId
     console.error('[meeting-approval] not creating an approval — no business id');
     return null;
   }
-  const token = crypto.randomBytes(32).toString('base64url');
+  const token = mintToken();
   const row = {
     business_id: businessId, module_key: 'calendar', event_type: 'meeting_approval',
     created_at: new Date().toISOString(),
@@ -70,8 +73,7 @@ export async function createMeetingApproval({ businessId, eventId, calendarRowId
 }
 
 export async function findApprovalByToken(token) {
-  // base64url of 32 bytes is 43 chars — anything wildly off never hits the db.
-  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{20,100}$/.test(token)) return null;
+  if (typeof token !== 'string' || !TOKEN_RE.test(token)) return null;
   const hash = hashToken(token);
   if (db) {
     const rows = db.events.filter(r => r.event_type === 'meeting_approval' && r.detail?.token_hash === hash);
@@ -89,28 +91,11 @@ export async function consumeApproval(row, status) {
 
 // ── Telegram ─────────────────────────────────────────────────────────────────
 
-export function telegramConfigured(env = process.env) {
-  return !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID);
-}
-
-// Same convention as google.js / studio.js — the Railway domain is the
-// fallback when PUBLIC_BASE_URL is unset.
-export function publicBaseUrl() {
-  return (process.env.PUBLIC_BASE_URL ?? 'https://wagent.divdev.co').replace(/\/$/, '');
-}
-
-// Telegram HTTP seam — tests record the request instead of hitting the API.
-let telegramFetch = null;
-export function _setTelegramFetchForTest(fn) { telegramFetch = fn; }
-
 const HEB_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 export function slotParts(slot) {
   const [date, from] = String(slot ?? '').split('T');
   return { date, from, day: HEB_DAYS[new Date(`${date}T00:00:00`).getDay()] ?? '' };
 }
-
-// A hung Telegram API must not hold the booking reply's process hostage.
-export const TELEGRAM_TIMEOUT_MS = 3500;
 
 export async function sendTelegramApproval({ token, name, phone, slot, quoteNumber }) {
   const { date, from, day } = slotParts(slot);
@@ -127,13 +112,7 @@ export async function sendTelegramApproval({ token, name, phone, slot, quoteNumb
     `אישור: ${base}/meeting/${token}?a=approve`,
     `שינוי מועד: ${base}/meeting/${token}?a=reschedule`,
   ].join('\n');
-  const doFetch = telegramFetch ?? fetch;
-  const res = await doFetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text }),
-    signal: AbortSignal.timeout(TELEGRAM_TIMEOUT_MS),
-  });
-  return !!res?.ok;
+  return sendTelegramText(text);
 }
 
 // ── WhatsApp fallback ────────────────────────────────────────────────────────

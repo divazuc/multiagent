@@ -14,7 +14,9 @@ const PUBLIC_PATHS = ['/health', '/wa-inbound', '/booster-webhook'];
 // '/oauth/', and it only redirects to a signed state that is validated there.
 // '/meeting/' is the owner's one-tap approval page from the Telegram links —
 // its one-time token is the credential (routes/meeting-approval.js).
-const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/', '/meeting/'];
+// '/approve/' is the same pattern for booster PROCESS approvals
+// (routes/process-approval.js) — one-time token, same credential model.
+const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/', '/meeting/', '/approve/'];
 
 let warnedOff = false;
 

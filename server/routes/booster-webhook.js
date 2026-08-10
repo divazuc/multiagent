@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { sendWhatsAppMessage } from '../lib/wa-send.js';
 import { boosterMessageFor, toWaNumber } from '../lib/booster-messages.js';
 import { formatSlotOffer, recordMeetingInvite, getLatestMeetingEvent, noteCoversOrder } from '../lib/booster-meeting.js';
+import { requestProcessApproval, PROCESS_APPROVAL_KINDS } from '../lib/process-approval.js';
 import { getEnabledModules } from '../lib/modules/engine.js';
 import { MODULES } from '../lib/modules/registry.js';
 
@@ -116,6 +117,37 @@ router.post('/booster-webhook', async (req, res) => {
   const { event_id, event, payload, lead } = req.body ?? {};
   if (!event_id || !event) return res.status(400).json({ ok: false, error: 'bad_shape' });
   if (seen.has(event_id)) return res.json({ ok: true, deduped: true });
+
+  // owner_approval_request is the one event whose recipient is DIVA (a
+  // Telegram one-tap approval — lib/process-approval.js), not the client, so
+  // it branches off before the WhatsApp message dispatch. Outcome mapping
+  // follows the same at-least-once discipline as the sends below:
+  //   'telegram' → delivered, ack + remember
+  //   'skipped'  → permanent local condition (unknown kind / missing env) —
+  //                ack + remember, or the outbox would retry forever
+  //   'failed'   → transient Telegram trouble — 502, NOT remembered, so the
+  //                booster's retry gets a real second chance
+  if (event === 'owner_approval_request') {
+    const kind = payload?.kind;
+    if (!PROCESS_APPROVAL_KINDS.has(kind) || !payload?.lead_id) {
+      // Forward-compat: a kind this deploy doesn't know (or a payload with no
+      // lead to act on) is logged and acked WITHOUT a record.
+      console.warn('[booster-webhook] owner_approval_request skipped — kind:', kind, 'lead_id:', payload?.lead_id, event_id);
+      remember(event_id);
+      return res.json({ ok: true, skipped: true });
+    }
+    const via = await requestProcessApproval({
+      kind, leadId: payload.lead_id,
+      quoteNumber: payload.quote_number ?? null,
+      clientName: payload.client_name ?? null,
+      phone: payload.phone ?? null,
+      amount: payload.amount ?? null,
+      context: payload.context ?? null,
+    });
+    if (via === 'failed') return res.status(502).json({ ok: false });
+    remember(event_id);
+    return res.json(via === 'telegram' ? { ok: true } : { ok: true, skipped: true });
+  }
 
   let text = boosterMessageFor(event, payload, lead);
   const to = toWaNumber(lead?.phone);

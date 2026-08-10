@@ -6,6 +6,7 @@
 // actions are POSTs from the page's own forms. Either action consumes the
 // token, and a token whose slot has already started is dead.
 import { Router } from 'express';
+import { page, sendPage as send, escapeHtml } from '../lib/approvals.js';
 import { findApprovalByToken, consumeApproval, slotParts } from '../lib/meeting-approval.js';
 import { recordMeetingBooked, recordMeetingRequestCancelled, formatSlotOffer } from '../lib/booster-meeting.js';
 import { getEnabledModules } from '../lib/modules/engine.js';
@@ -21,11 +22,8 @@ const router = Router();
 let sendFn = sendWhatsAppMessage;
 export const _setSendForTest = (fn) => { sendFn = fn ?? sendWhatsAppMessage; };
 
-const page = (title, body, status = 200) => [status,
-  `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f4f6fb}main{background:#fff;padding:32px 40px;border-radius:12px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px}h2{margin-top:0}p{color:#333}form{display:inline-block;margin:8px}button{font-size:17px;padding:12px 28px;border:0;border-radius:10px;cursor:pointer}.ok{background:#1a9c4b;color:#fff}.alt{background:#e8eaf1;color:#222}</style></head><body><main><h2>${title}</h2>${body}</main></body></html>`];
-
-const send = (res, [status, html]) => res.status(status).type('html').send(html);
-
+// The page shell (page/sendPage/escapeHtml) is shared with the process-
+// approval routes — lib/approvals.js.
 const NOT_VALID = () => page('הקישור לא בתוקף', '<p>הקישור שגוי, פג תוקף או שהמועד כבר עבר.</p>', 404);
 const ALREADY = () => page('כבר טופל', '<p>הבקשה הזאת כבר טופלה.</p>');
 const OOPS = () => page('משהו השתבש', '<p>נסו שוב עוד רגע.</p>', 500);
@@ -61,7 +59,7 @@ router.get('/meeting/:token', async (req, res) => {
     if (state !== 'ok') return send(res, NOT_VALID());
     const d = row.detail;
     const { date, from, day } = slotParts(d.slot);
-    const esc = (s) => String(s ?? '—').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+    const esc = escapeHtml;
     const details = [
       `<p><b>שם:</b> ${esc(d.name)}</p>`,
       `<p><b>טלפון:</b> ${esc(d.phone)}</p>`,
