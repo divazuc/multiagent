@@ -64,3 +64,17 @@ test('an unparseable phone still short-circuits before any fetch', async () => {
   assert.equal(await lookupBoosterLeadByPhone('not-a-phone'), null);
   assert.equal(called, false);
 });
+
+// The booster is extending by-ref in parallel (adding `email`). Both wire
+// shapes must produce the same lead object — email present, or null.
+test('by-ref email is optional on the wire: old shape → null, new shape → passed through', async () => {
+  globalThis.fetch = async () => ({ ok: true, status: 200,
+    json: async () => ({ lead_id: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }) });
+  const oldShape = await lookupBoosterLeadByPhone('0521234567');
+  assert.equal(oldShape.email, null, 'a booster that does not send email yet must not break anything');
+
+  globalThis.fetch = async () => ({ ok: true, status: 200,
+    json: async () => ({ lead_id: 'l1', name: 'דנה כהן', status: 'awaiting_meeting', email: 'dana@example.com' }) });
+  const newShape = await lookupBoosterLeadByPhone('0521234567');
+  assert.equal(newShape.email, 'dana@example.com');
+});

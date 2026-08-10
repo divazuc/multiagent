@@ -17,6 +17,7 @@
 // extra-meeting request to the callback escalation instead of the calendar.
 import { z } from 'zod';
 import * as boosterClientReal from '../booster-client.js';
+import { realLeadName } from '../booster-client.js';
 import { latestCtwaReferral, toBoosterAttribution } from '../ctwa.js';
 
 // Test seam — same convention as booster-webhook.js's _setSendForTest:
@@ -191,6 +192,16 @@ async function statusContext(sessionId) {
   if (!lead) return null;
   const stage = STAGE_GUIDANCE[lead.status];
   const blocks = [EXPRESS_RULE];
+  // The signed quote already carries the client's name — asking for it again
+  // ("רק צריכה את שמך המלא", live bug) reads as not knowing your own customer.
+  // realLeadName filters the booster's "ליד וואטסאפ" placeholder, which is not
+  // a name anyone should be greeted by. Telling the model is HALF the fix; the
+  // reply pipeline also injects the name into a calendar booking the model
+  // sent without one (lib/module-action-step.js).
+  const knownName = realLeadName(lead.name);
+  if (knownName) {
+    blocks.push(`## שם הלקוח ידוע\nהשם של הלקוח הזה כבר ידוע מההצעה: ${knownName}. לעולם אל תבקש/י ממנו את שמו — השתמש/י בשם הזה בכל מקום שנדרש שם (למשל בקביעת פגישה).`);
+  }
   if (stage) blocks.push(`## השלב הנוכחי של הלקוח בתהליך\n${stage}`);
   return blocks.join('\n\n');
 }

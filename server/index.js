@@ -19,6 +19,7 @@ import { healthPayload } from './lib/health.js';
 import dataRouter from './routes/data.js';
 import oauthRouter from './routes/oauth.js';
 import boosterWebhookRouter from './routes/booster-webhook.js';
+import meetingApprovalRouter from './routes/meeting-approval.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
   .split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '')); // strip quotes + trailing slash
@@ -74,6 +75,7 @@ app.use(studioAuth);
 app.use('/data', dataRouter);
 app.use(oauthRouter);
 app.use(boosterWebhookRouter);
+app.use(meetingApprovalRouter);
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json(healthPayload()));

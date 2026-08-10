@@ -19,7 +19,8 @@ process.env.MODULE_SECRETS_KEY = crypto.randomBytes(32).toString('base64');
 const meeting = await import('../lib/booster-meeting.js');
 const engine = await import('../lib/modules/engine.js');
 const {
-  recordMeetingInvite, recordMeetingBooked, recordMeetingRequested, getLatestMeetingEvent,
+  recordMeetingInvite, recordMeetingBooked, recordMeetingRequested, recordMeetingRequestCancelled,
+  getLatestMeetingEvent,
   formatSlotOffer, gateCalendarBooking, BLOCKED_REPLY,
   _setDbForTest, _setBoosterClientForTest,
 } = meeting;
@@ -317,6 +318,83 @@ test('gate: a pending meeting_requested holds the order\'s one meeting, and a ne
   await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2' });
   const nextOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
   assert.equal(nextOrder.allow, true, 'a pending request scopes to its own order too');
+});
+
+// The reschedule half of the Telegram approval flow: the owner tapped
+// "שינוי מועד", the tentative event was deleted, and the client is being
+// asked to re-pick a slot in chat — so the pending request's hold MUST be
+// gone, or the re-pick lands on the gate's block instead of on the calendar.
+test('gate: a meeting_request_cancelled newer than the pending request releases the hold — the re-pick books', async () => {
+  freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1' });
+  await recordMeetingRequested({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-12T10:00' });
+
+  const whilePending = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(whilePending.allow, false, 'sanity: the pending request holds before the reschedule');
+
+  await recordMeetingRequestCancelled({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-12T10:00' });
+  const afterCancel = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(afterCancel.allow, true, 'the owner released this slot — the client must be able to re-book');
+  assert.equal(afterCancel.eventTitleOverride, 'פגישת אפיון — הזמנה DZ-1');
+});
+
+test('gate: a request made AFTER the cancel holds again — a stale cancel cannot keep releasing forever', async () => {
+  const db = freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  // Explicit timestamps: request → cancel → NEW request (the client re-picked).
+  const note = (event_type, created_at, slot) => ({
+    business_id: 'b1', module_key: 'booster', event_type, created_at,
+    detail: { phone: '0521234567', quote_number: 'DZ-1', ...(slot ? { slot } : {}) },
+  });
+  db.events.push(note('meeting_invite', '2026-08-10T08:00:00.000Z'));
+  db.events.push(note('meeting_requested', '2026-08-10T09:00:00.000Z', '2026-08-12T10:00'));
+  db.events.push(note('meeting_request_cancelled', '2026-08-10T10:00:00.000Z', '2026-08-12T10:00'));
+  db.events.push(note('meeting_requested', '2026-08-10T11:00:00.000Z', '2026-08-13T11:00'));
+
+  const r = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(r.allow, false, 'the re-picked slot is a live pending request — one meeting per order still stands');
+  assert.equal(r.replyText, BLOCKED_REPLY);
+});
+
+test('gate: a cancel scoped to the PREVIOUS order does not release the new order\'s pending request', async () => {
+  const db = freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  const note = (event_type, created_at, quote) => ({
+    business_id: 'b1', module_key: 'booster', event_type, created_at,
+    detail: { phone: '0521234567', quote_number: quote },
+  });
+  // Order DZ-2 has a live pending request; the only cancel on record belongs
+  // to old order DZ-1 (even though it is NEWER in time).
+  db.events.push(note('meeting_invite', '2026-11-01T08:00:00.000Z', 'DZ-2'));
+  db.events.push(note('meeting_requested', '2026-11-01T09:00:00.000Z', 'DZ-2'));
+  db.events.push(note('meeting_request_cancelled', '2026-11-01T10:00:00.000Z', 'DZ-1'));
+
+  const r = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(r.allow, false, 'a different order\'s cancel is not this order\'s release');
+});
+
+test('gate: a cancel never releases a CONFIRMED meeting_booked — only the pending request', async () => {
+  freshDb();
+  seedEngine();
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1' });
+  await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-12T10:00' });
+  await recordMeetingRequestCancelled({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-12T10:00' });
+
+  const r = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
+  assert.equal(r.allow, false, 'F7: an approved meeting stays exactly one per order');
 });
 
 test('gate: any other status — and a second booking after meeting_booked — is blocked with the exact fixed reply', async () => {

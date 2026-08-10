@@ -19,6 +19,7 @@ import {
   gateCalendarBooking, handleBlockedBooking,
   recordMeetingBooked, recordMeetingRequested,
 } from './booster-meeting.js';
+import { realLeadName } from './booster-client.js';
 
 // Test seam — lets a test drive the step with an arbitrary module outcome
 // (notably: a failure text nobody has seen before) without inventing a module.
@@ -52,7 +53,25 @@ export async function runModuleActionStep({
   }
 
   if (gate.eventTitleOverride) sessionCtx.event_title_override = gate.eventTitleOverride;
-  const exec = await execute(business, action, sessionCtx);
+  // An express lead's identity is already on the signed quote — the model must
+  // never have to ask for it again ("רק צריכה את שמך המלא" after the client
+  // picked a slot was a live bug). Everything here is server-built: the name
+  // comes from the booster lead, never from the model, and the placeholder
+  // "ליד וואטסאפ" is filtered out by realLeadName. quote_number/client_email
+  // ride along for the approval record a tentative booking will create.
+  let effectiveAction = action;
+  if (gate.expressLead) {
+    const knownName = realLeadName(gate.expressLead.name);
+    if (knownName) {
+      sessionCtx.known_name = knownName;
+      if (action.module === 'calendar' && action.name === 'book' && !action.payload?.name) {
+        effectiveAction = { ...action, payload: { ...(action.payload ?? {}), name: knownName } };
+      }
+    }
+    if (gate.expressLead.quoteNumber) sessionCtx.quote_number = gate.expressLead.quoteNumber;
+    if (gate.expressLead.email) sessionCtx.client_email = gate.expressLead.email;
+  }
+  const exec = await execute(business, effectiveAction, sessionCtx);
   const moduleText = exec.text;
   const booking = exec.result ?? null;
 

@@ -57,6 +57,16 @@ export function normalizeIlPhone(raw) {
 
 export const boosterClientRef = (phone) => `wa-${normalizeIlPhone(phone)}`;
 
+// The booster names a bot-created lead "ליד וואטסאפ" until a real name arrives
+// (questionnaire / signature). That placeholder must never be treated as the
+// client's name — a bot that says "היי ליד וואטסאפ" or books a meeting under
+// it is worse than one that asks. One check, shared by every consumer.
+const LEAD_NAME_PLACEHOLDER = 'ליד וואטסאפ';
+export function realLeadName(raw) {
+  const name = String(raw ?? '').trim();
+  return name && name !== LEAD_NAME_PLACEHOLDER ? name : null;
+}
+
 export async function createBoosterLead({ name, phone, email, packageId, businessNote, utm = {} }) {
   const normalized = normalizeIlPhone(phone);
   if (!normalized) throw new Error(`booster-client: bad phone ${phone}`);
@@ -105,7 +115,10 @@ export async function lookupBoosterLeadByPhone(phone) {
   if (!res.ok) throw new Error(`booster-client: by-ref ${res.status}`);
   // status (Task 17) lets a caller gate on lifecycle stage — e.g. only a lead
   // sitting at awaiting_payment/payment_proof_sent accepts a forwarded screenshot.
-  return { leadId: data.lead_id, name: data.name, packageId: data.package_id, quoteUrl: data.quote_url, status: data.status };
+  // email is OPTIONAL on the wire: the booster is extending this response in
+  // parallel (email + the real signer name after signing). Both shapes must
+  // work, so absence normalizes to null and nothing downstream may require it.
+  return { leadId: data.lead_id, name: data.name, packageId: data.package_id, quoteUrl: data.quote_url, status: data.status, email: data.email ?? null };
 }
 
 // T5 (funnel track 1): the client said "סיימתי" in chat — tell the booster,
