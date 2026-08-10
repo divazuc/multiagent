@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 process.env.MODULE_SECRETS_KEY = crypto.randomBytes(32).toString('base64');
 const calendar = (await import('../lib/modules/calendar/index.js')).default;
-const { _setProviderForTest } = await import('../lib/modules/calendar/index.js');
+const { _setProviderForTest, _setOwnerApprovalForTest } = await import('../lib/modules/calendar/index.js');
 
 const created = [];
 _setProviderForTest({
@@ -129,7 +129,7 @@ test('book reports a structured result on every path, with its existing text unc
   assert.ok(gone.failureText.includes('לא זמין'));
 });
 
-test('book under owner_confirmed reports tentative:true — a request, not a booking', async () => {
+test('book under owner_confirmed reports tentative:true — a request, not a booking — and claims the whole reply', async () => {
   _setProviderForTest({
     freeBusy: async () => [],
     createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev6', htmlLink: '' }; },
@@ -140,7 +140,30 @@ test('book under owner_confirmed reports tentative:true — a request, not a boo
   const r = await calendar.actions.book.handler(BIZ, pending, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
   assert.deepEqual(r.result, { ok: true, tentative: true },
     'the DEFAULT mode returns a pending request — a caller must be able to tell it from a confirmed meeting');
-  assert.ok(r.confirmationText.includes('נאשר לך סופית'), 'existing owner-confirmed copy is unchanged');
+  assert.equal(r.confirmationText, 'שלחתי את הבקשה לאישור — ברגע שתאושר, יישלח לך זימון למייל 🙏',
+    'no owner_display_name → the neutral phrasing, verbatim');
+  assert.equal(r.replaceResponse, true,
+    'the tentative copy must be the ENTIRE reply — the model\'s own "מאשרת את הפגישה" text must never ride above it');
+});
+
+test('owner_display_name names the approver in the tentative copy — and only via settings, never hardcoded', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev6b', htmlLink: '' }; },
+  });
+  created.length = 0;
+  const pending = row({ mode: 'owner_confirmed', owner_display_name: 'דיוה' });
+  const slots = await calendar._computeCurrentSlots(pending);
+  const r = await calendar.actions.book.handler(BIZ, pending, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
+  assert.equal(r.confirmationText, 'שלחתי לדיוה לאישור הפגישה 🙏 ברגע שתאושר — יישלח לך זימון למייל.',
+    'the owner-dictated copy, with the settings-supplied name');
+  assert.equal(r.replaceResponse, true);
+  // the autonomous confirmation is untouched by the redesign
+  const auto = row();
+  const autoSlots = await calendar._computeCurrentSlots(auto);
+  const ok = await calendar.actions.book.handler(BIZ, auto, { slot: `${autoSlots[0].date}T${autoSlots[0].from}`, name: 'דנה' }, {});
+  assert.ok(ok.confirmationText.includes('נקבעה'));
+  assert.notEqual(ok.replaceResponse, true, 'autonomous mode still appends to the model reply');
 });
 
 test('book reports ok:false when the slot is taken in the race re-check', async () => {
@@ -166,4 +189,98 @@ test('owner_confirmed creates tentative title and notifies softly', async () => 
   const res = await calendar.actions.book.handler(BIZ, r, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
   assert.ok(created[0].title.startsWith('⏳ ממתין לאישור'));
   assert.ok(res.confirmationText);
+});
+
+// ── Name resolution (the "רק צריכה את שמך המלא" live bug) ────────────────────
+// The model may omit the name; the server usually already knows it. Order:
+// payload.name → sessionCtx.known_name (express lead) → sessionCtx.profile_name
+// (WhatsApp display name) → the old ask-path (no event, no module text).
+
+test('a book without a payload name uses the server-known client name', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev7', htmlLink: '' }; },
+  });
+  created.length = 0;
+  const slots = await calendar._computeCurrentSlots(row());
+  const r = await calendar.actions.book.handler(BIZ, row(), { slot: `${slots[0].date}T${slots[0].from}` },
+    { session_id: '0501234567', known_name: 'דנה כהן', profile_name: 'DK' });
+  assert.deepEqual(r.result, { ok: true, tentative: false });
+  assert.ok(created[0].title.includes('דנה כהן'), 'known_name outranks the WhatsApp profile name');
+});
+
+test('a book without a payload name falls back to the WhatsApp profile name', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev8', htmlLink: '' }; },
+  });
+  created.length = 0;
+  const slots = await calendar._computeCurrentSlots(row());
+  const r = await calendar.actions.book.handler(BIZ, row(), { slot: `${slots[0].date}T${slots[0].from}` },
+    { session_id: '0501234567', profile_name: 'דנה לוי' });
+  assert.deepEqual(r.result, { ok: true, tentative: false });
+  assert.ok(created[0].title.includes('דנה לוי'));
+});
+
+test('no name from anywhere → the old ask-path: no event, no module text, a structured non-booking', async () => {
+  _setProviderForTest({
+    freeBusy: async () => { throw new Error('must not be reached — the name check comes first'); },
+    createEvent: async () => { throw new Error('must not be called'); },
+  });
+  created.length = 0;
+  const r = await calendar.actions.book.handler(BIZ, row(), { slot: '2030-01-01T10:00' }, { session_id: '0501234567' });
+  assert.deepEqual(r.result, { ok: false });
+  assert.equal(r.confirmationText, undefined, 'no module text — the model\'s own reply (which asked for a name) stands alone');
+  assert.equal(r.failureText, undefined);
+  assert.equal(created.length, 0);
+});
+
+test('a junk model name is dropped by the schema instead of killing the booking', () => {
+  const parsed = calendar.actions.book.schema.safeParse({ slot: '2030-01-01T10:00', name: '   ' });
+  assert.ok(parsed.success, 'an unusable name must cost the name, never the whole action');
+  assert.equal(parsed.data.name, undefined);
+});
+
+// ── Owner approval hook (tentative bookings) ─────────────────────────────────
+
+test('a tentative booking hands the approval layer the provider eventId, the slot and the express context', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'gcal-ev-42', htmlLink: '' }; },
+  });
+  const calls = [];
+  _setOwnerApprovalForTest(async (args) => { calls.push(args); return 'telegram'; });
+  try {
+    created.length = 0;
+    const pending = row({ mode: 'owner_confirmed', owner_notify_phone: '0509999999' });
+    const slots = await calendar._computeCurrentSlots(pending);
+    const slot = `${slots[0].date}T${slots[0].from}`;
+    await calendar.actions.book.handler(BIZ, pending, { slot, name: 'דנה' },
+      { session_id: '0501234567', quote_number: 'DZ-2026-1042', client_email: 'dana@example.com' });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].eventId, 'gcal-ev-42', 'the provider\'s eventId is captured, no longer dropped');
+    assert.equal(calls[0].slot, slot);
+    assert.equal(calls[0].name, 'דנה');
+    assert.equal(calls[0].quoteNumber, 'DZ-2026-1042');
+    assert.equal(calls[0].clientEmail, 'dana@example.com');
+    assert.equal(calls[0].ownerNotifyPhone, '0509999999', 'the WhatsApp fallback number travels along');
+  } finally {
+    _setOwnerApprovalForTest(null);
+  }
+});
+
+test('an autonomous booking never touches the approval layer', async () => {
+  _setProviderForTest({
+    freeBusy: async () => [],
+    createEvent: async (_s, ev) => { created.push(ev); return { eventId: 'ev9', htmlLink: '' }; },
+  });
+  const calls = [];
+  _setOwnerApprovalForTest(async (args) => { calls.push(args); });
+  try {
+    const slots = await calendar._computeCurrentSlots(row());
+    await calendar.actions.book.handler(BIZ, row(), { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
+    assert.equal(calls.length, 0);
+  } finally {
+    _setOwnerApprovalForTest(null);
+  }
 });

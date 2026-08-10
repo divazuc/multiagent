@@ -121,6 +121,13 @@ export const recordMeetingBooked = (args) => recordMeetingEvent('meeting_booked'
 //     reminder is the safety net that re-offers slots.
 export const recordMeetingRequested = (args) => recordMeetingEvent('meeting_requested', args);
 
+// The owner tapped "שינוי מועד" on a pending request: the event is gone from
+// the calendar, so the request's hold on the order's one meeting must be gone
+// too — otherwise the client the owner just asked to re-pick a slot would hit
+// the gate's block instead of booking. See cancellationReleases for how the
+// gate reads this note.
+export const recordMeetingRequestCancelled = (args) => recordMeetingEvent('meeting_request_cancelled', args);
+
 // Latest row per (type, phone), or null — including on ANY failure. Both
 // callers want exactly that: the webhook's reminder suppression sends the
 // reminder when it cannot know (fail-open), and the gate treats "can't read
@@ -184,6 +191,19 @@ export function noteCoversOrder(note, order) {
 // payload ({quote_number}) are accepted as "the order".
 const quoteOf = (o) => o?.detail?.quote_number ?? o?.quote_number ?? null;
 const stampOf = (o) => Date.parse(o?.created_at ?? '') || 0;
+
+// Does this meeting_request_cancelled note void the pending request's hold?
+// Two conditions, both required:
+//   · same order — noteCoversOrder's own machinery (quote match, recency
+//     fallback), with the REQUEST standing in as "the order"
+//   · the cancel is not older than the request. A client who re-picked a slot
+//     after a reschedule has a NEWER meeting_requested note, and that new
+//     request must hold again — a stale cancel cannot keep releasing forever.
+export function cancellationReleases(requested, cancelled) {
+  if (!requested || !cancelled) return false;
+  if (stampOf(cancelled) < stampOf(requested)) return false;
+  return noteCoversOrder(cancelled, requested);
+}
 
 // ── Slot offer copy ──────────────────────────────────────────────────────────
 
@@ -259,14 +279,18 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
     // The invite note IS the current order (a fresh one per order), so it is
     // both the title source and the yardstick a previous booking is measured
     // against — see noteCoversOrder.
-    const [invite, booked, requested] = await Promise.all([
+    const [invite, booked, requested, cancelled] = await Promise.all([
       getLatestMeetingEvent({ businessId: business.id, type: 'meeting_invite', phone }),
       getLatestMeetingEvent({ businessId: business.id, type: 'meeting_booked', phone }),
       getLatestMeetingEvent({ businessId: business.id, type: 'meeting_requested', phone }),
+      getLatestMeetingEvent({ businessId: business.id, type: 'meeting_request_cancelled', phone }),
     ]);
     // A pending request holds the order's one meeting slot just like a
-    // confirmed one does — see recordMeetingRequested for the full policy.
-    const held = noteCoversOrder(booked, invite) || noteCoversOrder(requested, invite);
+    // confirmed one does — see recordMeetingRequested for the full policy —
+    // UNLESS the owner rescheduled it away (cancellationReleases): the client
+    // must then be able to book the replacement slot.
+    const requestHolds = noteCoversOrder(requested, invite) && !cancellationReleases(requested, cancelled);
+    const held = noteCoversOrder(booked, invite) || requestHolds;
     if (!held) {
       const quoteNumber = invite?.detail?.quote_number ?? null;
       const eventTitleOverride = quoteNumber
@@ -275,7 +299,9 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
       return {
         allow: true,
         eventTitleOverride,
-        expressLead: { leadId: lead.leadId, name: lead.name ?? null, quoteNumber },
+        // email tolerates both by-ref shapes — the booster is only now adding
+        // the field, so an old response simply carries null here.
+        expressLead: { leadId: lead.leadId, name: lead.name ?? null, quoteNumber, email: lead.email ?? null },
       };
     }
   }

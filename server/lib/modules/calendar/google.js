@@ -80,3 +80,44 @@ export async function createEvent(secrets, { startUtcISO, endUtcISO, title, desc
   if (!res.ok) throw new Error(`createEvent failed: ${body.error?.message ?? res.status}`);
   return { eventId: body.id, htmlLink: body.htmlLink ?? '' };
 }
+
+// The approval flow reads the event back before patching it: PATCH replaces
+// `attendees` wholesale, so adding one requires knowing the current list.
+export async function getEvent(secrets, eventId) {
+  const token = await accessToken(secrets);
+  const res = await fetch(`${API}/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(`getEvent failed: ${body.error?.message ?? res.status}`);
+  return { eventId: body.id, title: body.summary ?? '', attendees: body.attendees ?? [] };
+}
+
+// sendUpdates:'all' is what makes Google e-mail the invite to a just-added
+// attendee — the whole point of approving with the client's address known.
+export async function patchEvent(secrets, eventId, { title, attendees }, { sendUpdates = 'none' } = {}) {
+  const token = await accessToken(secrets);
+  const patch = {};
+  if (title !== undefined) patch.summary = title;
+  if (attendees !== undefined) patch.attendees = attendees;
+  const res = await fetch(`${API}/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=${encodeURIComponent(sendUpdates)}`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(`patchEvent failed: ${body.error?.message ?? res.status}`);
+  return { eventId: body.id };
+}
+
+export async function deleteEvent(secrets, eventId) {
+  const token = await accessToken(secrets);
+  const res = await fetch(`${API}/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+  });
+  // DELETE answers 204 with an empty body; 410 means already gone — for a
+  // reschedule that released the slot either way, both count as deleted.
+  if (!res.ok && res.status !== 410) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`deleteEvent failed: ${body.error?.message ?? res.status}`);
+  }
+}

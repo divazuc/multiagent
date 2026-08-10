@@ -7,6 +7,12 @@ import * as google from './google.js';
 import { computeSlots, formatSlotsContext, ilWallToUtc, utcToIlWall, WEEKDAYS } from './slots.js';
 import { decryptSecrets } from '../crypto.js';
 import { JEWISH_HOLIDAYS } from '../../holidays.js';
+import { requestOwnerApproval } from '../../meeting-approval.js';
+
+// The pending-approval marker on the event title. Created here; stripped by
+// the approval route (routes/meeting-approval.js) when the owner approves —
+// one constant so the two sides can never drift apart.
+export const TENTATIVE_TITLE_PREFIX = '⏳ ממתין לאישור: ';
 
 const windowSchema = z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) });
 const weeklyDefault = Object.fromEntries(WEEKDAYS.map(d => [d, []]));
@@ -27,6 +33,10 @@ const settingsSchema = z.object({
   jewish_holidays_closed: z.boolean().default(true),
   event_title: z.string().default('פגישה — {name}'),
   owner_notify_phone: z.string().optional(),
+  // How the tentative-booking reply names the approving owner ("שלחתי לדיוה
+  // לאישור"). Per-tenant data, so it lives in settings — the module itself
+  // must never hardcode an owner's name. Unset → neutral phrasing.
+  owner_display_name: z.string().optional(),
 });
 
 let testProvider = null;
@@ -37,10 +47,22 @@ function provider(settings) {
     return testProvider ?? {
       freeBusy: async () => JSON.parse(process.env.CALENDAR_FAKE_BUSY ?? '[]'),
       createEvent: async (_s, ev) => { console.log('[calendar-fake] createEvent', ev.title, ev.startUtcISO); return { eventId: 'fake', htmlLink: '' }; },
+      getEvent: async (_s, id) => ({ title: `${TENTATIVE_TITLE_PREFIX}fake`, attendees: [], eventId: id }),
+      patchEvent: async (_s, id, patch) => { console.log('[calendar-fake] patchEvent', id, patch.summary); },
+      deleteEvent: async (_s, id) => { console.log('[calendar-fake] deleteEvent', id); },
     };
   }
   return google;
 }
+
+// The approval routes (routes/meeting-approval.js) patch/delete an event this
+// module created — same provider resolution, same test seam.
+export function providerForSettings(settings) { return provider(settings); }
+
+// Owner-notify seam: the handler fires this without awaiting it, so a test
+// injects a recorder rather than racing a fire-and-forget promise.
+let ownerApproval = requestOwnerApproval;
+export function _setOwnerApprovalForTest(fn) { ownerApproval = fn ?? requestOwnerApproval; }
 
 function nowIl() { return utcToIlWall(new Date()); }
 const pad = (n) => String(n).padStart(2, '0');
@@ -80,14 +102,27 @@ const calendarModule = {
 
   actions: {
     book: {
+      // name is optional-and-unfailable (same rationale as the booster's
+      // create_quote_lead schema): the server usually already knows it, and a
+      // junk value from the model must cost the name, never the booking.
       schema: z.object({
         slot: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
-        name: z.string().min(1),
+        name: z.string().trim().min(1).optional().catch(undefined),
         phone: z.string().optional(),
       }),
       async handler(business, row, payload, sessionCtx) {
         const settings = settingsSchema.parse(row.settings ?? {});
         const [date, from] = payload.slot.split('T');
+
+        // Name resolution, in trust order: what the model extracted from the
+        // chat, the server-known client name (express lead — the reply
+        // pipeline sets known_name from the signed quote), the WhatsApp
+        // profile name. sessionCtx is server-built, never model-controlled.
+        // NONE present reproduces the old required-name behaviour exactly: no
+        // event and no module text — the model's own reply (which asked for a
+        // name) stands alone. Tenants without any of this are unchanged.
+        const name = payload.name || sessionCtx?.known_name || sessionCtx?.profile_name || null;
+        if (!name) return { result: { ok: false } };
 
         // 1. Requested slot must be on the CURRENT computed list
         const slots = await computeCurrentSlots(row);
@@ -123,38 +158,57 @@ const calendarModule = {
         // the {name} templating only applies to the configured default. The
         // model never controls this: sessionCtx is server-built, not payload.
         const baseTitle = sessionCtx?.event_title_override
-          || settings.event_title.replace('{name}', payload.name);
-        const title = (tentative ? '⏳ ממתין לאישור: ' : '') + baseTitle;
-        await provider(settings).createEvent(secrets, {
+          || settings.event_title.replace('{name}', name);
+        const title = (tentative ? TENTATIVE_TITLE_PREFIX : '') + baseTitle;
+        // The provider's return is captured, not dropped: the approval flow
+        // patches or deletes this exact event by id when the owner answers.
+        const createdEvent = await provider(settings).createEvent(secrets, {
           startUtcISO: startUtc.toISOString(), endUtcISO: endUtc.toISOString(),
           title,
-          description: `נקבע ע"י הסוכן בוואטסאפ.\nשם: ${payload.name}\nטלפון: ${phone}\nעסק: ${business.name}`,
+          description: `נקבע ע"י הסוכן בוואטסאפ.\nשם: ${name}\nטלפון: ${phone}\nעסק: ${business.name}`,
         });
 
-        // 4. Owner notification (owner_confirmed) — non-blocking
-        if (tentative && settings.owner_notify_phone) {
-          import('../../wa-send.js').then(({ sendWhatsAppMessage }) =>
-            sendWhatsAppMessage({
-              to: settings.owner_notify_phone,
-              text: `📅 בקשת פגישה חדשה: ${payload.name} (${phone}) — ${date} בשעה ${from}. האירוע ביומן מסומן "ממתין לאישור".`,
-              businessId: business.id,
-            })).catch(() => {});
+        // 4. Owner notification (owner_confirmed) — non-blocking, never able
+        // to fail the booking. Telegram one-tap approval when configured,
+        // else the plain WhatsApp notify (see lib/meeting-approval.js).
+        if (tentative) {
+          Promise.resolve(ownerApproval({
+            business,
+            calendarRowId: row.id ?? null,
+            ownerNotifyPhone: settings.owner_notify_phone ?? null,
+            eventId: createdEvent?.eventId ?? null,
+            phone, name, slot: payload.slot,
+            quoteNumber: sessionCtx?.quote_number ?? null,
+            clientEmail: sessionCtx?.client_email ?? null,
+          })).catch(() => {});
         }
 
-        const dayName = HEB_DAYS[new Date(`${date}T00:00:00`).getDay()];
         // tentative:true is a REQUEST awaiting the owner's approval, not a
-        // booking — the copy says so ("נאשר לך סופית בהקדם") and now the
-        // result does too, so a caller cannot mistake one for the other.
-        return { result: { ok: true, tentative }, confirmationText: tentative
-          ? `רשמתי בקשה לפגישה ביום ${dayName} ${date} בשעה ${from} — נאשר לך סופית בהקדם 🙏`
-          : `הפגישה נקבעה! 🎉 יום ${dayName} ${date} בשעה ${from}. נתראה!` };
+        // booking — the copy says so and so does the result, so a caller
+        // cannot mistake one for the other. replaceResponse: the module copy
+        // is the ENTIRE reply — the model's own text ("אני מאשרת את
+        // הפגישה...") used to arrive stapled above it, promising the exact
+        // opposite of "awaiting approval".
+        if (tentative) {
+          const owner = (settings.owner_display_name ?? '').trim();
+          return {
+            result: { ok: true, tentative: true },
+            confirmationText: owner
+              ? `שלחתי ל${owner} לאישור הפגישה 🙏 ברגע שתאושר — יישלח לך זימון למייל.`
+              : 'שלחתי את הבקשה לאישור — ברגע שתאושר, יישלח לך זימון למייל 🙏',
+            replaceResponse: true,
+          };
+        }
+        const dayName = HEB_DAYS[new Date(`${date}T00:00:00`).getDay()];
+        return { result: { ok: true, tentative: false },
+          confirmationText: `הפגישה נקבעה! 🎉 יום ${dayName} ${date} בשעה ${from}. נתראה!` };
       },
     },
   },
 
   adminUI: {
     connectType: 'google_oauth',
-    fields: ['mode', 'duration_min', 'buffer_min', 'min_notice_hours', 'horizon_days', 'weekly', 'busy_calendar_ids', 'jewish_holidays_closed', 'owner_notify_phone'],
+    fields: ['mode', 'duration_min', 'buffer_min', 'min_notice_hours', 'horizon_days', 'weekly', 'busy_calendar_ids', 'jewish_holidays_closed', 'owner_notify_phone', 'owner_display_name'],
   },
 };
 

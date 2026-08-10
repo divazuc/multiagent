@@ -161,7 +161,12 @@ test('a tentative owner_confirmed booking is recorded as meeting_requested, neve
   });
 
   assert.deepEqual(step.booking, { ok: true, tentative: true });
-  assert.match(step.text, /נאשר לך סופית/, 'the client is told it is still a request');
+  // The double-meaning live bug: the model's "אני מאשרת את הפגישה" used to be
+  // stapled above the module's "awaiting approval" copy. The module copy is
+  // now the ENTIRE outbound text — nothing above it, nothing below it.
+  assert.equal(step.text, 'שלחתי את הבקשה לאישור — ברגע שתאושר, יישלח לך זימון למייל 🙏',
+    'the tentative reply is ONLY the module copy');
+  assert.ok(!step.text.includes(MODEL_TEXT), 'the model\'s own contradicting text must not survive');
   assert.equal(typed(notes, 'meeting_booked').length, 0,
     'a request Diva may yet decline is not a booked meeting — recording it as one locks the client out via F7');
   assert.equal(typed(notes, 'meeting_requested').length, 1);
@@ -234,6 +239,92 @@ test('the WhatsApp profile name reaches the module handler on sessionCtx', async
     assert.equal(seenCtx.profile_name, 'דנה כהן');
   } finally {
     _setExecutorForTest(null);
+  }
+});
+
+// ── Name injection (the "רק צריכה את שמך המלא" live bug) ─────────────────────
+// The signed quote already carries the client's name; a model that omitted it
+// from the booking payload must not cost the client another question.
+
+const namelessBook = (slot) => ({ module: 'calendar', name: 'book', payload: { slot } });
+
+test('a book the model sent without a name is completed with the express lead\'s name', async () => {
+  const notes = seed();
+  await meeting.recordMeetingInvite({ businessId: 'b1', phone: PHONE, quoteNumber: 'DZ-2026-1042' });
+  const slot = await bookableSlot();
+
+  const step = await runModuleActionStep({
+    business: BIZ, action: namelessBook(slot), session_id: SESSION, finalResponse: MODEL_TEXT,
+  });
+
+  assert.deepEqual(step.booking, { ok: true, tentative: false }, 'the booking went through — nobody asked for a name');
+  assert.equal(created.length, 1);
+  assert.match(created[0].description, /דנה כהן/, 'the event carries the lead\'s real name, injected server-side');
+  assert.equal(typed(notes, 'meeting_booked').length, 1);
+});
+
+test('the booster placeholder "ליד וואטסאפ" is never treated as a name — the ask-path stands', async () => {
+  const notes = seed();
+  meeting._setBoosterClientForTest({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'ליד וואטסאפ', status: 'awaiting_meeting' }),
+  });
+  const step = await runModuleActionStep({
+    business: BIZ, action: namelessBook(await bookableSlot()), session_id: SESSION, finalResponse: MODEL_TEXT,
+  });
+  assert.equal(created.length, 0, 'no event may be booked under the placeholder');
+  assert.equal(step.text, MODEL_TEXT, 'the model\'s own reply (which asked for the name) goes out unchanged');
+  assert.equal(typed(notes, 'meeting_booked').length, 0);
+});
+
+test('no express lead and no profile name → the old ask-path, unchanged for non-booster clients', async () => {
+  const notes = seed();
+  meeting._setBoosterClientForTest({ lookupBoosterLeadByPhone: async () => null });
+  const step = await runModuleActionStep({
+    business: BIZ, action: namelessBook(await bookableSlot()), session_id: SESSION, finalResponse: MODEL_TEXT,
+  });
+  assert.equal(created.length, 0);
+  assert.equal(step.text, MODEL_TEXT);
+  assert.equal(notes.events.length, 0);
+});
+
+test('the express lead\'s email and quote number reach the approval layer of a tentative booking', async () => {
+  seed({ mode: 'owner_confirmed' });
+  await meeting.recordMeetingInvite({ businessId: 'b1', phone: PHONE, quoteNumber: 'DZ-2026-1042' });
+  meeting._setBoosterClientForTest({
+    lookupBoosterLeadByPhone: async () =>
+      ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting', email: 'dana@example.com' }),
+  });
+  const approvals = [];
+  calendarMod._setOwnerApprovalForTest(async (args) => { approvals.push(args); return 'telegram'; });
+  try {
+    const slot = await bookableSlot('owner_confirmed');
+    const step = await runModuleActionStep({
+      business: BIZ, action: namelessBook(slot), session_id: SESSION, finalResponse: MODEL_TEXT,
+    });
+    assert.deepEqual(step.booking, { ok: true, tentative: true });
+    assert.equal(approvals.length, 1);
+    assert.equal(approvals[0].clientEmail, 'dana@example.com', 'threaded from the by-ref lookup via expressLead');
+    assert.equal(approvals[0].quoteNumber, 'DZ-2026-1042');
+    assert.equal(approvals[0].name, 'דנה כהן');
+  } finally {
+    calendarMod._setOwnerApprovalForTest(null);
+  }
+});
+
+test('an old-shape by-ref response (no email field) books exactly the same, with no email downstream', async () => {
+  seed({ mode: 'owner_confirmed' });
+  const approvals = [];
+  calendarMod._setOwnerApprovalForTest(async (args) => { approvals.push(args); return 'telegram'; });
+  try {
+    const step = await runModuleActionStep({
+      business: BIZ, action: namelessBook(await bookableSlot('owner_confirmed')),
+      session_id: SESSION, finalResponse: MODEL_TEXT,
+    });
+    assert.deepEqual(step.booking, { ok: true, tentative: true });
+    assert.equal(approvals.length, 1);
+    assert.equal(approvals[0].clientEmail, null, 'absence normalizes to null — never undefined surprises, never a throw');
+  } finally {
+    calendarMod._setOwnerApprovalForTest(null);
   }
 });
 

@@ -94,6 +94,29 @@ test('contextProvider (awaiting_meeting lead): meeting-stage guidance + the call
   assert.ok(ctx.includes('<<ACTION:booster.create_quote_lead'), 'the static block is kept');
 });
 
+// The "רק צריכה את שמך המלא" live bug, prompt half: a signed lead's name is
+// already known, and the model must be told so — explicitly, with a ban on
+// asking — or it interrogates the client right after they picked a slot.
+test('contextProvider tells the model the lead\'s known name and forbids asking for it', async () => {
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'דנה כהן', status: 'awaiting_meeting' }),
+  }));
+  const ctx = await booster.contextProvider(BIZ, ROW, SENDER);
+  assert.match(ctx, /דנה כהן/, 'the known name itself is in the context');
+  assert.match(ctx, /אל תבקש\/י ממנו את שמו/, 'and the ban on asking is explicit');
+});
+
+test('the booster\'s "ליד וואטסאפ" placeholder is not a name — no known-name block, no ban', async () => {
+  _setBoosterClientForTest(stubClient({
+    lookupBoosterLeadByPhone: async () => ({ leadId: 'l1', name: 'ליד וואטסאפ', status: 'awaiting_meeting' }),
+  }));
+  const ctx = await booster.contextProvider(BIZ, ROW, SENDER);
+  assert.ok(!ctx.includes('שם הלקוח ידוע'),
+    'a placeholder must not be presented as the client\'s name');
+  assert.ok(!ctx.includes('ליד וואטסאפ'), 'and must never leak into the prompt as one');
+  assert.match(ctx, /פגישת האפיון/, 'the stage guidance itself is unaffected');
+});
+
 test('contextProvider (payment-stage lead): screenshot guidance, never a self-confirmation of payment', async () => {
   for (const status of ['awaiting_payment', 'payment_proof_sent']) {
     _clearStatusCacheForTest();

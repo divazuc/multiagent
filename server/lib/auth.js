@@ -12,7 +12,9 @@ import crypto from 'node:crypto';
 const PUBLIC_PATHS = ['/health', '/wa-inbound', '/booster-webhook'];
 // '/c/' is the short connect link a CLIENT opens — same public surface as
 // '/oauth/', and it only redirects to a signed state that is validated there.
-const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/'];
+// '/meeting/' is the owner's one-tap approval page from the Telegram links —
+// its one-time token is the credential (routes/meeting-approval.js).
+const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/', '/meeting/'];
 
 let warnedOff = false;
 
