@@ -229,6 +229,21 @@ const GROUNDING_RULE = `Grounding rule: answer ONLY from the Business info, the 
 // customer already gave earlier in the conversation.
 const MISSING_DETAILS_RULE = `Missing-details rule: if you offer or promise an action that requires a contact detail (e-mail to send a quote/summary, phone number for a callback, full name for a booking), check the conversation history: if the customer already provided it — use it, never ask again. If it's missing — weave a short natural request for it into the SAME reply, e.g. "אעבוד על הצעת המחיר ואשלח לך במייל בהקדם — לאיזה מייל לשלוח?"`;
 
+// Owner rule, dictated in the live demo:
+//   "הפניה הראשונית היא בזכר אלא אם זיהינו לפי הכתיבה שמדובר בנקבה"
+//
+// Hebrew has no neutral second person, so something has to be the default and
+// the masculine is what reads as neutral. Two things this rule is careful about:
+// the evidence for switching is the customer's OWN writing — never a guess from
+// a name, a display picture or a "sounds like a woman's question" — and the
+// switch is one-way. Flipping back to masculine three messages after correctly
+// identifying a woman reads worse than never having switched at all.
+//
+// Distinct from identityText() below: that one is the bot's own first-person
+// gender (admin-managed). This is how the bot addresses the person it's talking
+// to, which nobody configures because only the conversation can reveal it.
+const ADDRESS_GENDER_RULE = `Gender of address (Hebrew): address the customer in MASCULINE second-person forms by default (אתה, תוכל, מעוניין, רוצה) — in Hebrew that is the standard neutral address, so this is where every conversation starts. Switch to FEMININE second-person forms (את, תוכלי, מעוניינת, רוצה) ONLY when the customer's OWN writing shows she is a woman: she writes about herself in feminine forms (מעוניינת, צריכה, מחפשת, יכולה, בטוחה), states it explicitly, or gives a clearly feminine name as her own. Do not infer it from anything else, and while it is unclear stay masculine. Once you have identified the customer as a woman, address her in the feminine for the ENTIRE rest of the conversation, in every following message — never switch back to masculine.`;
+
 // ── Sales mode response ───────────────────────────────────────────────────────
 
 async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context }) {
@@ -240,7 +255,8 @@ CTA decision: ${intent.cta_decision}.
 Business info: ${JSON.stringify(business_profile)}
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
-${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
+${MISSING_DETAILS_RULE}
+${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
 
@@ -257,7 +273,8 @@ Do NOT push sales or CTA. Focus entirely on helping them.
 Be warm, clear, and concise. 1-4 sentences.
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
-${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
+${MISSING_DETAILS_RULE}
+${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -285,7 +302,8 @@ ${isFrustrated
 Keep total response SHORT (2-5 sentences max). Sound natural.
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
-${MISSING_DETAILS_RULE}${policyText(guardrails)}${identityText(persona)}
+${MISSING_DETAILS_RULE}
+${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -333,8 +351,12 @@ function validate(text, guardrails, agent_mode) {
 }
 
 async function rewrite({ text, issues, persona, guardrails, language, agent_mode }) {
+  // The rewrite never sees the conversation, so it cannot re-derive whether the
+  // customer is a woman — it can only preserve what the original already got
+  // right. Without this line a correctly-feminine reply comes back masculine.
   const prompt = `Rewrite this message to fix: ${issues.join('; ')}.
 Keep the same intent. Sound human. Max 80 words. One question max.
+Keep the Hebrew gender of address (masculine vs feminine second person) exactly as it is in the original — do not change who is being addressed or how.
 Mode: ${agent_mode}. Tone: ${JSON.stringify(persona?.tone ?? 'warm')}.
 Language: ${language}.
 Forbidden: ${JSON.stringify(guardrails?.forbidden_phrases ?? [])}.
