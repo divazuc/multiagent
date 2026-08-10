@@ -93,14 +93,24 @@ const CALLBACK_REPLY = 'דיוה תחזור אליך בהקדם 🙂';
 
 // What the customer actually receives with the link. It replaces an
 // interrogation, so it has to answer the question the customer was about to
-// ask — "what happens now?" — in one short message: the four steps of the
-// express flow, then the meeting, then how long the link lives.
+// ask — "what happens now?" — in one short message: what the link does, then
+// the meeting, then how long the link lives.
 //
-// Rules baked in: no ₪ and no totals (only the calculator and Diva quote
+// The process sentence is the OWNER'S, dictated verbatim after her live demo.
+// Do not rewrite it, and do not bring back the "calculator" noun this line used
+// to lead with — she banned that word outright ("נשמע זול ומיושן").
+// test/booster-module.test.js pins the sentence, and bans the word across this
+// whole file including comments, so that it cannot creep back in by quotation.
+//
+// Rules baked in: no ₪ and no totals (only the quote flow and Diva quote
 // money), no personal-area promise (not live), and Diva is one person — the
 // scheduling happens here in the chat, per the awaiting_meeting guidance
 // below and docs/booster-meeting-scheduling-handoff.md §1.
-const QUOTE_PROCESS = 'ממלאים שאלון קצר, מרכיבים את החבילה במחשבון וחותמים דיגיטלית — הכול תוך כמה דקות. אחרי החתימה נתאם כאן פגישת אפיון קצרה עם דיוה.';
+const QUOTE_PROCESS = 'ממלאים שאלון היכרות קצר, בוחרים מסלול ותוספות ומקבלים הצעת מחיר מותאמת בלי להמתין!';
+
+// Kept out of QUOTE_PROCESS: her sentence ends at the quote, and what happens
+// after signing is a separate promise this chat has to honour.
+const MEETING_AFTER_SIGNATURE = 'אחרי החתימה נתאם כאן פגישת אפיון קצרה עם דיוה.';
 
 // The express pre-signature link window. Only a fallback: the booster stamps
 // the real number on the lead and it arrives as lead.validDays. Read the
@@ -114,7 +124,7 @@ function quoteLinkText(lead) {
     ? 'הנה הקישור האישי שלך להצעת המחיר 👇'
     : 'הנה שוב הקישור האישי שלך להצעת המחיר 👇';
   const days = lead.validDays ?? EXPRESS_LINK_VALID_DAYS;
-  return `${opener}\n${lead.linkUrl}\n\n${QUOTE_PROCESS}\nהקישור בתוקף ל-${days} ימים.`;
+  return `${opener}\n${lead.linkUrl}\n\n${QUOTE_PROCESS}\n${MEETING_AFTER_SIGNATURE}\nהקישור בתוקף ל-${days} ימים.`;
 }
 const MATERIALS_ACK = 'קיבלתי! עדכנתי את דיוה — היא תעבור על החומרים ותאשר שמתחילים 🙏';
 const MATERIALS_ALREADY = 'כבר עדכנתי את דיוה, היא בודקת 🙏';

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 process.env.MODULE_SECRETS_KEY = crypto.randomBytes(32).toString('base64');
 const booster = (await import('../lib/modules/booster.js')).default;
 const { _setBoosterClientForTest, _setRelayForTest, _clearStatusCacheForTest, _setCtwaLookupForTest } =
@@ -448,6 +449,13 @@ test('a blank WhatsApp profile name is not sent as a name', async () => {
 
 // ── create_quote_lead: the confirmation copy ────────────────────────────────
 
+// Dictated verbatim by the owner during the live demo. It is her sentence, not
+// a paraphrase — pinned character-for-character so a later "improvement" to the
+// wording fails here instead of going out in her name.
+const OWNER_PROCESS_LINE =
+  'ממלאים שאלון היכרות קצר, בוחרים מסלול ותוספות ומקבלים הצעת מחיר מותאמת בלי להמתין!';
+const MEETING_LINE = 'אחרי החתימה נתאם כאן פגישת אפיון קצרה עם דיוה.';
+
 test('the confirmation message explains the process and carries the link', async () => {
   _setBoosterClientForTest(stubClient({
     createBoosterLead: async () => ({ leadId: 'l1', linkUrl: 'https://booster.divdev.co/flow/tok1', created: true }),
@@ -456,14 +464,38 @@ test('the confirmation message explains the process and carries the link', async
   const { confirmationText: text } = await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
 
   assert.ok(text.includes('https://booster.divdev.co/flow/tok1'), 'the link itself');
-  assert.match(text, /שאלון/, 'the questionnaire step');
-  assert.match(text, /מחשבון/, 'the calculator step');
-  assert.match(text, /חותמים|חתימה/, 'the digital signature step');
-  assert.match(text, /פגישת אפיון/, 'what happens after signing');
+  assert.ok(text.includes('👇'), 'the opener points down at the link');
+  assert.ok(text.includes(OWNER_PROCESS_LINE), 'the owner\'s sentence, verbatim');
+  assert.ok(text.includes(MEETING_LINE), 'the meeting is scheduled here in the chat');
   assert.match(text, /בתוקף/, 'the link validity window');
   assert.doesNotMatch(text, /₪/, 'the bot never prints a price');
   assert.doesNotMatch(text, /אזור אישי/, 'never promises the personal area — it is not live');
   assert.doesNotMatch(text, /נחזור|נתאם לך|אנחנו/, 'Diva is one person, not a company "we"');
+});
+
+test('the confirmation keeps the dictated order: link, then the process line, then the meeting, then validity', async () => {
+  _setBoosterClientForTest(stubClient({
+    createBoosterLead: async () => ({ leadId: 'l1', linkUrl: 'https://booster.divdev.co/flow/tok1', created: true, validDays: 21 }),
+  }));
+  const payload = booster.actions.create_quote_lead.schema.parse({ package_id: 'mini' });
+  const { confirmationText: text } = await booster.actions.create_quote_lead.handler(BIZ, ROW, payload, SENDER);
+
+  const link    = text.indexOf('https://booster.divdev.co/flow/tok1');
+  const process = text.indexOf(OWNER_PROCESS_LINE);
+  const meeting = text.indexOf(MEETING_LINE);
+  const valid   = text.indexOf('בתוקף');
+  assert.ok(link < process, 'the link comes first — it is what the 👇 points at');
+  assert.ok(process < meeting, 'what happens on the link, then what happens after signing');
+  assert.ok(meeting < valid, 'the clock closes the message');
+});
+
+// Owner, live demo: the word "מחשבון" is banned — "נשמע זול ומיושן". Banned
+// from every line the bot says, not only from the one she happened to be shown.
+test('the word "מחשבון" appears nowhere in the booster\'s bot copy', () => {
+  for (const file of ['../lib/modules/booster.js', '../lib/booster-messages.js']) {
+    const src = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.ok(!src.includes('מחשבון'), `${file} still says "מחשבון" — the owner banned the word`);
+  }
 });
 
 test('the confirmation honours the booster\'s own link-validity window, defaulting to the express 14', async () => {
