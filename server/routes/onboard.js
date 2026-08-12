@@ -56,21 +56,24 @@ router.get('/', (_req, res) => {
     pre.textContent = label + '\\n' + JSON.stringify(obj, null, 2);
     out.appendChild(pre);
   };
-  // Session-info messages from the ES popup (facebook origin only).
+  // Session-info messages from the ES popup. Diagnostic mode: record EVERY
+  // facebook-origin message (raw), not just well-formed WA_EMBEDDED_SIGNUP —
+  // a partial/cancelled flow is visible only through these.
   window.addEventListener('message', (event) => {
-    if (!/https:\\/\\/(www\\.)?facebook\\.com$/.test(event.origin)) return;
-    try {
-      const data = JSON.parse(event.data);
-      if (data.type === 'WA_EMBEDDED_SIGNUP') {
-        if (data.event === 'FINISH' || data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING') {
-          const p = document.createElement('p');
-          p.className = 'ok';
-          p.textContent = '✓ החיבור הושלם! את הערכים למטה מעבירים ל-Claude:';
-          out.prepend(p);
-        }
-        show('SIGNUP EVENT (' + (data.event || '?') + '):', data.data ?? data);
+    if (!/facebook\\.com$/.test(new URL(event.origin || 'https://x.invalid').hostname)) return;
+    let data = null;
+    try { data = JSON.parse(event.data); } catch { /* keep raw below */ }
+    if (data && data.type === 'WA_EMBEDDED_SIGNUP') {
+      if (String(data.event || '').startsWith('FINISH')) {
+        const p = document.createElement('p');
+        p.className = 'ok';
+        p.textContent = '✓ החיבור הושלם! את הערכים למטה מעבירים ל-Claude:';
+        out.prepend(p);
       }
-    } catch { /* non-JSON messages are not ours */ }
+      show('SIGNUP EVENT (' + (data.event || '?') + '):', data.data ?? data);
+    } else if (typeof event.data === 'string' && event.data.length < 4000 && event.data.includes('WA_')) {
+      show('RAW MESSAGE:', { raw: event.data });
+    }
   });
   window.fbAsyncInit = function() {
     FB.init({ appId: '${APP_ID}', autoLogAppEvents: true, xfbml: false, version: 'v23.0' });
