@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { recordSentMessageId } from './sent-ids.js';
 
 const GRAPH_API = 'https://graph.facebook.com/v21.0';
 
@@ -35,6 +36,10 @@ export async function sendWhatsAppMessage({ to, text, businessId }) {
 
     const data = await res.json();
     if (!res.ok) console.error('[wa-send] API error:', JSON.stringify(data));
+    // Coexistence self-send defence: bank the id so the echo Meta mirrors back
+    // for OUR OWN send is never mistaken for the owner answering from the app
+    // (lib/sent-ids.js, checked in lib/coexistence.js#handleOwnerEcho).
+    recordSentMessageId(data?.messages?.[0]?.id);
     return data;
   } catch (e) {
     console.error('[wa-send] fetch error:', e.message);
@@ -85,6 +90,10 @@ export async function sendWhatsAppTemplate({ to, templateName, langCode = 'he', 
 
     const data = await res.json();
     if (!res.ok) console.error('[wa-send] template API error:', JSON.stringify(data));
+    // Same self-send defence as sendWhatsAppMessage — template sends (trial
+    // reminders, follow-ups) echo back on coexistence numbers too, and they
+    // are exactly what auto-'contacted' the owner's own lead row in the pilot.
+    recordSentMessageId(data?.messages?.[0]?.id);
     return data;
   } catch (e) {
     console.error('[wa-send] template fetch error:', e.message);

@@ -18,6 +18,12 @@ export async function saveConversation({ session_id, business_id, user_message, 
       escalation_reason: escalation_reason ?? null,
       language: language ?? 'hebrew',
     }),
+    // business_id filter: sessions are per (phone, business) — on a phone
+    // that talks to two tenants' bots this turn must advance ITS business's
+    // session only, never the other tenant's stage/qualification. business_id
+    // is validated non-empty above, and every live session row carries one
+    // (lib/context.js writes it on create), so single-business phones match
+    // their one row exactly as before.
     supabase.from('sessions')
       .update({
         current_stage: stage,
@@ -27,6 +33,7 @@ export async function saveConversation({ session_id, business_id, user_message, 
         qualification_progress: qualification_progress ?? {},
       })
       .eq('session_id', session_id)
+      .eq('business_id', business_id)
       .eq('session_mode', 'live'),
   ]);
 
@@ -49,10 +56,19 @@ export async function saveSetupState({ session_id, business_id, action, current_
 
     if (draftErr) return err(`Draft save failed: ${draftErr.message}`);
 
-    const { error: sessionErr } = await supabase.from('sessions')
-      .upsert({ session_id, current_setup_stage: next_setup_stage ?? current_setup_stage, setup_completed: false, session_mode: 'setup' }, { onConflict: 'session_id' });
-
+    // Update-then-insert instead of upsert-on-session_id: the 2026-08-13
+    // migration replaces the sessions PK with unique (session_id, business_id),
+    // after which ON CONFLICT (session_id) has no backing index and the upsert
+    // would 500. Setup sessions are synthetic single-row studio ids, so the
+    // session_id-scoped update is exact under both schemas.
+    const sessionPatch = { session_id, current_setup_stage: next_setup_stage ?? current_setup_stage, setup_completed: false, session_mode: 'setup' };
+    const { data: sessRows, error: sessionErr } = await supabase.from('sessions')
+      .update(sessionPatch).eq('session_id', session_id).select('session_id');
     if (sessionErr) return err(`Session update failed: ${sessionErr.message}`);
+    if (!sessRows?.length) {
+      const { error: sessionInsErr } = await supabase.from('sessions').insert(sessionPatch);
+      if (sessionInsErr) return err(`Session update failed: ${sessionInsErr.message}`);
+    }
     return ok({ saved: true, business_id, setup_completed: false });
   }
 

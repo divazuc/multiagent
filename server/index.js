@@ -193,6 +193,19 @@ app.post('/wa-inbound', async (req, res) => {
     if (kind === 'ignore') return res.json({ status: 'ignored' });
     if (seenMessage(msgId)) return res.json({ status: 'duplicate' });
 
+    // Auto-reply immunity bookkeeping (lib/coexistence.js): remember WHEN this
+    // customer last wrote to this number, so an echo landing within the grace
+    // window reads as the app's automatic greeting, not the owner personally
+    // answering. After the dedup check — a Meta retry is not a new message.
+    if (kind === 'message' || kind === 'unsupported') {
+      import('./lib/coexistence.js')
+        .then(({ noteCustomerInbound }) => noteCustomerInbound({
+          phoneNumberId: value?.metadata?.phone_number_id,
+          from: value?.messages?.[0]?.from,
+        }))
+        .catch(() => {});
+    }
+
     // Coexistence echo — the OWNER's own message, mirrored to us by Meta.
     // Never a customer message: no pipeline, no lead capture, no reply. For a
     // coexistence business it arms the per-conversation owner standdown
@@ -219,7 +232,11 @@ app.post('/wa-inbound', async (req, res) => {
       // non-coexistence tenant keeps today's behaviour exactly.
       (async () => {
         const { standdownActive } = await import('./lib/coexistence.js');
-        if (await standdownActive(value?.messages?.[0]?.from)) return;
+        // Scoped to the business that owns the receiving number — a standdown
+        // on the same phone's conversation with ANOTHER tenant's bot must not
+        // silence this one (one phone can talk to two coexistence tenants).
+        if (await standdownActive(value?.messages?.[0]?.from,
+          { phoneNumberId: value?.metadata?.phone_number_id })) return;
         const handled = await handlePaymentProofImage(value)
           .catch(e => { console.error('[wa-inbound] payment-proof handling failed:', e.message); return false; });
         if (!handled) sendUnsupportedFallback(value).catch(() => {});
@@ -361,7 +378,7 @@ async function runAgentPipeline(body) {
     // without the flag — and a DB without the column — are untouched.
     if (session_mode === 'live' && business_id) {
       const { standdownActive } = await import('./lib/coexistence.js');
-      if (await standdownActive(session_id)) {
+      if (await standdownActive(session_id, { businessId: business_id })) {
         const { supabase } = await import('./lib/supabase.js');
         await supabase.from('conversation_messages').insert({
           session_id, business_id, user_message: message, agent_response: '',
@@ -526,7 +543,7 @@ async function runAgentPipeline(body) {
       // without the flag the check resolves false and the send is unchanged.
       if (outbound_response && session_id && business_id) {
         import('./lib/coexistence.js')
-          .then(({ sendUnlessStoodDown }) => sendUnlessStoodDown(session_id, () =>
+          .then(({ sendUnlessStoodDown }) => sendUnlessStoodDown(session_id, business_id, () =>
             sendWhatsAppMessage({ to: session_id, text: outbound_response, businessId: business_id })))
           .catch(e => console.error('[wa-send] non-blocking send failed:', e.message));
       }
@@ -779,11 +796,18 @@ app.post('/setup/save', async (req, res) => {
       { onConflict: 'session_id' }
     );
 
-    // Keep session in sync
-    await supabase.from('sessions').upsert(
-      { session_id, current_setup_stage: next, session_mode: 'setup' },
-      { onConflict: 'session_id' }
-    );
+    // Keep session in sync. Update-then-insert, not upsert-on-session_id: the
+    // 2026-08-13 migration drops the session_id-only unique constraint
+    // (sessions become per (session_id, business_id)) and ON CONFLICT
+    // (session_id) would then have no backing index. Setup sessions are
+    // synthetic single-row studio ids — the session_id-scoped update is exact
+    // under both schemas.
+    const sessionPatch = { session_id, current_setup_stage: next, session_mode: 'setup' };
+    const { data: sessRows } = await supabase.from('sessions')
+      .update(sessionPatch).eq('session_id', session_id).select('session_id');
+    if (!sessRows?.length) {
+      await supabase.from('sessions').insert(sessionPatch);
+    }
 
     return res.json({ status: 'success', next_stage: next, draft: updated });
 

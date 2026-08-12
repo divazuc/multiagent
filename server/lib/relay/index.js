@@ -368,7 +368,10 @@ async function voiceRewrite(answer, persona) {
       console.error('[relay] rewrite truncated (stop_reason=max_tokens), sending the raw answer instead of a cut-off sentence');
       return answer;
     }
-    return res.content?.[0]?.text?.trim() || answer;
+    // Model text settles here — same wrap-quote backstop as the conversation
+    // agent (lib/outbound-text.js). The raw human answer is never stripped.
+    const { stripWrappingQuotes } = await import('../outbound-text.js');
+    return stripWrappingQuotes(res.content?.[0]?.text?.trim() ?? '') || answer;
   } catch (e) {
     console.error('[relay] rewrite failed, sending the raw answer:', e.message);
     return answer; // the human's words are always better than nothing
@@ -414,10 +417,16 @@ async function recordHistory({ business, row, reply }) {
 // is by (business.id, from), never a global phone search.
 export async function handleContactMessage({ business, from, text, contextId, persona = null }) {
   // Once findContactByPhone below has identified the sender as a contact,
-  // this message belongs to the relay — full stop. A later throw (e.g. a
-  // transient DB error) must still be consumed here, never fall through to
-  // the conversation agent, which would sell to the business's own rep and
-  // create a contacts row for them in the client's lead inbox.
+  // this message belongs to the relay WHILE A QUESTION IS PENDING. A later
+  // throw (e.g. a transient DB error) must still be consumed here, never fall
+  // through to the conversation agent — an error is not evidence that nothing
+  // is pending.
+  //
+  // The ONE deliberate hand-off (owner request, 2026-08-12): a contact writing
+  // when NO escalation is open is a dual-role person — the same phone can be a
+  // listed contact AND a genuine customer. The old fixed reply ("אין כרגע
+  // שאלה שממתינה לתשובה.") dead-ended them; now the message falls through to
+  // the normal conversation pipeline and the persona answers naturally.
   //
   // The lookup ITSELF failing is a third case, and it fails closed: `false`
   // here would mean "this is a lead" on the strength of a transient DB error,
@@ -451,8 +460,10 @@ export async function handleContactMessage({ business, from, text, contextId, pe
     const { row, matchedBy, body, isStop } = resolveEscalation({ contextId, text, openRows: open });
 
     if (!row) {
-      await send({ to: from, text: 'אין כרגע שאלה שממתינה לתשובה.', businessId: business.id });
-      return true;
+      // Nothing pending — this is the dual-role hand-off described above.
+      // resolveEscalation returns row:null only when there are NO open
+      // escalations at all, so the pending-question flows below are untouched.
+      return false;
     }
 
     if (isStop) {

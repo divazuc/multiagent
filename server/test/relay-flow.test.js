@@ -248,6 +248,42 @@ test('a message from an unknown number is not consumed', async () => {
   assert.equal(consumed, false);
 });
 
+// ── Dual-role contacts (owner request, 2026-08-12) ───────────────────────────
+// A listed contact is often ALSO a genuine customer. With no escalation
+// pending, the old fixed reply ("אין כרגע שאלה שממתינה לתשובה.") dead-ended
+// them; now the message falls through to the normal conversation pipeline and
+// the persona answers naturally.
+
+test('a contact with NO pending escalation falls through to the conversation pipeline', async () => {
+  seed(); // rep listed, nothing escalated
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.A' }] }; });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: 'היי, רציתי לשאול על אימונים לילד שלי', contextId: null,
+  });
+
+  assert.equal(consumed, false, 'must hand the message to the normal conversation pipeline');
+  assert.equal(sent.length, 0, 'no fixed no-pending reply — the persona answers via the pipeline');
+});
+
+test('with a question pending, the relay Q&A flow claims the contact message exactly as before', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Y' }] }; });
+
+  const consumed = await relay.handleContactMessage({
+    business: BIZ, from: '972500000001', text: 'כן, יש מקום ביום רביעי', contextId: 'wamid.X',
+  });
+
+  assert.equal(consumed, true, 'a pending question keeps the relay path byte-identical');
+  assert.equal(rows[0].status, 'answered');
+  assert.ok(sent.some(m => m.to === '97250000009'), 'the lead receives the answer');
+});
+
 test('a whole-message stop closes the escalation without answering the lead', async () => {
   const rows = seed();
   relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
@@ -384,6 +420,29 @@ test('a truncated rewrite (stop_reason: max_tokens) falls back to the ORIGINAL a
   assert.equal(toLead.text, original, 'a truncated rewrite must fall back to the human\'s original words, not the cut-off text');
 
   relay._setMessagesCreateForTest(null); // don't leak the stub into later tests
+});
+
+test('a rewrite that comes back wrapped in quotation marks is delivered bare (live pilot find)', async () => {
+  const rows = seed();
+  relay._setSenderForTest(async () => ({ messages: [{ id: 'wamid.X' }] }));
+  await relay.raiseEscalation({ business: BIZ, session_id: '97250000009', question: 'שאלה', persona: {} });
+
+  relay._setRewriterForTest(null); // exercise the real response-handling path
+  relay._setMessagesCreateForTest(async () => ({
+    stop_reason: 'end_turn',
+    content: [{ text: '"בשמחה! 400 ₪ לחודש, מוזמנת להצטרף 🙂"' }],
+  }));
+  const sent = [];
+  relay._setSenderForTest(async (m) => { sent.push(m); return { messages: [{ id: 'wamid.Y' }] }; });
+
+  await relay.handleContactMessage({ business: BIZ, from: '972500000001', text: '400 ₪ לחודש', contextId: 'wamid.X' });
+
+  const toLead = sent.find(m => m.to === '97250000009');
+  assert.equal(toLead.text, 'בשמחה! 400 ₪ לחודש, מוזמנת להצטרף 🙂',
+    'the wrapping pair is stripped; the text inside is untouched');
+  assert.equal(rows[0].status, 'answered');
+
+  relay._setMessagesCreateForTest(null);
 });
 
 test('a relayed answer preserves the session\'s existing qualification_progress rather than blanking it', async () => {

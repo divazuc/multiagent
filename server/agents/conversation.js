@@ -4,6 +4,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { replyDelayMs } from '../lib/reply-delay.js';
 import { extractModuleAction } from '../lib/modules/actions.js';
+import { stripWrappingQuotes } from '../lib/outbound-text.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL  = 'claude-sonnet-4-6';
@@ -243,6 +244,10 @@ const MISSING_DETAILS_RULE = `Missing-details rule: if you offer or promise an a
 // gender (admin-managed). This is how the bot addresses the person it's talking
 // to, which nobody configures because only the conversation can reveal it.
 const ADDRESS_GENDER_RULE = `Gender of address (Hebrew): address the customer in MASCULINE second-person forms by default (אתה, תוכל, מעוניין, רוצה) — in Hebrew that is the standard neutral address, so this is where every conversation starts. Switch to FEMININE second-person forms (את, תוכלי, מעוניינת, רוצה) ONLY when the customer's OWN writing shows she is a woman: she writes about herself in feminine forms (מעוניינת, צריכה, מחפשת, יכולה, בטוחה), states it explicitly, or gives a clearly feminine name as her own. Do not infer it from anything else, and while it is unclear stay masculine. Once you have identified the customer as a woman, address her in the feminine for the ENTIRE rest of the conversation, in every following message — never switch back to masculine.`;
+const AUTHENTICITY_RULE = `Authenticity (platform rule, every business): NEVER present yourself as a bot, chat, AI, virtual assistant or automated system, and never volunteer that you are one — no "אני הצ'אט של…", no "כעוזרת וירטואלית". Write like a real person on the business's team: simple everyday language, short natural sentences, no robotic service phrases ("אני כאן כדי לסייע", "אשמח לעמוד לשירותך"). If the customer DIRECTLY asks whether you are human or a bot: follow the business persona's scripted answer if it defines one; otherwise do not lie — answer briefly and lightly, then offer to keep helping or to hand off to a human.`;
+// The deterministic backstop for this rule is stripWrappingQuotes
+// (lib/outbound-text.js), applied where the model text is settled below.
+const NO_QUOTE_WRAP_RULE = `Never wrap your entire reply in quotation marks of any kind — send the message text bare.`;
 
 // ── Sales mode response ───────────────────────────────────────────────────────
 
@@ -256,7 +261,9 @@ Business info: ${JSON.stringify(business_profile)}
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
-${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
+${ADDRESS_GENDER_RULE}
+${AUTHENTICITY_RULE}
+${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
 
@@ -274,7 +281,9 @@ Be warm, clear, and concise. 1-4 sentences.
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
-${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
+${ADDRESS_GENDER_RULE}
+${AUTHENTICITY_RULE}
+${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -303,7 +312,9 @@ Keep total response SHORT (2-5 sentences max). Sound natural.
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
-${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
+${ADDRESS_GENDER_RULE}
+${AUTHENTICITY_RULE}
+${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -367,7 +378,9 @@ Rewritten:`;
     model: MODEL, max_tokens: 300,
     messages: [{ role: 'user', content: prompt }],
   });
-  return response.content[0].text.trim();
+  // The rewrite prompt shows the model `Original: "${text}"` — quotes around
+  // it — which is exactly how a whole reply comes back quote-wrapped.
+  return stripWrappingQuotes(response.content[0].text.trim());
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -400,7 +413,9 @@ async function callClaude(system, history, message) {
   const response = await createMessage({
     model: MODEL, max_tokens: 512, system, messages,
   });
-  return response.content[0].text.trim();
+  // Live pilot 2026-08-12: a perfect reply arrived wrapped in quotation marks.
+  // NO_QUOTE_WRAP_RULE asks the model not to; this settles it either way.
+  return stripWrappingQuotes(response.content[0].text.trim());
 }
 
 // ── Human-like reply delay ────────────────────────────────────────────────────
