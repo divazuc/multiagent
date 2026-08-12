@@ -1,0 +1,249 @@
+import { useState, useEffect, useMemo, useCallback } from 'react'
+
+// ניהול לידים — the per-business lead board (the `leads` module).
+// EVERY number that wrote to the bot, in status lists the conversation itself
+// advances (server/lib/leads.js); here the owner tracks trial signups, kids'
+// ages and contacted-or-not, edits statuses/notes inline, and downloads the
+// CSV that replaces the Google Sheet. Status keys AND Hebrew labels come from
+// the server response — the copy is centralized there, not here.
+
+const EMPTY_COPY = 'עוד אין לידים — כשמישהו יכתוב לוואטסאפ, הוא יופיע כאן.'
+
+function formatPhone(p) {
+  if (!p || !/^\d{10,}$/.test(p)) return p || '—'
+  const local = p.startsWith('972') ? '0' + p.slice(3) : p
+  return local.replace(/(\d{3})(\d{3})(\d+)/, '$1-$2-$3')
+}
+
+function timeAgo(ts) {
+  if (!ts) return '—'
+  const mins = Math.round((Date.now() - new Date(ts).getTime()) / 60000)
+  if (mins < 1) return 'עכשיו'
+  if (mins < 60) return `לפני ${mins} דק׳`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `לפני ${hrs} שע׳`
+  const days = Math.round(hrs / 24)
+  if (days === 1) return 'אתמול'
+  return `לפני ${days} ימים`
+}
+
+function trialDetails(payload) {
+  const parts = []
+  if (payload?.child_name) parts.push(payload.child_name)
+  if (payload?.child_age) parts.push(`גיל ${payload.child_age}`)
+  if (payload?.preferred_day) parts.push(payload.preferred_day)
+  return parts.length ? parts.join(' · ') : null
+}
+
+export default function LeadsManager({ api, showToast }) {
+  const [board, setBoard] = useState(null) // { enabled, ready, leads, counts, statuses }
+  const [statusFilter, setStatusFilter] = useState(null) // null = הכל
+  const [query, setQuery] = useState('')
+  const [notesDraft, setNotesDraft] = useState(null) // { id, text }
+
+  const load = useCallback(async () => {
+    try {
+      setBoard(await api.listLeads())
+    } catch {
+      setBoard({ enabled: true, ready: false, leads: [], counts: { all: 0 }, statuses: [] })
+    }
+  }, [api])
+  useEffect(() => { load() }, [load])
+
+  const leads = board?.leads ?? []
+  const statuses = board?.statuses ?? []
+  const labelOf = useCallback(
+    (key) => statuses.find(s => s.key === key)?.label ?? key,
+    [statuses])
+
+  // Counts recompute locally so an inline status change moves the pills
+  // immediately — the loaded list is the whole board, never a filtered page.
+  const counts = useMemo(() => {
+    const c = { all: leads.length }
+    for (const s of statuses) c[s.key] = 0
+    for (const l of leads) if (c[l.status] !== undefined) c[l.status] += 1
+    return c
+  }, [leads, statuses])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().replace(/-/g, '')
+    return leads.filter(l => {
+      if (statusFilter && l.status !== statusFilter) return false
+      if (q) {
+        const local = l.phone?.startsWith('972') ? '0' + l.phone.slice(3) : ''
+        const hay = [l.phone, local, l.display_name, l.payload?.parent_name, l.payload?.child_name, l.notes]
+          .filter(Boolean).join(' ').replace(/-/g, '')
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+  }, [leads, statusFilter, query])
+
+  async function changeStatus(lead, status) {
+    const prev = lead.status
+    setBoard(b => ({ ...b, leads: b.leads.map(l => l.id === lead.id ? { ...l, status } : l) }))
+    try {
+      await api.updateLead(lead.id, { status })
+      showToast?.('הסטטוס עודכן ✓')
+    } catch {
+      setBoard(b => ({ ...b, leads: b.leads.map(l => l.id === lead.id ? { ...l, status: prev } : l) }))
+      showToast?.('עדכון הסטטוס נכשל — נסו שוב')
+    }
+  }
+
+  async function saveNotes() {
+    if (!notesDraft) return
+    const { id, text } = notesDraft
+    const clean = text.trim() || null
+    setNotesDraft(null)
+    setBoard(b => ({ ...b, leads: b.leads.map(l => l.id === id ? { ...l, notes: clean } : l) }))
+    try {
+      await api.updateLead(id, { notes: clean })
+      showToast?.('ההערה נשמרה ✓')
+    } catch {
+      showToast?.('שמירת ההערה נכשלה — נסו שוב')
+      load()
+    }
+  }
+
+  async function downloadCsv() {
+    try {
+      const { filename, csv } = await api.exportLeadsCsv()
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      showToast?.('קובץ הלידים ירד ✓')
+    } catch {
+      showToast?.('הייצוא נכשל — נסו שוב')
+    }
+  }
+
+  if (!board) return <div className="cd-empty">טוען לידים…</div>
+  if (!board.enabled) return null // the tab shouldn't even render — belt and braces
+
+  return (
+    <section className="lm-wrap" aria-label="ניהול לידים">
+      <div className="lm-head">
+        <h2 className="lm-title">ניהול לידים</h2>
+        <div className="lm-tools">
+          <input
+            className="lm-search"
+            type="search"
+            placeholder="חיפוש לפי שם, טלפון או הערה…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+          <button className="lm-csv" onClick={downloadCsv} disabled={!leads.length}>
+            ⬇ הורדת CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="lm-pills" role="tablist" aria-label="סינון לפי סטטוס">
+        <button
+          className={`lm-pill ${statusFilter === null ? 'on' : ''}`}
+          onClick={() => setStatusFilter(null)}
+        >
+          הכל <i>{counts.all}</i>
+        </button>
+        {statuses.map(s => (
+          <button
+            key={s.key}
+            className={`lm-pill ${statusFilter === s.key ? 'on' : ''}`}
+            onClick={() => setStatusFilter(f => f === s.key ? null : s.key)}
+          >
+            {s.label} <i>{counts[s.key] ?? 0}</i>
+          </button>
+        ))}
+      </div>
+
+      {leads.length === 0 && <div className="cd-empty">{EMPTY_COPY}</div>}
+      {leads.length > 0 && filtered.length === 0 && (
+        <div className="cd-empty">אין לידים שמתאימים לסינון — נסו לנקות את החיפוש</div>
+      )}
+
+      {filtered.length > 0 && (
+        <div className="lm-table-wrap">
+          <table className="lm-table">
+            <thead>
+              <tr>
+                <th>טלפון</th>
+                <th>שם</th>
+                <th>פרטי ניסיון</th>
+                <th>פנייה אחרונה</th>
+                <th>סטטוס</th>
+                <th>הערות</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(lead => (
+                <tr key={lead.id}>
+                  <td className="lm-phone">
+                    <a href={`https://wa.me/${lead.phone}`} target="_blank" rel="noreferrer">
+                      {formatPhone(lead.phone)}
+                    </a>
+                  </td>
+                  <td>{lead.display_name || lead.payload?.parent_name || '—'}</td>
+                  <td className="lm-trial">{trialDetails(lead.payload) ?? '—'}</td>
+                  <td className="lm-time" title={lead.last_contact_at ?? ''}>
+                    {timeAgo(lead.last_contact_at)}
+                    {lead.last_direction === 'out' && <span className="lm-dir" title="ההודעה האחרונה נשלחה מהעסק"> ↩</span>}
+                  </td>
+                  <td>
+                    <select
+                      className="lm-select"
+                      value={lead.status}
+                      aria-label={`סטטוס עבור ${formatPhone(lead.phone)}`}
+                      onChange={e => changeStatus(lead, e.target.value)}
+                    >
+                      {statuses.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                      {!statuses.some(s => s.key === lead.status) && (
+                        <option value={lead.status}>{labelOf(lead.status)}</option>
+                      )}
+                    </select>
+                  </td>
+                  <td className="lm-notes">
+                    {notesDraft?.id === lead.id ? (
+                      <span className="lm-notes-edit">
+                        <textarea
+                          autoFocus
+                          rows={2}
+                          value={notesDraft.text}
+                          placeholder="למשל: לחזור אחרי 17:00"
+                          onChange={e => setNotesDraft(d => ({ ...d, text: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNotes() }
+                            if (e.key === 'Escape') setNotesDraft(null)
+                          }}
+                        />
+                        <span className="lm-notes-actions">
+                          <button className="cd-qa" onClick={() => setNotesDraft(null)}>ביטול</button>
+                          <button className="cd-qa cd-qa-primary" onClick={saveNotes}>שמירה</button>
+                        </span>
+                      </span>
+                    ) : (
+                      <button
+                        className="lm-notes-btn"
+                        onClick={() => setNotesDraft({ id: lead.id, text: lead.notes ?? '' })}
+                        title="עריכת הערה"
+                      >
+                        {lead.notes || <span className="lm-notes-empty">+ הערה</span>}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="lm-foot">הסטטוסים מתעדכנים אוטומטית מהשיחה בוואטסאפ · אפשר גם לעדכן ידנית</div>
+    </section>
+  )
+}

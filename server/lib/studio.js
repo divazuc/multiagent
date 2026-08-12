@@ -592,6 +592,26 @@ const ops = {
     logModuleEvent(businessId, moduleKey, enabled ? 'enabled' : 'disabled', null);
   },
 
+  // ── Leads board (ניהול לידים — the `leads` module, lib/leads.js) ──────────
+  // Operator/demo twin of the portal ops in lib/portal.js: same lib, but the
+  // business id comes from the caller (the studio is cross-business by
+  // design). The demo dashboard's CSV button uses the exportLeadsCsv op —
+  // the portal downloads via GET /portal/leads.csv instead.
+  async listLeads(businessId, filters) {
+    const { listLeadsForApi } = await import('./leads.js');
+    return listLeadsForApi(businessId, filters ?? {});
+  },
+
+  async updateLead(businessId, id, updates) {
+    const { applyLeadUpdate } = await import('./leads.js');
+    return applyLeadUpdate(businessId, id, updates ?? {}, 'operator');
+  },
+
+  async exportLeadsCsv(businessId) {
+    const { exportLeadsCsv } = await import('./leads.js');
+    return exportLeadsCsv(businessId);
+  },
+
   async createConnectLink(businessId, moduleKey) {
     const { signConnectState } = await import('../routes/oauth.js');
     const { createConnectCode } = await import('./modules/connect.js');

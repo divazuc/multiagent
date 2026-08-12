@@ -64,6 +64,12 @@ export function createDemoApi(bizId) {
       const state = await rpc('loadDBState', phone)
       return { messages: state?.messages ?? [], session: state?.session ?? null }
     },
+    // ── Leads board (ניהול לידים — the `leads` module) ──
+    // The response carries `enabled`, so the dashboard can hide the tab for
+    // businesses without the module.
+    listLeads: (filters) => rpc('listLeads', bizId, filters ?? {}),
+    updateLead: (id, updates) => rpc('updateLead', bizId, id, updates),
+    exportLeadsCsv: () => rpc('exportLeadsCsv', bizId), // → { filename, csv }
   }
 }
 
@@ -100,6 +106,21 @@ export function createPortalApi(token, business, onAuthExpired) {
     getBilling: async () => null, // no billing pipeline for real clients yet
     updateContact: (id, updates) => rpc('updateContact', id, updates),
     loadThread: (phone) => rpc('loadThread', phone),
+    // ── Leads board (ניהול לידים — the `leads` module) ──
+    listLeads: (filters) => rpc('listLeads', filters ?? {}),
+    updateLead: (id, updates) => rpc('updateLead', id, updates),
+    // CSV rides its own GET (a real file download, Hebrew headers + BOM) —
+    // fetched with the same bearer so no token ever lands in a URL.
+    async exportLeadsCsv() {
+      const res = await fetch(`${AGENT}/portal/leads.csv`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.status === 401) { onAuthExpired?.(); throw new Error('unauthorized') }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const csv = await res.text()
+      const m = (res.headers.get('Content-Disposition') ?? '').match(/filename="([^"]+)"/)
+      return { filename: m?.[1] ?? 'leads.csv', csv }
+    },
   }
 }
 

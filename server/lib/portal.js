@@ -177,6 +177,22 @@ const ops = {
     if (error) throw error;
   },
 
+  // ── Leads board (ניהול לידים — the `leads` module, lib/leads.js) ──────────
+  // listLeads carries its own `enabled` flag so the portal can hide the tab
+  // for businesses without the module; updateLead 404s on a lead id outside
+  // the token's business (the lookup itself is business-scoped). CSV export
+  // is the separate GET /portal/leads.csv (index.js) — same token, but a file
+  // download rather than an RPC result.
+  async listLeads(bizId, filters) {
+    const { listLeadsForApi } = await import('./leads.js');
+    return listLeadsForApi(bizId, filters ?? {});
+  },
+
+  async updateLead(bizId, id, updates) {
+    const { applyLeadUpdate } = await import('./leads.js');
+    return applyLeadUpdate(bizId, id, updates ?? {}, 'owner');
+  },
+
   // Conversation thread for a lead — live sessions are keyed by phone, but we
   // filter by business_id so a token can only read its own conversations.
   async loadThread(bizId, phone) {

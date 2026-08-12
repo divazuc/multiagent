@@ -128,6 +128,28 @@ app.post('/portal/rpc', async (req, res) => {
   }
 });
 
+// ── Leads CSV export (ניהול לידים — the Google Sheet replacement) ─────────────
+// Same signed-token auth as /portal/rpc; a GET so the response is a real file.
+// The portal UI fetches it with the Authorization header and hands the bytes
+// to a Blob download, so no token ever rides a query string. Hebrew headers +
+// UTF-8 BOM come from lib/leads.js#leadsToCsv.
+app.get('/portal/leads.csv', async (req, res) => {
+  try {
+    const { verifyToken } = await import('./lib/portal.js');
+    const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    const payload = verifyToken(token);
+    if (!payload) return res.status(401).json({ ok: false, error: 'unauthorized' });
+    const { exportLeadsCsv } = await import('./lib/leads.js');
+    const { filename, csv } = await exportLeadsCsv(payload.business_id);
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (e) {
+    console.error('[portal] leads.csv failed:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── Client error logger ───────────────────────────────────────────────────────
 app.post('/log/error', async (req, res) => {
   const { message, source, stack, url, ts } = req.body ?? {};
@@ -301,6 +323,26 @@ async function runAgentPipeline(body) {
       if (referral) {
         recordCtwaReferral({ businessId: business_id, phone: session_id, referral }).catch(() => {});
       }
+    }
+
+    // Step 2a¼ — Leads-module bookkeeping (live mode only, fire-and-forget).
+    //
+    // Same data-first rationale as the CTWA banking directly above, so it sits
+    // at the same altitude: the ניהול לידים board must show EVERY number that
+    // wrote in, whether or not the bot goes on to reply — after-hours, agent
+    // off, and the owner standdown all silence the bot below this line, and
+    // none of them may make a lead invisible to the client. First message
+    // creates the lead as 'new'; every message refreshes the last-contact
+    // bookkeeping. recordInboundMessage gates itself on the business having
+    // the `leads` module enabled and FAILS SOFT (lib/leads.js) — a tenant
+    // without the module, or a database without the table yet, is untouched
+    // and the reply never waits on the write.
+    if (session_mode === 'live' && business_id) {
+      import('./lib/leads.js')
+        .then(({ recordInboundMessage }) => recordInboundMessage({
+          businessId: business_id, phone: session_id, profileName: profile_name,
+        }))
+        .catch(e => console.error('[leads] inbound hook failed:', e.message));
     }
 
     // Step 2a½ — Coexistence owner standdown (live mode only).

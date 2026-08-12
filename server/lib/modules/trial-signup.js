@@ -98,6 +98,22 @@ const trialSignupModule = {
         } catch (e) {
           console.error('[trial-signup] relay failed — the parent still gets the confirmation:', e.message);
         }
+        // Leads-module bookkeeping: a successful signup is the 'נרשם לניסיון'
+        // signal — advance the lead and bank the structured fields on its row.
+        // This handler is the one place that knows the action succeeded (the
+        // engine already validated the payload), which is why the hook lives
+        // here and not in the engine. Awaited so the write lands before the
+        // confirmation, but recordTrialSignup gates itself on the `leads`
+        // module and never throws (lib/leads.js) — like the relay above,
+        // nothing here may cost the parent the confirmation.
+        try {
+          const { recordTrialSignup } = await import('../leads.js');
+          await recordTrialSignup({
+            businessId: business?.id, phone: sessionCtx?.session_id, fields: payload,
+          });
+        } catch (e) {
+          console.error('[trial-signup] lead bookkeeping failed — the parent still gets the confirmation:', e.message);
+        }
         return { confirmationText: CONFIRM_REPLY, replaceResponse: true };
       },
     },
