@@ -86,6 +86,14 @@ async function realDb() {
       if (error) throw error;
       return data?.enabled === true;
     },
+    // enabled + settings in one read — listLeadsForApi surfaces
+    // settings.sheet_file_id as the board's sheet_configured flag.
+    async getLeadsModule(businessId) {
+      const { data, error } = await supabase.from('business_modules')
+        .select('enabled, settings').eq('business_id', businessId).eq('module_key', 'leads').maybeSingle();
+      if (error) throw error;
+      return data ?? null;
+    },
     async getLead(businessId, phone) {
       const { data, error } = await supabase.from('leads').select('*')
         .eq('business_id', businessId).eq('phone', phone).maybeSingle();
@@ -277,8 +285,20 @@ export function leadCounts(rows) {
 export async function listLeadsForApi(businessId, { status = null, search = '' } = {}) {
   const base = { statuses: LEAD_STATUSES };
   const d = await getDb();
-  let enabled = false;
-  try { enabled = await d.isEnabled(businessId); } catch { enabled = false; }
+  // Older fakes implement only isEnabled — getLeadsModule additionally carries
+  // settings, so the board knows a registration sheet is wired up
+  // (sheet_configured drives the "סנכרון מהגיליון" button).
+  let enabled = false, settings = {};
+  try {
+    if (typeof d.getLeadsModule === 'function') {
+      const row = await d.getLeadsModule(businessId);
+      enabled = row?.enabled === true;
+      settings = row?.settings ?? {};
+    } else {
+      enabled = await d.isEnabled(businessId);
+    }
+  } catch { enabled = false; }
+  base.sheet_configured = !!settings.sheet_file_id;
   if (!enabled) return { ...base, enabled: false, ready: true, leads: [], counts: leadCounts([]) };
   try {
     const rows = await d.listLeads(businessId);
