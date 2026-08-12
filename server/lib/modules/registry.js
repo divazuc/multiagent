@@ -2,10 +2,12 @@
 // and admin UI consume this map — adding a module means adding an entry.
 import calendarModule from './calendar/index.js';
 import boosterModule from './booster.js';
+import trialSignupModule from './trial-signup.js';
 
 export const MODULES = {
   [calendarModule.key]: calendarModule,
   [boosterModule.key]: boosterModule,
+  [trialSignupModule.key]: trialSignupModule,
 };
 
 export function _setModuleForTest(key, def) { MODULES[key] = def; }

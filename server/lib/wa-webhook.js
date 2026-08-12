@@ -4,6 +4,7 @@
 import crypto from 'node:crypto';
 import { supabase } from './supabase.js';
 import { sendWhatsAppMessage } from './wa-send.js';
+import { detectEcho } from './coexistence.js';
 
 // ── X-Hub-Signature-256 ──────────────────────────────────────────────────────
 // Validates only when WHATSAPP_APP_SECRET is configured, so the studio and
@@ -31,13 +32,22 @@ export function verifyMetaSignature(req) {
 }
 
 // ── Payload classification ───────────────────────────────────────────────────
+// 'echo'        → the business's OWN message (WhatsApp Coexistence smb echo) —
+//                 never a customer message; may trigger the owner standdown
 // 'message'     → a user message the pipeline should answer (text/interactive/button)
 // 'unsupported' → a user message in a type we don't handle (media, location…)
-// 'ignore'      → statuses, echoes, history sync, anything else — ack silently
+// 'ignore'      → statuses, history sync, anything else — ack silently
+//
+// Echo detection runs FIRST: one of Meta's echo shapes rides the ordinary
+// `messages` field with the business's own number as the sender, and letting
+// it fall through to 'message' would run the reply pipeline against the
+// owner's own words (see lib/coexistence.js).
 const SUPPORTED_TYPES = new Set(['text', 'interactive', 'button']);
 
 export function classifyMetaPayload(body) {
   const value = body?.entry?.[0]?.changes?.[0]?.value;
+  const echo = detectEcho(body);
+  if (echo) return { kind: 'echo', msgId: echo.msgId, value, echo };
   const msg = value?.messages?.[0];
   if (msg) {
     return SUPPORTED_TYPES.has(msg.type)
