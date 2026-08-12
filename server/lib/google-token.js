@@ -25,7 +25,7 @@ let cached = null; // { token, exp } — module-level, one platform identity
 export function _clearCacheForTest() { cached = null; }
 
 export function googleSheetAuthConfigured(env = process.env) {
-  return !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_REFRESH_TOKEN_DIVAZUC);
+  return !!((env.GOOGLE_SHEETS_CLIENT_ID ?? env.GOOGLE_CLIENT_ID) && (env.GOOGLE_SHEETS_CLIENT_SECRET ?? env.GOOGLE_CLIENT_SECRET) && env.GOOGLE_REFRESH_TOKEN_DIVAZUC);
 }
 
 export async function getGoogleAccessToken({ now = Date.now() } = {}) {
@@ -39,8 +39,8 @@ export async function getGoogleAccessToken({ now = Date.now() } = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      client_id: process.env.GOOGLE_SHEETS_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_SHEETS_CLIENT_SECRET ?? process.env.GOOGLE_CLIENT_SECRET,
       refresh_token: process.env.GOOGLE_REFRESH_TOKEN_DIVAZUC,
       grant_type: 'refresh_token',
     }),
