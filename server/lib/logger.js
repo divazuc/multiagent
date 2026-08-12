@@ -1,4 +1,8 @@
-import { supabase } from './supabase.js';
+import { supabase as realSupabase } from './supabase.js';
+import { sumUsage } from './model-usage.js';
+
+let supabase = realSupabase; // test seam — same convention as lib/context.js
+export function _setSupabaseForTest(fake) { supabase = fake ?? realSupabase; }
 
 // Call at the start of each inbound message. Returns a run object you pass to stepStart/complete.
 export async function startRun({ session_id, business_id, inbound_message }) {
@@ -40,6 +44,34 @@ export async function stepDone(handle, output = {}, error = null) {
   run.steps.push(step);
 
   await supabase.rpc('append_agent_run_step', { run_id: run.id, step });
+}
+
+// Cost-efficiency pass (2026-08-12): appends one `model_usage` step per
+// Anthropic call the turn made, plus one `usage_total` step summing them —
+// straight into the SAME steps jsonb array stepDone already writes to (no
+// schema change). Mirrors stepDone's shape ({step, status, duration_ms,
+// input, output, error, ts}) so Studio's existing step viewer needs no
+// special-casing later; duration_ms is 0 because these are recorded after
+// the fact from data the call already returned, not timed themselves.
+export async function logUsage(run, entries) {
+  if (run?._null || !entries?.length) return;
+  const ts = new Date().toISOString();
+  const steps = entries.map((entry) => ({
+    step: 'model_usage', status: 'success', duration_ms: 0,
+    input: { model: entry.model }, output: redact(entry), error: null, ts,
+  }));
+  steps.push({
+    step: 'usage_total', status: 'success', duration_ms: 0,
+    input: { calls: entries.length }, output: redact(sumUsage(entries)), error: null, ts,
+  });
+  for (const step of steps) {
+    run.steps.push(step);
+    try {
+      await supabase.rpc('append_agent_run_step', { run_id: run.id, step });
+    } catch (e) {
+      console.error('[logger] logUsage step append failed:', e.message);
+    }
+  }
 }
 
 // Call at the end of the pipeline with the final response text.

@@ -105,7 +105,7 @@ export async function loadContext({ message, session_id, phone_number_id = null 
     // Existing setup session — load draft; existing live session — load profile + history
     const isSetup = (session.session_mode === 'setup');
 
-    const [profileRes, historyRes, draftRes] = await Promise.all([
+    const [profileRes, historyRes, draftRes, knowledgeItemsRes] = await Promise.all([
       isSetup ? Promise.resolve({ data: null, error: null }) :
         supabase.from('business_profiles')
           .select('business_id, business_name, business_model, sales_goal, conversation_strategy, services, decision_logic, key_questions, objection_handling, persona, guardrails, hebrew_patterns, agent_mode, cta_goal, knowledge')
@@ -116,6 +116,18 @@ export async function loadContext({ message, session_id, phone_number_id = null 
       isSetup ?
         supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', session_id).maybeSingle() :
         Promise.resolve({ data: null, error: null }),
+      // Structured FAQ rows for lib/kb-retrieval.js / lib/kb-direct-match.js
+      // (cost-efficiency pass, 2026-08-12) — the retrieval engine works off
+      // question/answer/category rows, not the pre-formatted faq_summary
+      // text blob. Soft-fails to [] (never blocks the whole context load):
+      // a missing table/RLS issue just falls back to conversation.js's
+      // existing faq_summary path, exactly the "retrieval error → fallback"
+      // behavior item 3 asks for.
+      isSetup ? Promise.resolve({ data: [], error: null }) :
+        supabase.from('knowledge_items')
+          .select('question, answer, category')
+          .eq('business_id', session.business_id)
+          .eq('is_active', true),
     ]);
 
     if (profileRes.error) return err(`Profile load failed: ${profileRes.error.message}`);
@@ -123,6 +135,7 @@ export async function loadContext({ message, session_id, phone_number_id = null 
 
     const profile = profileRes.data ?? {};
     const draft = draftRes.data;
+    const knowledgeItems = knowledgeItemsRes?.error ? [] : (knowledgeItemsRes?.data ?? []);
     const qualification_progress = session.qualification_progress ?? {};
     const missing_qualification_data = QUALIFICATION_FIELDS.filter(f => !qualification_progress[f]);
 
@@ -143,7 +156,10 @@ export async function loadContext({ message, session_id, phone_number_id = null 
         objection_handling: profile.objection_handling,
         agent_mode: profile.agent_mode ?? undefined,
         cta_goal: normalizeCtaGoal(profile.cta_goal),
-        knowledge: parseJson(profile.knowledge, {}),
+        // `items` (structured rows) feeds retrieval/direct-match;
+        // `faq_summary` stays as the fail-soft fallback text — see the
+        // knowledgeItemsRes comment above.
+        knowledge: { ...parseJson(profile.knowledge, {}), items: knowledgeItems },
       },
       persona: parseJson(profile.persona, {}),
       guardrails: parseJson(profile.guardrails, {}),

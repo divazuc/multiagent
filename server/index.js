@@ -5,7 +5,7 @@ import { studioAuth } from './lib/auth.js';
 import { normalizeMessage, extractMessageText } from './lib/normalize.js';
 import { loadContext } from './lib/context.js';
 import { saveConversation, saveSetupState } from './lib/db.js';
-import { startRun, stepStart, stepDone, completeRun } from './lib/logger.js';
+import { startRun, stepStart, stepDone, completeRun, logUsage } from './lib/logger.js';
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from './lib/wa-send.js';
 import { verifyMetaSignature, classifyMetaPayload, seenMessage, sendUnsupportedFallback } from './lib/wa-webhook.js';
 import { handlePaymentProofImage } from './lib/payment-proof.js';
@@ -489,6 +489,16 @@ async function runAgentPipeline(body) {
     const r = agentResult.result;
     const final_response = r?.response ?? r?.setup_response ?? '';
 
+    // Cost-efficiency pass (2026-08-12): the conversation agent hands back
+    // every Anthropic call it made this turn (agents/conversation.js —
+    // model_usage). Land them in agent_runs.steps now, next to the step that
+    // produced them — a per-call `model_usage` entry plus one `usage_total`
+    // summary, no schema change (steps is already jsonb). Non-blocking on
+    // purpose: a logging failure must never turn into a failed reply.
+    if (r?.model_usage?.length) {
+      await logUsage(run, r.model_usage).catch(e => console.error('[usage] logUsage failed:', e.message));
+    }
+
     // Execute a module action the model requested (live mode only). The
     // server is the only side-effect executor — the model just asks.
     //
@@ -516,6 +526,14 @@ async function runAgentPipeline(body) {
         : { text: moduleStep.moduleText });
     }
     const outbound_response = moduleStep.text;
+
+    // Cost-efficiency pass, item 4: a direct-KB answer (zero model calls —
+    // see lib/kb-direct-match.js) still gets its own visible step, distinct
+    // from 'conversation_agent', so it's queryable which turns cost nothing.
+    if (r?.kb_direct?.matched) {
+      h = stepStart(run, 'kb_direct', { matched_question: r.kb_direct.question });
+      await stepDone(h, { response: outbound_response });
+    }
 
     // Step 4 — Persist state
     if (session_mode === 'live') {

@@ -6,31 +6,32 @@ const mid = () => 0.5;   // deterministic "random"
 const lo = () => 0;
 const hi = () => 0.999;
 
-// Owner, live demo: "תעדכן את זמן התגובה בין הודעות בוואטסאפ כ3-4 שניות, לא
-// יותר". 4000ms is a ceiling, not a target — the bands still differ from each
-// other, but all of them now live inside her window.
-test('every band lands inside the owner\'s 3-4 second window', () => {
+// Owner, kids pilot 2026-08-12: "תקצר את זמן ההמתנה למענה ל4-6 שניות לא
+// יותר" — supersedes the earlier 3-4s Divaz-demo window. 6000ms is a
+// ceiling, not a target — the bands still differ from each other, but all
+// of them now live inside her window.
+test('every band lands inside the owner\'s 4-6 second window', () => {
   for (const [band, [min, max]] of Object.entries(DELAY_WINDOWS)) {
-    assert.ok(min >= 3000, `${band} can fire after ${min}ms — under the 3s floor`);
-    assert.ok(max <= 4000, `${band} can take ${max}ms — over the owner's 4s ceiling`);
+    assert.ok(min >= 4000, `${band} can fire after ${min}ms — under the 4s floor`);
+    assert.ok(max <= 6000, `${band} can take ${max}ms — over the owner's 6s ceiling`);
     assert.ok(min < max, `${band} needs a range, otherwise every reply lands on the same beat`);
   }
 });
 
-test('no reply, however long, waits more than 4 seconds', () => {
+test('no reply, however long, waits more than 6 seconds', () => {
   const ms = replyDelayMs({ words: 900, answerLength: 'detailed', elapsedMs: 0, random: hi });
-  assert.ok(ms <= 4000, `the longest possible wait is ${ms}ms`);
+  assert.ok(ms <= 6000, `the longest possible wait is ${ms}ms`);
 });
 
-test('a short reply targets 3-3.6 seconds in total', () => {
-  assert.deepEqual(DELAY_WINDOWS.short, [3000, 3600]);
+test('a short reply targets 4-4.7 seconds in total', () => {
+  assert.deepEqual(DELAY_WINDOWS.short, [4000, 4700]);
 });
 
 test('the wait is the remainder of the target, not an addition to it', () => {
   // The old version slept 3-5s AFTER generation, so a 7-second model call felt
   // like 10-12 seconds. The target is now end-to-end.
   const ms = replyDelayMs({ words: 10, answerLength: 'short', elapsedMs: 1000, random: mid });
-  assert.equal(ms, 3300 - 1000);
+  assert.equal(ms, 4350 - 1000);
 });
 
 test('generation slower than the target means no extra wait at all', () => {
@@ -38,8 +39,8 @@ test('generation slower than the target means no extra wait at all', () => {
 });
 
 test('an instant generation still waits the full target', () => {
-  assert.equal(replyDelayMs({ words: 10, answerLength: 'short', elapsedMs: 0, random: lo }), 3000);
-  assert.equal(replyDelayMs({ words: 10, answerLength: 'short', elapsedMs: 0, random: hi }), 3599);
+  assert.equal(replyDelayMs({ words: 10, answerLength: 'short', elapsedMs: 0, random: lo }), 4000);
+  assert.equal(replyDelayMs({ words: 10, answerLength: 'short', elapsedMs: 0, random: hi }), 4699);
 });
 
 test('a long reply gets a longer target than a short one', () => {
@@ -55,7 +56,7 @@ test('word count promotes the band even when answer_length says short', () => {
 
 test('a missing elapsed time is treated as zero rather than NaN', () => {
   const ms = replyDelayMs({ words: 5, answerLength: 'short', random: lo });
-  assert.equal(ms, 3000);
+  assert.equal(ms, 4000);
 });
 
 test('an unknown answer_length falls back to the short band', () => {
