@@ -950,6 +950,45 @@ html, body { overflow-x: hidden; }
 .lm-pill.on { background: var(--brand); border-color: var(--brand); color: #fff; }
 .lm-pill i { font-style: normal; opacity: .75; margin-inline-start: 5px; font-size: 12px; }
 
+/* "הצטרף" is the conversion — the one status that gets to celebrate. */
+.lm-pill-joined {
+  background: linear-gradient(135deg, #fef3c7, #d9fdd3);
+  border-color: #f59e0b; color: var(--brand-deep); font-weight: 800;
+}
+.lm-pill-joined:hover { border-color: #d97706; }
+.lm-pill-joined.on {
+  background: linear-gradient(135deg, #f59e0b, var(--green));
+  border-color: #d97706; color: #fff;
+}
+.lm-select-joined {
+  background: linear-gradient(135deg, #fef3c7, #d9fdd3);
+  border-color: #f59e0b; color: var(--brand-deep); font-weight: 800;
+}
+
+/* ── Per-status color coding — a dot beside the select + a subtle row tint.
+   The status TEXT stays the real signal; color only speeds up scanning
+   (color-blind safe by redundancy). הצטרף keeps the louder celebration. ── */
+.lm-status-cell { white-space: nowrap; }
+.lm-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-inline-end: 7px; vertical-align: middle; background: var(--ink-faint);
+}
+.lm-dot-new                { background: #2563eb; }
+.lm-dot-contacted          { background: #0891b2; }
+.lm-dot-waitlist_next_date { background: #7c3aed; }
+.lm-dot-trial_signed_up    { background: #d97706; }
+.lm-dot-attended           { background: #059669; }
+.lm-dot-joined             { background: #f59e0b; box-shadow: 0 0 0 3px #fef3c7; }
+.lm-dot-not_relevant       { background: #9ca3af; }
+
+.lm-row-new td                { background: #f4f8ff; }
+.lm-row-contacted td          { background: #f2fbfd; }
+.lm-row-waitlist_next_date td { background: #f8f5ff; }
+.lm-row-trial_signed_up td    { background: #fffdf2; }
+.lm-row-attended td           { background: #f2fdf8; }
+.lm-row-joined td             { background: linear-gradient(90deg, #fffbeb, #f0fdf4); }
+.lm-row-not_relevant td       { background: #f7f7f8; color: var(--ink-faint); }
+
 .lm-table-wrap { overflow-x: auto; }
 .lm-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
 .lm-table th {
@@ -958,12 +997,25 @@ html, body { overflow-x: hidden; }
 }
 .lm-table td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .lm-table tr:last-child td { border-bottom: none; }
-.lm-phone a {
-  color: var(--brand); font-weight: 700; text-decoration: none;
+/* default click = the in-app conversation view; wa.me is the small side icon */
+.lm-phone { white-space: nowrap; }
+.lm-phone-btn {
+  border: none; background: transparent; padding: 0; cursor: pointer;
+  color: var(--brand); font: inherit; font-weight: 700;
   direction: ltr; unicode-bidi: embed; white-space: nowrap;
 }
-.lm-phone a:hover { text-decoration: underline; }
+.lm-phone-btn:hover { text-decoration: underline; }
+.lm-wa-link {
+  color: var(--ink-faint); text-decoration: none; font-weight: 700;
+  margin-inline-start: 6px; font-size: 13px;
+}
+.lm-wa-link:hover { color: var(--green); }
 .lm-trial { color: var(--ink-soft); }
+.lm-reminded {
+  display: inline-block; margin-inline-start: 8px; padding: 1px 8px;
+  background: var(--green-soft); color: var(--brand); border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; white-space: nowrap;
+}
 .lm-time { color: var(--ink-faint); font-size: 13.5px; white-space: nowrap; }
 .lm-dir { color: var(--green); }
 .lm-select {
@@ -984,3 +1036,43 @@ html, body { overflow-x: hidden; }
 }
 .lm-notes-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .lm-foot { font-size: 12.5px; color: var(--ink-faint); text-align: center; padding: 4px 0 6px; }
+
+/* ── In-app conversation slide-over (phone click — the owner stays HERE) ── */
+.lm-convo-overlay {
+  position: fixed; inset: 0; background: rgba(11, 20, 26, .35);
+  display: flex; justify-content: flex-start; z-index: 60;
+}
+.lm-convo {
+  background: var(--chat-paper); width: min(440px, 92vw); height: 100%;
+  display: flex; flex-direction: column; box-shadow: 0 0 40px rgba(11, 20, 26, .25);
+}
+.lm-convo-head {
+  background: var(--brand); color: #fff; padding: 12px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.lm-convo-who { display: flex; flex-direction: column; gap: 2px; }
+.lm-convo-who strong { font-size: 15.5px; }
+.lm-convo-who span { font-size: 12.5px; opacity: .85; }
+.lm-convo-actions { display: flex; align-items: center; gap: 4px; }
+.lm-convo-actions .lm-wa-link { color: #fff; opacity: .8; font-size: 15px; }
+.lm-convo-actions .lm-wa-link:hover { opacity: 1; color: #fff; }
+.lm-convo-close {
+  border: none; background: transparent; color: #fff; font-size: 17px;
+  cursor: pointer; padding: 4px 8px; opacity: .85;
+}
+.lm-convo-close:hover { opacity: 1; }
+.lm-convo-body {
+  flex: 1; overflow-y: auto; padding: 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lm-convo-turn { display: flex; flex-direction: column; gap: 6px; }
+.lm-convo-day {
+  align-self: center; background: #fff; color: var(--ink-faint);
+  border-radius: 999px; padding: 2px 12px; font-size: 12px; margin: 6px 0;
+  box-shadow: 0 1px 2px rgba(11, 20, 26, .08);
+}
+/* the owner's own app replies — same side as the bot, visibly labeled */
+.lm-bubble-owner { background: #fef9e7; }
+.lm-bubble-owner-tag {
+  display: block; color: #b45309; font-size: 11.5px; font-weight: 700; margin-bottom: 2px;
+}

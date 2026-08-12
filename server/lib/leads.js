@@ -23,12 +23,13 @@
 // Hebrew labels centralized HERE; the portal UI reads them off the API
 // response rather than duplicating the copy.
 export const LEAD_STATUSES = [
-  { key: 'new',             label: 'חדש' },
-  { key: 'contacted',       label: 'נוצר קשר' },
-  { key: 'trial_signed_up', label: 'נרשם לניסיון' },
-  { key: 'attended',        label: 'הגיע לאימון' },
-  { key: 'joined',          label: 'הצטרף' },
-  { key: 'not_relevant',    label: 'לא רלוונטי' },
+  { key: 'new',                label: 'חדש' },
+  { key: 'contacted',          label: 'נוצר קשר' },
+  { key: 'waitlist_next_date', label: 'לרשום למועד הבא' },
+  { key: 'trial_signed_up',    label: 'נרשם לניסיון' },
+  { key: 'attended',           label: 'הגיע לאימון' },
+  { key: 'joined',             label: 'הצטרף' },
+  { key: 'not_relevant',       label: 'לא רלוונטי' },
 ];
 export const LEAD_STATUS_KEYS = LEAD_STATUSES.map(s => s.key);
 export const leadStatusLabel = (key) =>
@@ -38,7 +39,11 @@ export const leadStatusLabel = (key) =>
 // it — it is a terminal human mark, so nextAutoStatus can neither set it nor
 // overwrite it. 'attended'/'joined' are ON it (so no auto transition can pull
 // a lead back below them) but no auto caller ever passes them as incoming.
-const AUTO_LADDER = ['new', 'contacted', 'trial_signed_up', 'attended', 'joined'];
+// waitlist_next_date sits between contacted and trial_signed_up: wanting a
+// trial with no open date is further along than merely being contacted, and a
+// dated signup outranks it — so the sheet sync promotes a waitlisted lead the
+// moment a date appears, and never the other way around.
+const AUTO_LADDER = ['new', 'contacted', 'waitlist_next_date', 'trial_signed_up', 'attended', 'joined'];
 
 /**
  * The status an AUTOMATIC transition may write, or null to leave the lead
@@ -86,6 +91,14 @@ async function realDb() {
       if (error) throw error;
       return data?.enabled === true;
     },
+    // enabled + settings in one read — listLeadsForApi surfaces
+    // settings.sheet_file_id as the board's sheet_configured flag.
+    async getLeadsModule(businessId) {
+      const { data, error } = await supabase.from('business_modules')
+        .select('enabled, settings').eq('business_id', businessId).eq('module_key', 'leads').maybeSingle();
+      if (error) throw error;
+      return data ?? null;
+    },
     async getLead(businessId, phone) {
       const { data, error } = await supabase.from('leads').select('*')
         .eq('business_id', businessId).eq('phone', phone).maybeSingle();
@@ -115,6 +128,18 @@ async function realDb() {
         .limit(1000);
       if (error) throw error;
       return data ?? [];
+    },
+    // The lead's WhatsApp transcript — live sessions are keyed by phone, and
+    // the business_id filter keeps one tenant's thread out of another's board.
+    // Last 200 turns, returned oldest-first (fetch newest-first, then flip).
+    async listConversation(businessId, phone) {
+      const { data, error } = await supabase.from('conversation_messages')
+        .select('user_message, agent_response, action, created_at')
+        .eq('business_id', businessId).eq('session_id', phone)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return (data ?? []).reverse();
     },
   };
 }
@@ -277,8 +302,20 @@ export function leadCounts(rows) {
 export async function listLeadsForApi(businessId, { status = null, search = '' } = {}) {
   const base = { statuses: LEAD_STATUSES };
   const d = await getDb();
-  let enabled = false;
-  try { enabled = await d.isEnabled(businessId); } catch { enabled = false; }
+  // Older fakes implement only isEnabled — getLeadsModule additionally carries
+  // settings, so the board knows a registration sheet is wired up
+  // (sheet_configured drives the "סנכרון מהגיליון" button).
+  let enabled = false, settings = {};
+  try {
+    if (typeof d.getLeadsModule === 'function') {
+      const row = await d.getLeadsModule(businessId);
+      enabled = row?.enabled === true;
+      settings = row?.settings ?? {};
+    } else {
+      enabled = await d.isEnabled(businessId);
+    }
+  } catch { enabled = false; }
+  base.sheet_configured = !!settings.sheet_file_id;
   if (!enabled) return { ...base, enabled: false, ready: true, leads: [], counts: leadCounts([]) };
   try {
     const rows = await d.listLeads(businessId);
@@ -318,6 +355,31 @@ export async function applyLeadUpdate(businessId, id, { status, notes, payload }
   }
   if (Object.keys(patch).length) await d.updateLead(existing.id, patch);
   return { ...existing, ...patch };
+}
+
+/**
+ * The in-app conversation view behind the board's phone click (the owner
+ * works from a computer — never bounce her to wa.me). Business-scoped twice
+ * over: the phone must be a lead ON THIS BUSINESS'S BOARD (a foreign
+ * business's session 404s before any message is read), and the message query
+ * itself filters by business_id. Rows with action 'owner_echo' are the
+ * owner's own app replies (persisted by lib/coexistence.js) — the UI labels
+ * them "המאמנת (מהאפליקציה)".
+ */
+export async function getLeadConversation(businessId, phone) {
+  if (!businessId || !phone) throw httpError('business and phone required', 400);
+  const d = await getDb();
+  const lead = await d.getLead(businessId, String(phone));
+  if (!lead) throw httpError('not found', 404);
+  let messages = [];
+  try {
+    messages = await d.listConversation(businessId, String(phone));
+  } catch (e) {
+    // A missing/unreadable messages table degrades to the empty state — the
+    // board itself must keep working.
+    console.error('[leads] conversation load failed — returning an empty thread:', e.message);
+  }
+  return { messages };
 }
 
 // ── CSV export (the Google Sheet replacement) ────────────────────────────────

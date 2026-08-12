@@ -75,6 +75,19 @@ async function realDb() {
       if (error) throw error;
       return data?.coexistence_standdown_until ?? null;
     },
+    // The owner's own app reply, banked into the transcript so the leads
+    // board's conversation view shows the whole exchange. action 'owner_echo'
+    // is the marker the viewer renders as "המאמנת (מהאפליקציה)". Deliberately
+    // NOT lib/db.js#saveConversation — that helper requires a user_message and
+    // touches the session row; an echo is a bare outbound line.
+    async saveEchoMessage({ sessionId, businessId, text }) {
+      const { error } = await supabase.from('conversation_messages').insert({
+        session_id: sessionId, business_id: businessId,
+        user_message: null, agent_response: text,
+        stage: 'coexistence', action: 'owner_echo',
+      });
+      if (error) throw error;
+    },
   };
 }
 
@@ -122,6 +135,10 @@ export function detectEcho(body) {
     msgId: msg.id ?? null,
     phoneNumberId: value.metadata?.phone_number_id ?? null,
     recipient,
+    // What the owner SAID — handleOwnerEcho banks it into the transcript so
+    // the leads board's conversation view shows her side too. Null for
+    // non-text echoes (media/stickers); those still arm the standdown.
+    text: msg.text?.body ?? null,
   };
 }
 
@@ -129,7 +146,7 @@ export function detectEcho(body) {
 // Called fire-and-forget from the webhook route for every detected echo.
 // Gated on the per-business coexistence flag, so existing tenants (flag off,
 // or no flag column at all) are untouched. Never throws.
-export async function handleOwnerEcho({ phoneNumberId, recipient }, now = new Date()) {
+export async function handleOwnerEcho({ phoneNumberId, recipient, text = null }, now = new Date()) {
   try {
     if (!phoneNumberId || !recipient) return { standdown: false, reason: 'unaddressable' };
     const d = await getDb();
@@ -150,6 +167,18 @@ export async function handleOwnerEcho({ phoneNumberId, recipient }, now = new Da
       await recordOwnerEcho({ businessId: biz.id, phone: recipient, now });
     } catch (e) {
       console.error('[coexistence] lead echo bookkeeping failed (standdown unaffected):', e.message);
+    }
+
+    // Transcript: bank the owner's own line so the board's conversation view
+    // shows both sides (action 'owner_echo' → "המאמנת (מהאפליקציה)"). Text
+    // echoes only; optional on the seam so pre-existing fixtures — and any
+    // db error — cost nothing, least of all the standdown below.
+    if (text && typeof d.saveEchoMessage === 'function') {
+      try {
+        await d.saveEchoMessage({ sessionId: recipient, businessId: biz.id, text });
+      } catch (e) {
+        console.error('[coexistence] echo transcript write failed (standdown unaffected):', e.message);
+      }
     }
 
     const minutes = Number(settings.coexistence_standdown_minutes) > 0
