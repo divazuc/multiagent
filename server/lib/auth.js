@@ -16,7 +16,9 @@ const PUBLIC_PATHS = ['/health', '/wa-inbound', '/booster-webhook'];
 // its one-time token is the credential (routes/meeting-approval.js).
 // '/approve/' is the same pattern for booster PROCESS approvals
 // (routes/process-approval.js) — one-time token, same credential model.
-const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/', '/meeting/', '/approve/'];
+// '/onboard' is the Embedded Signup launcher (routes/onboard.js) — public
+// identifiers only; the Facebook login inside the popup is the credential.
+const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/', '/meeting/', '/approve/', '/onboard'];
 
 let warnedOff = false;
 

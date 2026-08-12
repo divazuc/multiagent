@@ -21,6 +21,7 @@ import oauthRouter from './routes/oauth.js';
 import boosterWebhookRouter from './routes/booster-webhook.js';
 import meetingApprovalRouter from './routes/meeting-approval.js';
 import processApprovalRouter from './routes/process-approval.js';
+import onboardRouter from './routes/onboard.js';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://multiagent.pages.dev')
   .split(',').map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '')); // strip quotes + trailing slash
@@ -78,6 +79,7 @@ app.use(oauthRouter);
 app.use(boosterWebhookRouter);
 app.use(meetingApprovalRouter);
 app.use(processApprovalRouter);
+app.use('/onboard', onboardRouter);
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json(healthPayload()));
