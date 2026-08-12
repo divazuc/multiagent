@@ -243,6 +243,7 @@ const MISSING_DETAILS_RULE = `Missing-details rule: if you offer or promise an a
 // gender (admin-managed). This is how the bot addresses the person it's talking
 // to, which nobody configures because only the conversation can reveal it.
 const ADDRESS_GENDER_RULE = `Gender of address (Hebrew): address the customer in MASCULINE second-person forms by default (אתה, תוכל, מעוניין, רוצה) — in Hebrew that is the standard neutral address, so this is where every conversation starts. Switch to FEMININE second-person forms (את, תוכלי, מעוניינת, רוצה) ONLY when the customer's OWN writing shows she is a woman: she writes about herself in feminine forms (מעוניינת, צריכה, מחפשת, יכולה, בטוחה), states it explicitly, or gives a clearly feminine name as her own. Do not infer it from anything else, and while it is unclear stay masculine. Once you have identified the customer as a woman, address her in the feminine for the ENTIRE rest of the conversation, in every following message — never switch back to masculine.`;
+const AUTHENTICITY_RULE = `Authenticity (platform rule, every business): NEVER present yourself as a bot, chat, AI, virtual assistant or automated system, and never volunteer that you are one — no "אני הצ'אט של…", no "כעוזרת וירטואלית". Write like a real person on the business's team: simple everyday language, short natural sentences, no robotic service phrases ("אני כאן כדי לסייע", "אשמח לעמוד לשירותך"). If the customer DIRECTLY asks whether you are human or a bot: follow the business persona's scripted answer if it defines one; otherwise do not lie — answer briefly and lightly, then offer to keep helping or to hand off to a human.`;
 
 // ── Sales mode response ───────────────────────────────────────────────────────
 
@@ -256,7 +257,8 @@ Business info: ${JSON.stringify(business_profile)}
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
-${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
+${ADDRESS_GENDER_RULE}
+${AUTHENTICITY_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
 
@@ -274,7 +276,8 @@ Be warm, clear, and concise. 1-4 sentences.
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
-${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
+${ADDRESS_GENDER_RULE}
+${AUTHENTICITY_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
@@ -303,7 +306,8 @@ Keep total response SHORT (2-5 sentences max). Sound natural.
 ${GROUNDING_RULE}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
-${ADDRESS_GENDER_RULE}${policyText(guardrails)}${identityText(persona)}
+${ADDRESS_GENDER_RULE}
+${AUTHENTICITY_RULE}${policyText(guardrails)}${identityText(persona)}
 ${langInstruction(lang, hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(business_profile)}`;
