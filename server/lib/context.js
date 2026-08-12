@@ -1,73 +1,106 @@
 // WA_02 replacement — load session + business profile + conversation history
+//
+// SESSIONS ARE PER (PHONE, BUSINESS) — pilot finding, 2026-08-12. One phone
+// can hold live conversations with TWO tenants' bots at once (the pilot
+// owner's phone talks to both the Divaz bot and her own kids-business bot).
+// The receiving WhatsApp number resolves the business FIRST, and the session
+// lookup is scoped to that business: a conversation with the kids bot gets its
+// own kids-bound session row and never reads — let alone re-points — the
+// Divaz-bound one, and vice versa.
+//
+// Until docs/sql/2026-08-13-sessions-per-business.sql is applied the sessions
+// table is still unique on session_id alone, so a second business's row cannot
+// be inserted. That exact failure falls back to TODAY'S behaviour — re-point
+// the phone's single row at the business that owns the receiving number
+// (lib/session-routing.js) — so nothing changes for any tenant until the
+// migration lands. Single-business phones (the overwhelmingly common case)
+// never hit either branch: their scoped lookup finds their one row every time.
 
-import { supabase } from './supabase.js';
+import { supabase as realSupabase } from './supabase.js';
 import { resolveSessionBusiness } from './session-routing.js';
+
+let supabase = realSupabase; // test seam — loadContext is where the pilot's
+export function _setSupabaseForTest(fake) { supabase = fake ?? realSupabase; } // cross-tenant re-point lived
 
 const HISTORY_LIMIT = 50;
 const QUALIFICATION_FIELDS = ['need', 'scope', 'budget', 'timeline', 'urgency'];
+const SESSION_COLS = 'session_id, business_id, session_mode, current_stage, current_setup_stage, setup_completed, qualification_progress';
 
 export async function loadContext({ message, session_id, phone_number_id = null }) {
   try {
-    let { data: session, error: sessionErr } = await supabase
-      .from('sessions')
-      .select('session_id, business_id, session_mode, current_stage, current_setup_stage, setup_completed, qualification_progress')
-      .eq('session_id', session_id)
-      .maybeSingle();
-
-    if (sessionErr) return err(`Session lookup failed: ${sessionErr.message}`);
-
-    // Brand-new session — no DB row exists at all. Resolve the business by the
-    // receiving WA phone number, create the session, then fall through so the
-    // FIRST reply already has the full business profile + knowledge loaded.
-    if (!session) {
-      let business_id = null;
-      if (phone_number_id) {
-        const { data: biz } = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('wa_phone_number_id', phone_number_id)
-          .maybeSingle();
-        business_id = biz?.id ?? null;
-      }
-
-      if (!business_id) return err(`No business found for phone_number_id: ${phone_number_id}`);
-
-      await supabase.from('sessions').upsert(
-        { session_id, business_id, session_mode: 'live', current_stage: 'greeting', setup_completed: true },
-        { onConflict: 'session_id', ignoreDuplicates: true }
-      );
-      session = {
-        session_id, business_id,
-        session_mode: 'live',
-        current_stage: 'greeting',
-        current_setup_stage: null,
-        setup_completed: true,
-        qualification_progress: {},
-      };
-    }
-
-    // Existing session — the receiving number is still the authority. A session
-    // created before a WhatsApp number was moved to another business would
-    // otherwise keep routing this sender to the old one forever, silently.
-    if (session && phone_number_id) {
-      const { data: owner } = await supabase
+    // The business that owns the receiving number — resolved BEFORE the
+    // session lookup, because it is the scope of that lookup. Null for the
+    // Studio console and scripted tests (no phone_number_id), which keep the
+    // session_id-only lookup: synthetic ids, one row, no ambiguity.
+    let numberBusinessId = null;
+    if (phone_number_id) {
+      const { data: biz } = await supabase
         .from('businesses')
         .select('id')
         .eq('wa_phone_number_id', phone_number_id)
         .maybeSingle();
-      const { businessId, corrected } = resolveSessionBusiness({
-        sessionBusinessId: session.business_id,
-        businessIdFromNumber: owner?.id ?? null,
-      });
-      if (corrected) {
-        console.warn(`[context] session ${session_id} was bound to ${session.business_id}; ` +
-          `the receiving number belongs to ${businessId} — re-pointing`);
-        await supabase.from('sessions')
-          .update({ business_id: businessId, updated_at: new Date().toISOString() })
-          .eq('session_id', session_id);
-        session = { ...session, business_id: businessId };
+      numberBusinessId = biz?.id ?? null;
+    }
+
+    let query = supabase.from('sessions').select(SESSION_COLS).eq('session_id', session_id);
+    if (numberBusinessId) query = query.eq('business_id', numberBusinessId);
+    const { data: sessionRows, error: sessionErr } = await query
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (sessionErr) return err(`Session lookup failed: ${sessionErr.message}`);
+    let session = sessionRows?.[0] ?? null;
+
+    // No session for this (phone, business) pair. If the number resolved a
+    // business, create one bound to it, then fall through so the FIRST reply
+    // already has the full business profile + knowledge loaded.
+    if (!session && numberBusinessId) {
+      const fresh = {
+        session_id, business_id: numberBusinessId,
+        session_mode: 'live', current_stage: 'greeting', setup_completed: true,
+      };
+      const { error: insErr } = await supabase.from('sessions').insert(fresh);
+      if (!insErr) {
+        session = {
+          ...fresh,
+          current_setup_stage: null,
+          qualification_progress: {},
+        };
+      } else {
+        // The insert was refused. Either a concurrent request created the same
+        // pair a moment ago, or this is the PRE-MIGRATION schema (unique on
+        // session_id alone) and the phone's one row belongs to another
+        // business. Re-read to tell the two apart.
+        const { data: existingRows, error: reErr } = await supabase
+          .from('sessions').select(SESSION_COLS).eq('session_id', session_id)
+          .order('updated_at', { ascending: false })
+          .limit(2);
+        if (reErr) return err(`Session lookup failed: ${reErr.message}`);
+        session = (existingRows ?? []).find(s => s.business_id === numberBusinessId) ?? null;
+
+        if (!session) {
+          const stale = existingRows?.[0] ?? null;
+          if (!stale) return err(`Session create failed: ${insErr.message}`);
+          // Pre-migration fallback — exactly today's behaviour: the receiving
+          // number is the authority, the single row is re-pointed at it
+          // (lib/session-routing.js is the rule; the live bug it fixed was a
+          // session stuck on a business its number had left).
+          const { corrected } = resolveSessionBusiness({
+            sessionBusinessId: stale.business_id,
+            businessIdFromNumber: numberBusinessId,
+          });
+          if (corrected) {
+            console.warn(`[context] session ${session_id} was bound to ${stale.business_id}; ` +
+              `the receiving number belongs to ${numberBusinessId} — re-pointing (pre-migration schema)`);
+            await supabase.from('sessions')
+              .update({ business_id: numberBusinessId, updated_at: new Date().toISOString() })
+              .eq('session_id', session_id);
+          }
+          session = { ...stale, business_id: numberBusinessId };
+        }
       }
     }
+
+    if (!session) return err(`No business found for phone_number_id: ${phone_number_id}`);
 
     // Existing setup session — load draft; existing live session — load profile + history
     const isSetup = (session.session_mode === 'setup');
@@ -79,11 +112,7 @@ export async function loadContext({ message, session_id, phone_number_id = null 
           .eq('business_id', session.business_id)
           .maybeSingle(),
       isSetup ? Promise.resolve({ data: [], error: null }) :
-        supabase.from('conversations')
-          .select('role, content, stage, created_at')
-          .eq('session_id', session_id)
-          .order('created_at', { ascending: true })
-          .limit(HISTORY_LIMIT),
+        loadHistory(session_id, session.business_id),
       isSetup ?
         supabase.from('setup_drafts').select('draft_setup_data, current_setup_stage').eq('session_id', session_id).maybeSingle() :
         Promise.resolve({ data: null, error: null }),
@@ -126,6 +155,25 @@ export async function loadContext({ message, session_id, phone_number_id = null 
   } catch (e) {
     return err(`Unexpected error: ${e.message}`);
   }
+}
+
+// History is scoped to the session's business: on a phone that talks to two
+// tenants' bots, one tenant's conversation must never ride into the other's
+// model context. The `conversations` view only exposes business_id after the
+// 2026-08-13 migration — on the pre-migration view the scoped select errors,
+// and the unscoped read is exactly today's behaviour (one business per phone
+// pre-migration, so nothing to mix).
+async function loadHistory(session_id, business_id) {
+  const base = () => supabase.from('conversations')
+    .select('role, content, stage, created_at')
+    .eq('session_id', session_id)
+    .order('created_at', { ascending: true })
+    .limit(HISTORY_LIMIT);
+  if (business_id) {
+    const scoped = await base().eq('business_id', business_id);
+    if (!scoped.error) return scoped;
+  }
+  return base();
 }
 
 // cta_goal is stored as a stringified array (e.g. '["book_call"]')

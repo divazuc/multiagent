@@ -211,9 +211,9 @@ test('a DB failure while arming the standdown is swallowed, never thrown', async
 
 test('standdownActive is true inside the window and false after it expires', async () => {
   coex._setDbForTest(fakeDb({ standdownUntil: '2026-08-12T22:00:00Z' }));
-  assert.equal(await standdownActive(CUSTOMER, new Date('2026-08-12T21:59:00Z')), true);
+  assert.equal(await standdownActive(CUSTOMER, { businessId: 'biz-1' }, new Date('2026-08-12T21:59:00Z')), true);
   // expiry restores replies — by time alone, no write needed
-  assert.equal(await standdownActive(CUSTOMER, new Date('2026-08-12T22:01:00Z')), false);
+  assert.equal(await standdownActive(CUSTOMER, { businessId: 'biz-1' }, new Date('2026-08-12T22:01:00Z')), false);
   coex._setDbForTest(null);
 });
 
@@ -240,7 +240,7 @@ test('an unparseable standdown timestamp reads as not stood down, not as forever
 test('sendUnlessStoodDown cancels a queued reply when the owner answered meanwhile', async () => {
   coex._setDbForTest(fakeDb({ standdownUntil: '2026-08-12T22:00:00Z' }));
   let sent = false;
-  const r = await sendUnlessStoodDown(CUSTOMER, async () => { sent = true; }, new Date('2026-08-12T21:00:00Z'));
+  const r = await sendUnlessStoodDown(CUSTOMER, 'biz-1', async () => { sent = true; }, new Date('2026-08-12T21:00:00Z'));
   assert.equal(r.cancelled, true);
   assert.equal(sent, false);
   coex._setDbForTest(null);
@@ -249,7 +249,7 @@ test('sendUnlessStoodDown cancels a queued reply when the owner answered meanwhi
 test('sendUnlessStoodDown sends normally when no standdown is active', async () => {
   coex._setDbForTest(fakeDb({ standdownUntil: null }));
   let sent = false;
-  const r = await sendUnlessStoodDown(CUSTOMER, async () => { sent = true; });
+  const r = await sendUnlessStoodDown(CUSTOMER, 'biz-1', async () => { sent = true; });
   assert.equal(r.cancelled, false);
   assert.equal(sent, true);
   coex._setDbForTest(null);
@@ -279,15 +279,37 @@ test('the webhook route consumes an echo before the pipeline ever runs', () => {
 });
 
 test('the standdown gate runs before the conversation agent and still logs the message', () => {
-  const gate = indexSrc.indexOf("standdownActive(session_id)");
+  // Business-scoped read — a standdown on the same phone's conversation with
+  // ANOTHER tenant must not silence this one (pilot finding #1).
+  const gate = indexSrc.indexOf("standdownActive(session_id, { businessId: business_id })");
   const agentStep = indexSrc.indexOf("stepStart(run, 'conversation_agent'");
-  assert.ok(gate > -1 && gate < agentStep, 'standdown check must precede the agent');
+  assert.ok(gate > -1 && gate < agentStep, 'standdown check must precede the agent and be business-scoped');
   const gateBlock = indexSrc.slice(gate, gate + 1400);
   assert.ok(gateBlock.includes("from('conversation_messages').insert"), 'customer message must still be logged');
   assert.ok(gateBlock.includes('upsertContact'), 'lead bookkeeping must still run');
   assert.ok(gateBlock.includes("skipped: 'coexistence_standdown'"));
 });
 
-test('the live reply send goes through sendUnlessStoodDown (queued replies cancellable)', () => {
-  assert.ok(indexSrc.includes('sendUnlessStoodDown(session_id, ()'));
+test('the live reply send goes through sendUnlessStoodDown, scoped to the sending business', () => {
+  assert.ok(indexSrc.includes('sendUnlessStoodDown(session_id, business_id, ()'));
+});
+
+test('the unsupported-media standdown read is scoped to the receiving number', () => {
+  const gate = indexSrc.indexOf('standdownActive(value?.messages?.[0]?.from');
+  assert.ok(gate > -1);
+  const block = indexSrc.slice(gate, gate + 200);
+  assert.ok(block.includes('phoneNumberId: value?.metadata?.phone_number_id'),
+    'must pass the receiving number so the read scopes to its business');
+});
+
+test('every inbound customer message notes its arrival for the auto-reply grace window', () => {
+  const note = indexSrc.indexOf('noteCustomerInbound({');
+  const echoBranch = indexSrc.indexOf("kind === 'echo'");
+  const dedup = indexSrc.indexOf('seenMessage(msgId)');
+  assert.ok(note > -1, 'route must call noteCustomerInbound');
+  assert.ok(dedup < note, 'Meta retries must not refresh the inbound clock');
+  assert.ok(note < echoBranch, 'the note must be armed before echo handling');
+  const cond = indexSrc.lastIndexOf("if (kind === 'message' || kind === 'unsupported')", note);
+  assert.ok(cond > -1 && cond < note,
+    'both supported and unsupported customer messages count as inbound');
 });

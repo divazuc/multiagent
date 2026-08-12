@@ -17,24 +17,53 @@
 //      contact/lead bookkeeping — they just get no bot reply, and a reply
 //      already in flight (the human-typing delay) is cancelled at send time.
 //
+// TWO ECHO CLASSES NEVER ARM THE STANDDOWN (pilot findings, 2026-08-12):
+//
+//   `self_send` — the echo of a message THIS SERVER sent through the Cloud
+//   API (Meta mirrors our own sends back on coexistence numbers). Matched by
+//   message id against lib/sent-ids.js. Not the owner talking: no standdown,
+//   no lead 'contacted' transition (the pilot's test reminders auto-advanced
+//   the owner's own lead row), no transcript bank.
+//
+//   `auto_reply_suspected` — an echo landing within a short grace window
+//   (business_profiles.standdown_echo_grace_seconds, default 25s) of that
+//   conversation's LAST INBOUND customer message. The pilot's WhatsApp
+//   Business app had an automatic greeting: customer writes → app auto-replies
+//   in ~2s → echo → 12h standdown, silencing the bot for the exact lead it was
+//   supposed to answer. A human does not answer in under half a minute from a
+//   phone; automation does. Logged and dropped.
+//
 // State lives on the EXISTING per-conversation store — the sessions row
 // (sessions.coexistence_standdown_until) — no new tables, no timers. Standdown
 // expires by time alone in v1; see the report for how an owner re-arm command
 // could be added later (a keyword handled in the relay contact gate, which
 // already recognises the owner's number).
 //
+// SCOPING (pilot finding #1): every standdown read AND write is keyed by the
+// (session_id, business_id) PAIR, never by session_id alone. One phone can
+// hold live conversations with TWO tenants' bots (the pilot owner's phone
+// talks to both the Divaz bot and her own kids bot); an owner echo on one
+// business must never silence — or touch the session row of — the other.
+// Live evidence: the kids owner's echo wrote its standdown onto the session
+// row bound to the DIVAZ business, because the update matched session_id only.
+//
 // Every DB-touching path here FAILS SOFT toward today's behaviour: a business
 // without the flag (or a database that doesn't have the columns yet) behaves
 // exactly as before. Same lazy-import discipline as lib/relay — supabase.js is
 // never imported at module top level, so tests run without env.
 
+import { isSelfSendId } from './sent-ids.js';
+
 const DEFAULT_STANDDOWN_MINUTES = 720; // 12h
+const DEFAULT_ECHO_GRACE_SECONDS = 25;
 
 let db = null; // test seam
 export function _setDbForTest(fake) { db = fake; }
 
-async function realDb() {
-  const { supabase } = await import('./supabase.js');
+// The real store, parameterised on the supabase client so tests can run the
+// REAL scoping logic against a fake client (the pilot's wrong-row write lived
+// exactly here, below the fake-store seam — never again untestable).
+export function _realDbWith(supabase) {
   return {
     async getBusinessByPhoneNumberId(phoneNumberId) {
       const { data, error } = await supabase.from('businesses')
@@ -43,10 +72,18 @@ async function realDb() {
       return data ?? null;
     },
     async getCoexistenceSettings(businessId) {
-      const { data, error } = await supabase.from('business_profiles')
-        .select('coexistence, coexistence_standdown_minutes')
+      let { data, error } = await supabase.from('business_profiles')
+        .select('coexistence, coexistence_standdown_minutes, standdown_echo_grace_seconds')
         .eq('business_id', businessId).maybeSingle();
-      if (error) throw error;
+      if (error) {
+        // Pre-migration DB — standdown_echo_grace_seconds doesn't exist yet
+        // (docs/sql/2026-08-13-sessions-per-business.sql). The standdown
+        // itself must keep working: retry with the original columns.
+        ({ data, error } = await supabase.from('business_profiles')
+          .select('coexistence, coexistence_standdown_minutes')
+          .eq('business_id', businessId).maybeSingle());
+        if (error) throw error;
+      }
       return data ?? null;
     },
     // Update-then-insert rather than a blind upsert: an upsert would have to
@@ -55,10 +92,18 @@ async function realDb() {
     // a brand-new conversation from the app before the customer ever wrote —
     // and the standdown must survive that customer's FIRST inbound message,
     // so the miss inserts a live session the same way lib/context.js would.
+    //
+    // BOTH filters, always: the update targets this business's row for this
+    // phone and no other. Pre-migration (unique on session_id alone) a phone
+    // whose one session row belongs to ANOTHER business makes the insert
+    // violate that constraint — the throw is caught by handleOwnerEcho and the
+    // standdown is simply not armed. The other business's session is never
+    // touched; that is the whole point.
     async setStanddown(sessionId, businessId, untilIso) {
       const { data, error } = await supabase.from('sessions')
         .update({ coexistence_standdown_until: untilIso, updated_at: new Date().toISOString() })
         .eq('session_id', sessionId)
+        .eq('business_id', businessId)
         .select('session_id');
       if (error) throw error;
       if (data?.length) return;
@@ -69,9 +114,15 @@ async function realDb() {
       });
       if (insErr) throw insErr;
     },
-    async getStanddown(sessionId) {
-      const { data, error } = await supabase.from('sessions')
-        .select('coexistence_standdown_until').eq('session_id', sessionId).maybeSingle();
+    // Read side of the same scoping: a standdown armed on the Divaz session
+    // must not silence the kids bot for the same phone, and vice versa. With
+    // no business to scope by (unknown receiving number) it falls back to the
+    // session_id-only read — identical to today for single-business phones.
+    async getStanddown(sessionId, businessId = null) {
+      let q = supabase.from('sessions')
+        .select('coexistence_standdown_until').eq('session_id', sessionId);
+      if (businessId) q = q.eq('business_id', businessId);
+      const { data, error } = await q.maybeSingle();
       if (error) throw error;
       return data?.coexistence_standdown_until ?? null;
     },
@@ -89,6 +140,11 @@ async function realDb() {
       if (error) throw error;
     },
   };
+}
+
+async function realDb() {
+  const { supabase } = await import('./supabase.js');
+  return _realDbWith(supabase);
 }
 
 const getDb = async () => db ?? await realDb();
@@ -142,18 +198,71 @@ export function detectEcho(body) {
   };
 }
 
+// ── Inbound recency (auto-reply immunity) ────────────────────────────────────
+// WHEN did this customer last write to this number — fed by the webhook route
+// for every inbound customer message (kind 'message'/'unsupported'), read by
+// handleOwnerEcho to spot the app's automatic greeting: an "owner reply"
+// landing seconds after the customer's message is automation, not the owner.
+// In-memory, same single-instance posture (and bounds discipline) as the
+// message-id dedup in lib/wa-webhook.js; a restart in the gap merely restores
+// today's behaviour for one echo.
+
+const INBOUND_MAX = 2000;
+const lastInbound = new Map(); // `${phone_number_id}|${customer digits}` -> epoch ms
+
+export function noteCustomerInbound({ phoneNumberId, from }, atMs = Date.now()) {
+  if (!phoneNumberId || !from) return;
+  const key = `${phoneNumberId}|${digits(from)}`;
+  lastInbound.delete(key); // refresh insertion order
+  lastInbound.set(key, atMs);
+  while (lastInbound.size > INBOUND_MAX) {
+    lastInbound.delete(lastInbound.keys().next().value); // oldest first
+  }
+}
+
+const lastInboundAt = (phoneNumberId, customer) =>
+  lastInbound.get(`${phoneNumberId}|${digits(customer)}`) ?? null;
+
+export function _clearInboundForTest() { lastInbound.clear(); }
+
 // ── Standdown writes (echo side) ─────────────────────────────────────────────
 // Called fire-and-forget from the webhook route for every detected echo.
 // Gated on the per-business coexistence flag, so existing tenants (flag off,
 // or no flag column at all) are untouched. Never throws.
-export async function handleOwnerEcho({ phoneNumberId, recipient, text = null }, now = new Date()) {
+export async function handleOwnerEcho({ msgId = null, phoneNumberId, recipient, text = null }, now = new Date()) {
   try {
     if (!phoneNumberId || !recipient) return { standdown: false, reason: 'unaddressable' };
+
+    // Our own Cloud API send, mirrored back — not the owner talking. Checked
+    // before anything touches the DB: no standdown, no lead transition, no
+    // transcript line (the send path already persisted its own message).
+    if (msgId && isSelfSendId(msgId)) {
+      console.log(`[coexistence] echo ${msgId} is our own API send — self_send, ignoring`);
+      return { standdown: false, reason: 'self_send' };
+    }
+
     const d = await getDb();
     const biz = await d.getBusinessByPhoneNumberId(phoneNumberId);
     if (!biz) return { standdown: false, reason: 'no_business' };
     const settings = await d.getCoexistenceSettings(biz.id);
     if (settings?.coexistence !== true) return { standdown: false, reason: 'not_coexistence' };
+
+    // Auto-reply immunity: an echo within the grace window of the customer's
+    // own message is the app's automatic greeting, not the owner. Drop it
+    // BEFORE the lead 'contacted' transition and the standdown — automation
+    // is evidence of nothing. A business can widen the window or set 0 to
+    // turn the immunity off (standdown_echo_grace_seconds).
+    const graceRaw = Number(settings?.standdown_echo_grace_seconds);
+    const graceSeconds = Number.isFinite(graceRaw) && graceRaw >= 0 ? graceRaw : DEFAULT_ECHO_GRACE_SECONDS;
+    if (graceSeconds > 0) {
+      const inboundMs = lastInboundAt(phoneNumberId, recipient);
+      const delta = inboundMs === null ? null : now.getTime() - inboundMs;
+      if (delta !== null && delta >= 0 && delta <= graceSeconds * 1000) {
+        console.log(`[coexistence] echo to ${recipient} landed ${Math.round(delta / 1000)}s ` +
+          `after their message (grace ${graceSeconds}s) — auto_reply_suspected, NOT standing down`);
+        return { standdown: false, reason: 'auto_reply_suspected' };
+      }
+    }
 
     // Leads module: the owner personally answering IS the "נוצר קשר" signal —
     // advance the lead board before arming the standdown. Awaited because this
@@ -186,7 +295,7 @@ export async function handleOwnerEcho({ phoneNumberId, recipient, text = null },
       : DEFAULT_STANDDOWN_MINUTES;
     const until = new Date(now.getTime() + minutes * 60_000).toISOString();
     await d.setStanddown(recipient, biz.id, until);
-    console.log(`[coexistence] owner replied to ${recipient} — bot standing down until ${until}`);
+    console.log(`[coexistence] owner replied to ${recipient} — ${biz.id} bot standing down until ${until}`);
     return { standdown: true, until };
   } catch (e) {
     console.error('[coexistence] echo handling failed (standdown not set):', e.message);
@@ -195,13 +304,21 @@ export async function handleOwnerEcho({ phoneNumberId, recipient, text = null },
 }
 
 // ── Standdown reads (customer-message side) ──────────────────────────────────
-// True only for a parseable future timestamp. Fails SOFT to false — a read
-// error (including the column simply not existing yet) must leave every
-// non-coexistence tenant exactly as it is today.
-export async function standdownActive(sessionId, now = new Date()) {
+// True only for a parseable future timestamp ON THIS BUSINESS'S session row.
+// `ref` carries the scope: { businessId } when the caller already resolved it
+// (the pipeline), or { phoneNumberId } to resolve it from the receiving number
+// (the unsupported-media path). Fails SOFT to false — a read error (including
+// the column simply not existing yet) must leave every non-coexistence tenant
+// exactly as it is today.
+export async function standdownActive(sessionId, ref = {}, now = new Date()) {
   try {
     if (!sessionId) return false;
-    const until = await (await getDb()).getStanddown(sessionId);
+    const d = await getDb();
+    let businessId = ref.businessId ?? null;
+    if (!businessId && ref.phoneNumberId && typeof d.getBusinessByPhoneNumberId === 'function') {
+      businessId = (await d.getBusinessByPhoneNumberId(ref.phoneNumberId))?.id ?? null;
+    }
+    const until = await d.getStanddown(sessionId, businessId);
     if (!until) return false;
     const untilMs = new Date(until).getTime();
     return Number.isFinite(untilMs) && untilMs > now.getTime();
@@ -214,9 +331,11 @@ export async function standdownActive(sessionId, now = new Date()) {
 // The send-time re-check: a reply that was already generated (and sat in the
 // human-typing delay) while the owner answered from the app must be dropped,
 // not delivered seconds after the owner's own message. Wraps the actual send
-// so the decision and the send cannot be reordered by a caller.
-export async function sendUnlessStoodDown(sessionId, sendFn, now = new Date()) {
-  if (await standdownActive(sessionId, now)) {
+// so the decision and the send cannot be reordered by a caller. Scoped to the
+// sending business — a standdown on the OTHER tenant's conversation with this
+// phone must not cancel this one's reply.
+export async function sendUnlessStoodDown(sessionId, businessId, sendFn, now = new Date()) {
+  if (await standdownActive(sessionId, { businessId }, now)) {
     console.log(`[coexistence] reply to ${sessionId} cancelled — owner standdown active`);
     return { cancelled: true };
   }

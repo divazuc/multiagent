@@ -48,17 +48,23 @@ router.get('/sessions', async (_req, res) => {
 
 router.post('/sessions', async (req, res) => {
   const { sessionId, mode, businessId = null } = req.body;
-  const { data, error } = await supabase
-    .from('sessions')
-    .upsert({
-      session_id: sessionId,
-      session_mode: mode,
-      business_id: businessId,
-      setup_completed: mode !== 'setup',
-      current_stage: mode === 'setup' ? 'business_details' : 'start',
-      current_setup_stage: mode === 'setup' ? 'business_details' : null,
-    }, { onConflict: 'session_id' })
-    .select().maybeSingle();
+  const row = {
+    session_id: sessionId,
+    session_mode: mode,
+    business_id: businessId,
+    setup_completed: mode !== 'setup',
+    current_stage: mode === 'setup' ? 'business_details' : 'start',
+    current_setup_stage: mode === 'setup' ? 'business_details' : null,
+  };
+  // Update-then-insert, not upsert-on-session_id: after the 2026-08-13
+  // migration (sessions unique on (session_id, business_id)) ON CONFLICT
+  // (session_id) has no backing index. Studio session ids are synthetic and
+  // single-row, so the session_id-scoped update is exact under both schemas.
+  let { data, error } = await supabase
+    .from('sessions').update(row).eq('session_id', sessionId).select().maybeSingle();
+  if (!error && !data) {
+    ({ data, error } = await supabase.from('sessions').insert(row).select().maybeSingle());
+  }
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
