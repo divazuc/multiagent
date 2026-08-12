@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Overview from './Overview.jsx'
 import { DemoFaq, DemoSettings } from './FaqSettings.jsx'
+import LeadsManager from './LeadsManager.jsx'
 import { createDemoApi } from './api.js'
 import BotSwitcher from './BotSwitcher.jsx'
 import { leadBot, botById } from './bots.js'
@@ -118,6 +119,11 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
   const [bots, setBots] = useState(null)
   const [activeBot, setActiveBot] = useState(null)
 
+  // ניהול לידים — the tab exists only for businesses with the `leads` module
+  // enabled (the listLeads response carries the flag; LeadsManager loads its
+  // own data when opened).
+  const [leadsEnabled, setLeadsEnabled] = useState(false)
+
   useEffect(() => {
     (async () => {
       try {
@@ -152,6 +158,10 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
         const s = await api.getBotSettings()
         if (Array.isArray(s?.bots) && s.bots.length) setBots(s.bots)
       } catch { /* no switcher without config */ }
+
+      try {
+        if (api.listLeads) setLeadsEnabled((await api.listLeads()).enabled === true)
+      } catch { /* no leads tab without the module */ }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api])
@@ -297,6 +307,11 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
             <button className={view === 'inbox' ? 'active' : ''} onClick={() => setView('inbox')}>
               מרכז הלידים
             </button>
+            {leadsEnabled && (
+              <button className={view === 'leads' ? 'active' : ''} onClick={() => setView('leads')}>
+                ניהול לידים
+              </button>
+            )}
             <button className={view === 'faq' ? 'active' : ''} onClick={() => setView('faq')}>
               שאלות ותשובות
             </button>
@@ -320,6 +335,7 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
         <BotSwitcher bots={bots} active={activeBot} onSelect={setActiveBot} />
 
         {view === 'overview' && <Overview api={api} bots={bots} bot={activeBot} onSelectBot={setActiveBot} />}
+        {view === 'leads' && <LeadsManager api={api} showToast={showToast} />}
         {view === 'faq' && <DemoFaq api={api} showToast={showToast} bots={bots} bot={activeBot} />}
         {view === 'settings' && <DemoSettings api={api} showToast={showToast} bots={bots} bot={activeBot} onBotsChange={setBots} />}
 
