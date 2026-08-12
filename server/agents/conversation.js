@@ -1,13 +1,28 @@
-﻿// WA_03 + WA_05 replacement — intent detection, response generation, validation
+// WA_03 + WA_05 replacement — intent detection, response generation, validation
 // Supports three agent modes: sales / support / hybrid
 
 import Anthropic from '@anthropic-ai/sdk';
 import { replyDelayMs } from '../lib/reply-delay.js';
 import { extractModuleAction } from '../lib/modules/actions.js';
 import { stripWrappingQuotes } from '../lib/outbound-text.js';
+import { extractUsage, sumUsage } from '../lib/model-usage.js';
+import { retrieveTopK, formatKbContextBlock } from '../lib/kb-retrieval.js';
+import { matchDirectKb } from '../lib/kb-direct-match.js';
+import { alertCreditExhaustion } from '../lib/credit-alert.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL  = 'claude-sonnet-4-6';
+
+// Cost-efficiency pass (2026-08-12), item 5: business_profiles.persona.
+// conversation_model lets one business run a different model for its own
+// conversation turns (the owner's kids-business quality trial on Haiku) —
+// validated against this allow-list so a typo or a stale model id in the
+// jsonb can never reach the API; it just falls back to the default MODEL.
+const ALLOWED_CONVERSATION_MODELS = new Set(['claude-sonnet-4-6', 'claude-haiku-4-5-20251001']);
+function resolveModel(persona) {
+  const override = persona?.conversation_model;
+  return ALLOWED_CONVERSATION_MODELS.has(override) ? override : MODEL;
+}
 
 // Test seam for the model call — same convention as lib/relay/index.js. Every
 // branch of runConversation is gated behind detectIntent, so without this the
@@ -16,8 +31,13 @@ const MODEL  = 'claude-sonnet-4-6';
 // production no-op.
 let messagesCreate = null;
 export function _setMessagesCreateForTest(fn) { messagesCreate = fn; }
-async function createMessage(params) {
-  return messagesCreate ? messagesCreate(params) : client.messages.create(params);
+// Cost-efficiency pass, item 1: every call that goes through here records its
+// usage into the caller-supplied usageLog (if any) — one hook instead of
+// duplicating the extractUsage() call at each of the three call sites below.
+async function createMessage(params, usageLog) {
+  const response = messagesCreate ? await messagesCreate(params) : await client.messages.create(params);
+  if (usageLog && response?.usage) usageLog.push(extractUsage(response.usage, params.model));
+  return response;
 }
 
 const MAX_VALIDATION_RETRIES = 2;
@@ -35,12 +55,38 @@ export async function runConversation({ message, session_id, context }) {
 
     const agent_mode = business_profile?.agent_mode ?? context.agent_mode ?? 'sales';
     const cta_goal   = business_profile?.cta_goal   ?? context.cta_goal   ?? 'book_call';
+    const model = resolveModel(persona);
+    const usageLog = [];
+
+    // ── Step 0: Direct-KB short-circuit (item 4) — zero model cost ─────────────
+    // Runs BEFORE intent detection: a confident exact-question FAQ hit needs
+    // neither. See lib/kb-direct-match.js for the precision-first bar.
+    const kbRows = business_profile?.knowledge?.items ?? [];
+    const directHit = matchDirectKb({
+      message,
+      rows: kbRows,
+      historyNonTrivial: (conversation_history?.length ?? 0) > 0,
+    });
+    if (directHit) {
+      const answerText = stripWrappingQuotes(String(directHit.answer ?? ''));
+      const answerLength = business_profile?.answer_length ?? persona?.answer_length ?? 'short';
+      await humanDelay(answerText, answerLength, startedAt);
+      return ok({
+        response: answerText,
+        next_stage: current_stage ?? 'clarification', action: 'none', cta_triggered: false,
+        escalate: false, escalation_reason: null,
+        qualification_progress: context.qualification_progress ?? {},
+        language: detectMessageLanguage(message),
+        kb_direct: { matched: true, question: directHit.question },
+        model_usage: [], model_usage_total: sumUsage([]),
+      });
+    }
 
     // ── Step 1: Detect intent ─────────────────────────────────────────────────
     const intent = await detectIntent({
       message, business_profile, missing_qualification_data,
       conversation_history, current_stage, agent_mode, guardrails,
-      has_modules: !!context.modules_context,
+      has_modules: !!context.modules_context, model, usageLog,
     });
 
     // Hard escalation — all modes
@@ -75,6 +121,7 @@ export async function runConversation({ message, session_id, context }) {
         escalation_reason: intent.escalation_reason,
         qualification_progress: intent.qualification_progress ?? context.qualification_progress ?? {},
         language: intent.language ?? 'hebrew',
+        model_usage: usageLog, model_usage_total: sumUsage(usageLog),
       });
     }
 
@@ -82,13 +129,16 @@ export async function runConversation({ message, session_id, context }) {
     let candidate;
 
     const modules_context = context.modules_context ?? null;
+    const kbContext = buildKbContext({
+      message, kbRows, faqSummary: business_profile?.knowledge?.faq_summary ?? null,
+    });
 
     if (agent_mode === 'support') {
-      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context });
+      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context, kbContext, model, usageLog });
     } else if (agent_mode === 'hybrid') {
-      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context });
+      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog });
     } else {
-      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context });
+      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog });
     }
 
     // Modules: the model may append an ACTION marker — extract it BEFORE
@@ -97,7 +147,7 @@ export async function runConversation({ message, session_id, context }) {
     candidate = extracted.text;
 
     // ── Step 3: Validate + rewrite loop ───────────────────────────────────────
-    const validated = await validateAndFix({ candidate, persona, guardrails, intent, agent_mode });
+    const validated = await validateAndFix({ candidate, persona, guardrails, intent, agent_mode, model, usageLog });
 
     if (!validated.passed) {
       return ok({
@@ -106,6 +156,7 @@ export async function runConversation({ message, session_id, context }) {
         escalation_reason: 'Response failed validation after max retries',
         qualification_progress: intent.qualification_progress ?? {},
         language: intent.language ?? 'hebrew',
+        model_usage: usageLog, model_usage_total: sumUsage(usageLog),
       });
     }
 
@@ -123,9 +174,13 @@ export async function runConversation({ message, session_id, context }) {
       language: intent.language ?? 'hebrew',
       rewrite_applied: validated.rewrite_applied,
       module_action: extracted.action,
+      model_usage: usageLog, model_usage_total: sumUsage(usageLog),
     });
 
   } catch (e) {
+    // Item 6: a credit-exhaustion 400 from any of the calls above bubbles up
+    // here — this is the one place that catches every one of them.
+    await alertCreditExhaustion(e).catch(() => {});
     return { status: 'error', result: null, error: e.message };
   }
 }
@@ -160,7 +215,48 @@ function policyText(guardrails) {
   return out;
 }
 
-async function detectIntent({ message, business_profile, missing_qualification_data, conversation_history, current_stage, agent_mode, guardrails, has_modules }) {
+// Cost-efficiency pass, item 2: the JSON dump of business_profile that goes
+// into every prompt (stable prefix AND the intent-detection call) must never
+// carry `knowledge` — that's the ~45-row faq_summary text this whole pass
+// exists to stop paying for on every message. Retrieval (kb-retrieval.js)
+// and the fallback (buildKbContext below) put whatever's actually relevant
+// into the DYNAMIC tail instead.
+function businessProfileForPrompt(business_profile) {
+  const { knowledge, ...rest } = business_profile ?? {};
+  return rest;
+}
+
+// Cost-efficiency pass, item 3: the compact, per-turn KB block for the
+// dynamic tail. Empty kbRows (no structured knowledge_items for this
+// business, or the retrieval call itself throwing) is the ONLY thing that
+// falls back to dumping the full faq_summary text, exactly as before this
+// pass — a query that legitimately matches nothing does NOT fall back, or
+// every "hi" would re-pay the full dump this feature removes.
+function buildKbContext({ message, kbRows, faqSummary }) {
+  try {
+    if (kbRows?.length) {
+      const scored = retrieveTopK({ message, rows: kbRows, topK: 8 });
+      return scored.length ? formatKbContextBlock(scored) : '';
+    }
+  } catch (e) {
+    console.error('[kb-retrieval] failed, falling back to full faq_summary:', e.message);
+  }
+  return faqSummary ? legacyFaqBlock(faqSummary) : '';
+}
+
+function legacyFaqBlock(faqSummary) {
+  return `Business knowledge (FAQ):\n${faqSummary}\n\nאם אין במידע תשובה — אל תמציא.`;
+}
+
+// Rough language guess for the direct-KB path, which never calls the model
+// (so there is no intent.language to read). Good enough for the language
+// column on the saved conversation row; the reply itself is the stored
+// answer verbatim, unaffected either way.
+function detectMessageLanguage(message) {
+  return /[֐-׿]/.test(String(message ?? '')) ? 'hebrew' : 'english';
+}
+
+async function detectIntent({ message, business_profile, missing_qualification_data, conversation_history, current_stage, agent_mode, guardrails, has_modules, model, usageLog }) {
   const modeInstruction = {
     sales:   'Bias toward CTA opportunities. Identify qualification gaps and push toward conversion.',
     support: 'Bias toward resolution. Focus on what the customer needs answered or resolved.',
@@ -198,16 +294,16 @@ Return ONLY valid JSON:
   "qualification_progress": {"need":null,"scope":null,"budget":null,"timeline":null,"urgency":null}
 }`;
 
-  const userPrompt = `Business: ${JSON.stringify(business_profile)}
+  const userPrompt = `Business: ${JSON.stringify(businessProfileForPrompt(business_profile))}
 Missing qualification: ${JSON.stringify(missing_qualification_data)}
 History: ${JSON.stringify(conversation_history.slice(-6))}
 Stage: ${current_stage}
 Message: "${message}"`;
 
   const response = await createMessage({
-    model: MODEL, max_tokens: 1024,
+    model, max_tokens: 1024,
     system, messages: [{ role: 'user', content: userPrompt }],
-  });
+  }, usageLog);
 
   try {
     const text = response.content[0].text.replace(/```json\n?|\n?```/g, '').trim();
@@ -249,82 +345,104 @@ const AUTHENTICITY_RULE = `Authenticity (platform rule, every business): NEVER p
 // (lib/outbound-text.js), applied where the model text is settled below.
 const NO_QUOTE_WRAP_RULE = `Never wrap your entire reply in quotation marks of any kind — send the message text bare.`;
 
+function hebrewPatternsText(hebrew_patterns) {
+  return `Hebrew language patterns to use when responding in Hebrew: ${JSON.stringify(hebrew_patterns ?? {})}`;
+}
+
 // ── Sales mode response ───────────────────────────────────────────────────────
 
-async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context }) {
+async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog }) {
   const lang = intent.language ?? 'hebrew';
-  const system = `You are a sales representative for this business. Sound 100% human — NEVER like AI.
+  // STABLE prefix — cost-efficiency pass item 2: byte-identical across every
+  // turn of the SAME business (no per-turn interpolation in here — cta_goal,
+  // guardrails and persona only change when the owner edits her profile, not
+  // per message). Marked cache_control below in callClaude().
+  const stableText = `You are a sales representative for this business. Sound 100% human — NEVER like AI.
 Mode: SALES. Your goal is to qualify the lead and push toward: ${cta_goal}.
 Use the persona's language patterns EXACTLY. Ask ONE question max. Keep it SHORT (1-4 sentences).
-CTA decision: ${intent.cta_decision}.
-Business info: ${JSON.stringify(business_profile)}
+Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}
 ${GROUNDING_RULE}
-${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
 ${ADDRESS_GENDER_RULE}
 ${AUTHENTICITY_RULE}
 ${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
-${langInstruction(lang, hebrew_patterns)}
+${hebrewPatternsText(hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}`;
 
-  return callClaude(system, conversation_history, message);
+  // DYNAMIC tail — everything that varies turn to turn: this turn's CTA
+  // decision, live module state, the retrieved KB rows for THIS question,
+  // and the language switch.
+  const dynamicText = `CTA decision: ${intent.cta_decision}.
+${modules_context ? '\n' + modules_context + '\n' : ''}
+${kbContext ? '\n' + kbContext + '\n' : ''}
+${langInstruction(lang)}`;
+
+  return callClaude(stableText, dynamicText, conversation_history, message, model, usageLog);
 }
 
 // ── Support mode response ─────────────────────────────────────────────────────
 
-async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context }) {
+async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context, kbContext, model, usageLog }) {
   const lang = intent.language ?? 'hebrew';
-  const system = `You are a customer support representative for this business. Sound 100% human — NEVER like AI.
+  const stableText = `You are a customer support representative for this business. Sound 100% human — NEVER like AI.
 Mode: SUPPORT. Your goal is to resolve the customer's question or issue fully.
 Do NOT push sales or CTA. Focus entirely on helping them.
 Be warm, clear, and concise. 1-4 sentences.
 ${GROUNDING_RULE}
-${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
 ${ADDRESS_GENDER_RULE}
 ${AUTHENTICITY_RULE}
 ${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
-${langInstruction(lang, hebrew_patterns)}
+${hebrewPatternsText(hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
-Business info: ${JSON.stringify(business_profile)}`;
+Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}`;
 
-  return callClaude(system, conversation_history, message);
+  const dynamicText = `${modules_context ? '\n' + modules_context + '\n' : ''}
+${kbContext ? '\n' + kbContext + '\n' : ''}
+${langInstruction(lang)}`;
+
+  return callClaude(stableText, dynamicText, conversation_history, message, model, usageLog);
 }
 
 // ── Hybrid mode response ──────────────────────────────────────────────────────
 
-async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context }) {
+async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog }) {
   const lang = intent.language ?? 'hebrew';
   const isFrustrated = ['frustrated', 'angry'].includes(intent.sentiment);
   const isHighIntent = ['high_intent', 'ready_to_buy'].includes(intent.detected_intent);
 
-  const system = `You are a representative for this business. Sound 100% human — NEVER like AI.
-Mode: HYBRID. Follow this two-part structure:
-
-Part 1 — Answer the question or concern fully and clearly (ALWAYS include this)
-${isFrustrated
-  ? 'Part 2 — Customer seems frustrated. Stay in support mode only. No sales nudge this turn.'
-  : isHighIntent
-    ? `Part 2 — Customer seems interested. Add a direct CTA toward: ${cta_goal}`
-    : 'Part 2 — Add ONE soft forward-moving statement or gentle question (never a hard push)'}
-
+  // The Part-1/Part-2 STRUCTURE is stable; WHICH Part-2 branch applies is
+  // per-turn (depends on this message's detected sentiment/intent), so the
+  // actual branch text lives in the dynamic tail below, not here.
+  const stableText = `You are a representative for this business. Sound 100% human — NEVER like AI.
+Mode: HYBRID. Follow a two-part structure every turn: Part 1 always answers the question or concern fully and clearly. Part 2 is decided per message by this turn's instructions below.
 Keep total response SHORT (2-5 sentences max). Sound natural.
 ${GROUNDING_RULE}
-${modules_context ? '\n' + modules_context + '\n' : ''}
 ${MISSING_DETAILS_RULE}
 ${ADDRESS_GENDER_RULE}
 ${AUTHENTICITY_RULE}
 ${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
-${langInstruction(lang, hebrew_patterns)}
+${hebrewPatternsText(hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
-Business info: ${JSON.stringify(business_profile)}`;
+Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}`;
 
-  return callClaude(system, conversation_history, message);
+  const part2 = isFrustrated
+    ? 'Part 2 — Customer seems frustrated. Stay in support mode only. No sales nudge this turn.'
+    : isHighIntent
+      ? `Part 2 — Customer seems interested. Add a direct CTA toward: ${cta_goal}`
+      : 'Part 2 — Add ONE soft forward-moving statement or gentle question (never a hard push)';
+
+  const dynamicText = `${part2}
+${modules_context ? '\n' + modules_context + '\n' : ''}
+${kbContext ? '\n' + kbContext + '\n' : ''}
+${langInstruction(lang)}`;
+
+  return callClaude(stableText, dynamicText, conversation_history, message, model, usageLog);
 }
 
 // ── Validation + rewrite ──────────────────────────────────────────────────────
 
-async function validateAndFix({ candidate, persona, guardrails, intent, agent_mode }) {
+async function validateAndFix({ candidate, persona, guardrails, intent, agent_mode, model, usageLog }) {
   let text = candidate;
   let retries = 0;
 
@@ -332,7 +450,7 @@ async function validateAndFix({ candidate, persona, guardrails, intent, agent_mo
     const issues = validate(text, guardrails, agent_mode);
     if (issues.length === 0) return { passed: true, text, rewrite_applied: retries > 0 };
     if (retries === MAX_VALIDATION_RETRIES) break;
-    text = await rewrite({ text, issues, persona, guardrails, language: intent.language, agent_mode });
+    text = await rewrite({ text, issues, persona, guardrails, language: intent.language, agent_mode, model, usageLog });
     retries++;
   }
 
@@ -361,7 +479,7 @@ function validate(text, guardrails, agent_mode) {
   return issues;
 }
 
-async function rewrite({ text, issues, persona, guardrails, language, agent_mode }) {
+async function rewrite({ text, issues, persona, guardrails, language, agent_mode, model, usageLog }) {
   // The rewrite never sees the conversation, so it cannot re-derive whether the
   // customer is a woman — it can only preserve what the original already got
   // right. Without this line a correctly-feminine reply comes back masculine.
@@ -375,9 +493,9 @@ Original: "${text}"
 Rewritten:`;
 
   const response = await createMessage({
-    model: MODEL, max_tokens: 300,
+    model, max_tokens: 300,
     messages: [{ role: 'user', content: prompt }],
-  });
+  }, usageLog);
   // The rewrite prompt shows the model `Original: "${text}"` — quotes around
   // it — which is exactly how a whole reply comes back quote-wrapped.
   return stripWrappingQuotes(response.content[0].text.trim());
@@ -399,20 +517,29 @@ function mapCtaDecision(cta_decision, agent_mode) {
   return map[cta_decision] ?? map.clarify;
 }
 
-function langInstruction(lang, hebrew_patterns) {
+function langInstruction(lang) {
   return lang !== 'english'
-    ? `Respond in Hebrew or mixed Hebrew/English matching the user's language. Patterns: ${JSON.stringify(hebrew_patterns)}.`
+    ? `Respond in Hebrew or mixed Hebrew/English matching the user's language, using the Hebrew language patterns given above.`
     : 'Respond in English.';
 }
 
-async function callClaude(system, history, message) {
+// Cost-efficiency pass, item 2: system is now an array of two blocks — a
+// STABLE prefix carrying cache_control (so a second turn of the same
+// business reads it from cache instead of re-processing it), and a small
+// DYNAMIC tail with no cache_control at all (it's never worth caching —
+// see each generate*Response above for what's stable vs dynamic and why).
+async function callClaude(stableText, dynamicText, history, message, model, usageLog) {
   const messages = [
     ...history.slice(-10).map(m => ({ role: m.role, content: m.content })),
     { role: 'user', content: message },
   ];
+  const system = [
+    { type: 'text', text: stableText, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dynamicText },
+  ];
   const response = await createMessage({
-    model: MODEL, max_tokens: 512, system, messages,
-  });
+    model, max_tokens: 512, system, messages,
+  }, usageLog);
   // Live pilot 2026-08-12: a perfect reply arrived wrapped in quotation marks.
   // NO_QUOTE_WRAP_RULE asks the model not to; this settles it either way.
   return stripWrappingQuotes(response.content[0].text.trim());
@@ -431,5 +558,4 @@ async function humanDelay(text, answerLength, startedAt) {
 }
 
 function ok(result) { return { status: 'success', result, error: null }; }
-
 

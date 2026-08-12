@@ -19,6 +19,16 @@ const INTENT = JSON.stringify({
 
 const STOP = 'stop-after-capture';
 
+// Cost-efficiency pass (2026-08-12): the reply prompt's `system` is now an
+// array of blocks — a cached STABLE prefix + a small DYNAMIC tail (see
+// agents/conversation.js#callClaude) — instead of one string. Every rule this
+// file checks (ADDRESS_GENDER_RULE) lives in the stable block; joining the
+// blocks' text preserves the exact relative ordering a plain string would
+// have had, so every assertion below is unchanged in spirit.
+function systemText(system) {
+  return Array.isArray(system) ? system.map(b => b.text).join('\n') : system;
+}
+
 // Call 1 is intent detection; call 2 is the reply prompt — the subject of this
 // test. Throwing on call 2 ends the run right there, so the suite never sits
 // through the human-typing delay that a completed reply would trigger.
@@ -27,7 +37,7 @@ async function captureReplyPrompt(agent_mode) {
   let n = 0;
   _setMessagesCreateForTest(async (params) => {
     if (++n === 1) return { content: [{ text: INTENT }] };
-    system = params.system;
+    system = systemText(params.system);
     throw new Error(STOP);
   });
   try {

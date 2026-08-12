@@ -100,7 +100,10 @@ test('all three modes carry the no-quote-wrap prompt rule next to the authentici
     let n = 0;
     _setMessagesCreateForTest(async (params) => {
       if (++n === 1) return { content: [{ text: INTENT }] };
-      system = params.system;
+      // Cost-efficiency pass: system is now [stable, dynamic] blocks. Both
+      // rules this test checks live in the stable block, so joining the
+      // blocks' text preserves the relative order a plain string would have.
+      system = Array.isArray(params.system) ? params.system.map(b => b.text).join('\n') : params.system;
       throw new Error('stop-after-capture');
     });
     try {

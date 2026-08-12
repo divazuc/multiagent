@@ -202,6 +202,64 @@ test('on a pre-migration view (no business_id column) history falls back to toda
   assert.equal(ctx.result.conversation_history.length, 3, 'unscoped, exactly as today');
 });
 
+// ── Knowledge retrieval rows (cost-efficiency pass, 2026-08-12) ─────────────
+
+test('business_profile.knowledge.items carries the active knowledge_items rows for the session\'s business', async () => {
+  const row = {
+    session_id: '972501112223', business_id: KIDS, session_mode: 'live',
+    current_stage: 'qualification', current_setup_stage: null, setup_completed: true,
+    qualification_progress: {}, updated_at: '2026-08-11T10:00:00Z',
+  };
+  const fake = fakeSupabase({
+    tables: {
+      businesses: [{ id: KIDS, wa_phone_number_id: PNID_KIDS }],
+      business_profiles: [{ business_id: KIDS, business_name: 'קרוספיט קידס', services: [], persona: {}, guardrails: {}, hebrew_patterns: {} }],
+      sessions: [row],
+      conversations: [],
+      setup_drafts: [],
+      knowledge_items: [
+        { business_id: KIDS, question: 'מה שעות הפעילות?', answer: 'א-ה 9-18', category: 'שעות', is_active: true },
+        { business_id: KIDS, question: 'שאלה לא פעילה', answer: 'לא רלוונטי', category: 'כללי', is_active: false },
+        { business_id: DIVAZ, question: 'שאלה של עסק אחר', answer: 'לא שייך', category: 'כללי', is_active: true },
+      ],
+    },
+    uniques: { sessions: PRE },
+  });
+  _setSupabaseForTest(fake);
+
+  const ctx = await loadContext({ message: 'הי', session_id: '972501112223', phone_number_id: PNID_KIDS });
+  assert.equal(ctx.status, 'success');
+  assert.deepEqual(
+    ctx.result.business_profile.knowledge.items.map((r) => r.question),
+    ['מה שעות הפעילות?'],
+    'only THIS business\'s active rows — no other business, no inactive rows',
+  );
+});
+
+test('a missing/erroring knowledge_items query fails soft to an empty items array (never blocks the context load)', async () => {
+  const row = {
+    session_id: '972501112223', business_id: KIDS, session_mode: 'live',
+    current_stage: 'qualification', current_setup_stage: null, setup_completed: true,
+    qualification_progress: {}, updated_at: '2026-08-11T10:00:00Z',
+  };
+  const fake = fakeSupabase({
+    tables: {
+      businesses: [{ id: KIDS, wa_phone_number_id: PNID_KIDS }],
+      business_profiles: [{ business_id: KIDS, business_name: 'קרוספיט קידס', services: [], persona: {}, guardrails: {}, hebrew_patterns: {} }],
+      sessions: [row],
+      conversations: [],
+      setup_drafts: [],
+    },
+    uniques: { sessions: PRE },
+    missingColumns: { knowledge_items: ['question'] },
+  });
+  _setSupabaseForTest(fake);
+
+  const ctx = await loadContext({ message: 'הי', session_id: '972501112223', phone_number_id: PNID_KIDS });
+  assert.equal(ctx.status, 'success', 'the whole context load must not fail because of the knowledge query');
+  assert.deepEqual(ctx.result.business_profile.knowledge.items, []);
+});
+
 // ── Cross-tenant write guards elsewhere (source pins) ────────────────────────
 
 import { readFileSync } from 'node:fs';
