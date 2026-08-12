@@ -17,6 +17,16 @@ const APP_ID = process.env.META_ES_APP_ID ?? '26092955153689878';
 const CONFIG_ID = process.env.META_ES_CONFIG_ID ?? '1792485195504078';
 
 router.get('/', (_req, res) => {
+  // The global helmet CSP (script-src 'self') blocks both the Facebook SDK and
+  // this page's inline launcher — override for THIS route only. The page runs
+  // nothing but the ES flow, and every allowed origin below is Meta's.
+  res.set('Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' https://connect.facebook.net; " +
+    "style-src 'unsafe-inline'; " +
+    "connect-src https://*.facebook.com https://graph.facebook.com; " +
+    "frame-src https://*.facebook.com; " +
+    "img-src 'self' data: https://*.facebook.com https://*.fbcdn.net");
   res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
 <html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
