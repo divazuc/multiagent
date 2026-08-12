@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 wa-studio/public/biz/
+
+.env.local
