@@ -1139,6 +1139,27 @@ app.post('/follow-up/process', async (req, res) => {
   }
 });
 
+// ── Trial-day reminders (ניהול לידים) ─────────────────────────────────────────
+// External cron hits this every morning at 09:00 Asia/Jerusalem. Secured by a
+// bearer secret (CRON_SECRET env, constant-time compare — the booster's cron
+// endpoints' exact pattern). The run itself: sheet sync → today's trial leads
+// → WhatsApp reminder from each business's own number → owner Telegram
+// summary. Dry-run per business until settings.reminders_enabled is true —
+// see lib/trial-reminders.js.
+app.post('/cron/trial-reminders', async (req, res) => {
+  try {
+    const { cronAuthOk, runTrialReminders } = await import('./lib/trial-reminders.js');
+    if (!cronAuthOk(req.headers.authorization, process.env.CRON_SECRET)) {
+      return res.status(401).json({ status: 'error', message: 'unauthorized' });
+    }
+    const result = await runTrialReminders({});
+    return res.json({ status: 'success', ...result });
+  } catch (e) {
+    console.error('[cron] trial-reminders failed:', e.message);
+    return res.status(500).json({ status: 'error', message: e.message });
+  }
+});
+
 // ── Contacts ──────────────────────────────────────────────────────────────────
 app.get('/contacts/:business_id', async (req, res) => {
   const { business_id } = req.params;

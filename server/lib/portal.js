@@ -193,6 +193,14 @@ const ops = {
     return applyLeadUpdate(bizId, id, updates ?? {}, 'owner');
   },
 
+  // Manual "סנכרון מהגיליון" — pull the registration sheet now instead of
+  // waiting for the morning cron. THROWS (surfaced as a toast) when no sheet
+  // is configured; the button only renders when listLeads says one is.
+  async syncLeadsSheet(bizId) {
+    const { syncSheetLeads } = await import('./leads-sheet.js');
+    return syncSheetLeads(bizId);
+  },
+
   // Conversation thread for a lead — live sessions are keyed by phone, but we
   // filter by business_id so a token can only read its own conversations.
   async loadThread(bizId, phone) {

@@ -612,6 +612,12 @@ const ops = {
     return exportLeadsCsv(businessId);
   },
 
+  // Manual "סנכרון מהגיליון" — operator twin of the portal op.
+  async syncLeadsSheet(businessId) {
+    const { syncSheetLeads } = await import('./leads-sheet.js');
+    return syncSheetLeads(businessId);
+  },
+
   async createConnectLink(businessId, moduleKey) {
     const { signConnectState } = await import('../routes/oauth.js');
     const { createConnectCode } = await import('./modules/connect.js');
