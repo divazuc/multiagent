@@ -18,7 +18,9 @@ const PUBLIC_PATHS = ['/health', '/wa-inbound', '/booster-webhook'];
 // (routes/process-approval.js) — one-time token, same credential model.
 // '/onboard' is the Embedded Signup launcher (routes/onboard.js) — public
 // identifiers only; the Facebook login inside the popup is the credential.
-const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/', '/meeting/', '/approve/', '/onboard'];
+// '/cron/' endpoints carry their own constant-time bearer (CRON_SECRET) —
+// the global gate must let them through so that check can run at all.
+const PUBLIC_PREFIXES = ['/portal/', '/oauth/', '/c/', '/meeting/', '/approve/', '/onboard', '/cron/'];
 
 let warnedOff = false;
 
