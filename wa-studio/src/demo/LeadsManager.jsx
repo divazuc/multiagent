@@ -8,6 +8,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 // the server response — the copy is centralized there, not here.
 
 const EMPTY_COPY = 'עוד אין לידים — כשמישהו יכתוב לוואטסאפ, הוא יופיע כאן.'
+const EMPTY_CONVO_COPY = 'אין עדיין שיחה עם המספר הזה'
+const OWNER_ECHO_LABEL = 'המאמנת (מהאפליקציה)'
 
 function formatPhone(p) {
   if (!p || !/^\d{10,}$/.test(p)) return p || '—'
@@ -25,6 +27,16 @@ function timeAgo(ts) {
   const days = Math.round(hrs / 24)
   if (days === 1) return 'אתמול'
   return `לפני ${days} ימים`
+}
+
+function msgTime(ts) {
+  if (!ts) return ''
+  try { return new Date(ts).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) } catch { return '' }
+}
+
+function msgDay(ts) {
+  if (!ts) return ''
+  try { return new Date(ts).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) } catch { return '' }
 }
 
 // '2026-08-14' → '14/08' — the trial date the sheet sync banks on the payload.
@@ -131,6 +143,20 @@ export default function LeadsManager({ api, showToast }) {
     }
   }
 
+  // In-app conversation view — the owner works from a computer, so the phone
+  // click opens the transcript HERE (wa.me stays as a small secondary icon
+  // for the rare real-phone handoff).
+  const [convo, setConvo] = useState(null) // { lead, loading, messages }
+  async function openConvo(lead) {
+    setConvo({ lead, loading: true, messages: [] })
+    try {
+      const out = await api.getLeadConversation(lead.phone)
+      setConvo(c => (c?.lead?.id === lead.id ? { lead, loading: false, messages: out?.messages ?? [] } : c))
+    } catch {
+      setConvo(c => (c?.lead?.id === lead.id ? { lead, loading: false, messages: [] } : c))
+    }
+  }
+
   async function downloadCsv() {
     try {
       const { filename, csv } = await api.exportLeadsCsv()
@@ -212,10 +238,23 @@ export default function LeadsManager({ api, showToast }) {
             </thead>
             <tbody>
               {filtered.map(lead => (
-                <tr key={lead.id} className={lead.status === 'joined' ? 'lm-row-joined' : ''}>
+                <tr key={lead.id} className={`lm-row-${lead.status}`}>
                   <td className="lm-phone">
-                    <a href={`https://wa.me/${lead.phone}`} target="_blank" rel="noreferrer">
+                    <button
+                      className="lm-phone-btn"
+                      title="צפייה בשיחה"
+                      onClick={() => openConvo(lead)}
+                    >
                       {formatPhone(lead.phone)}
+                    </button>
+                    <a
+                      className="lm-wa-link"
+                      href={`https://wa.me/${lead.phone}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="פתיחה בוואטסאפ"
+                    >
+                      ↗
                     </a>
                   </td>
                   <td>{lead.display_name || lead.payload?.parent_name || '—'}</td>
@@ -234,7 +273,10 @@ export default function LeadsManager({ api, showToast }) {
                     {timeAgo(lead.last_contact_at)}
                     {lead.last_direction === 'out' && <span className="lm-dir" title="ההודעה האחרונה נשלחה מהעסק"> ↩</span>}
                   </td>
-                  <td>
+                  <td className="lm-status-cell">
+                    {/* the dot repeats the status color; the TEXT in the select
+                        stays the real signal (color-blind safe) */}
+                    <i className={`lm-dot lm-dot-${lead.status}`} aria-hidden="true" />
                     <select
                       className={`lm-select ${lead.status === 'joined' ? 'lm-select-joined' : ''}`}
                       value={lead.status}
@@ -284,6 +326,66 @@ export default function LeadsManager({ api, showToast }) {
       )}
 
       <div className="lm-foot">הסטטוסים מתעדכנים אוטומטית מהשיחה בוואטסאפ · אפשר גם לעדכן ידנית</div>
+
+      {convo && (
+        <div className="lm-convo-overlay" onClick={() => setConvo(null)}>
+          <aside
+            className="lm-convo"
+            role="dialog"
+            aria-label={`שיחה עם ${formatPhone(convo.lead.phone)}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <header className="lm-convo-head">
+              <div className="lm-convo-who">
+                <strong>{convo.lead.display_name || convo.lead.payload?.parent_name || formatPhone(convo.lead.phone)}</strong>
+                <span dir="ltr">{formatPhone(convo.lead.phone)}</span>
+              </div>
+              <div className="lm-convo-actions">
+                <a
+                  className="lm-wa-link"
+                  href={`https://wa.me/${convo.lead.phone}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="פתיחה בוואטסאפ"
+                >
+                  ↗
+                </a>
+                <button className="lm-convo-close" onClick={() => setConvo(null)} aria-label="סגירה">✕</button>
+              </div>
+            </header>
+            <div className="lm-convo-body">
+              {convo.loading && <div className="cd-empty">טוען שיחה…</div>}
+              {!convo.loading && convo.messages.length === 0 && (
+                <div className="cd-empty">{EMPTY_CONVO_COPY}</div>
+              )}
+              {!convo.loading && convo.messages.map((m, i) => {
+                const day = msgDay(m.created_at)
+                const daySep = day && day !== msgDay(convo.messages[i - 1]?.created_at)
+                return (
+                  <div key={i} className="lm-convo-turn">
+                    {daySep && <div className="lm-convo-day">{day}</div>}
+                    {m.user_message && (
+                      <div className="cd-bubble cd-bubble-in">
+                        {m.user_message}
+                        <span className="cd-bubble-time">{msgTime(m.created_at)}</span>
+                      </div>
+                    )}
+                    {m.agent_response && (
+                      <div className={`cd-bubble cd-bubble-out ${m.action === 'owner_echo' ? 'lm-bubble-owner' : ''}`}>
+                        {m.action === 'owner_echo' && (
+                          <span className="lm-bubble-owner-tag">{OWNER_ECHO_LABEL}</span>
+                        )}
+                        {m.agent_response}
+                        <span className="cd-bubble-time">{msgTime(m.created_at)}</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </aside>
+        </div>
+      )}
     </section>
   )
 }

@@ -201,6 +201,14 @@ const ops = {
     return syncSheetLeads(bizId);
   },
 
+  // The board's in-app conversation view (phone click). Doubly scoped inside
+  // getLeadConversation: the phone must be a lead of THIS business (else 404)
+  // and the message query itself filters by business_id.
+  async getLeadConversation(bizId, phone) {
+    const { getLeadConversation } = await import('./leads.js');
+    return getLeadConversation(bizId, phone);
+  },
+
   // Conversation thread for a lead — live sessions are keyed by phone, but we
   // filter by business_id so a token can only read its own conversations.
   async loadThread(bizId, phone) {

@@ -65,6 +65,7 @@ test('the status catalog carries the exact Hebrew labels, centralized', () => {
   assert.deepEqual(LEAD_STATUSES.map(s => [s.key, s.label]), [
     ['new', 'חדש'],
     ['contacted', 'נוצר קשר'],
+    ['waitlist_next_date', 'לרשום למועד הבא'],
     ['trial_signed_up', 'נרשם לניסיון'],
     ['attended', 'הגיע לאימון'],
     ['joined', 'הצטרף'],
@@ -76,6 +77,11 @@ test('nextAutoStatus advances, never downgrades, never touches human marks', () 
   assert.equal(nextAutoStatus(null, 'new'), 'new');
   assert.equal(nextAutoStatus('new', 'contacted'), 'contacted');
   assert.equal(nextAutoStatus('contacted', 'trial_signed_up'), 'trial_signed_up');
+  // waitlist_next_date sits between contacted and trial_signed_up
+  assert.equal(nextAutoStatus('contacted', 'waitlist_next_date'), 'waitlist_next_date');
+  assert.equal(nextAutoStatus('waitlist_next_date', 'trial_signed_up'), 'trial_signed_up');
+  assert.equal(nextAutoStatus('trial_signed_up', 'waitlist_next_date'), null); // a dated signup outranks the waitlist
+  assert.equal(nextAutoStatus('waitlist_next_date', 'contacted'), null);
   // no downgrade — a further-along lead stays put
   assert.equal(nextAutoStatus('trial_signed_up', 'contacted'), null);
   assert.equal(nextAutoStatus('attended', 'trial_signed_up'), null);
@@ -324,7 +330,8 @@ test('filterLeads matches status, phone (intl and local), names and notes', () =
 
 test('leadCounts covers every status (zeros included) plus the total', () => {
   assert.deepEqual(leadCounts(boardRows), {
-    all: 3, new: 1, contacted: 1, trial_signed_up: 1, attended: 0, joined: 0, not_relevant: 0,
+    all: 3, new: 1, contacted: 1, waitlist_next_date: 0, trial_signed_up: 1,
+    attended: 0, joined: 0, not_relevant: 0,
   });
 });
 

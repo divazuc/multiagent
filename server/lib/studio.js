@@ -618,6 +618,14 @@ const ops = {
     return syncSheetLeads(businessId);
   },
 
+  // The board's conversation view — operator twin of the portal op. Unlike
+  // loadDBState this is lead-anchored and business-scoped, so the board can
+  // never open another tenant's thread.
+  async getLeadConversation(businessId, phone) {
+    const { getLeadConversation } = await import('./leads.js');
+    return getLeadConversation(businessId, phone);
+  },
+
   async createConnectLink(businessId, moduleKey) {
     const { signConnectState } = await import('../routes/oauth.js');
     const { createConnectCode } = await import('./modules/connect.js');

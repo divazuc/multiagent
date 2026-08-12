@@ -218,6 +218,40 @@ test('the sheet NEVER downgrades: attended/joined keep their status, fields stil
   }
 });
 
+// ── The waitlist rule (empty מועד ניסיון) ────────────────────────────────────
+
+test('a dateless signup lands as waitlist_next_date — wants a trial, no open date', async () => {
+  const db = makeFakeDb();
+  sheet._setDbForTest(db);
+  const out = await upsertSheetRow(BIZ, row({ trial_date: null, trial_time: null }));
+  assert.deepEqual(out, { created: true, updated: true });
+  assert.equal(db.store[0].status, 'waitlist_next_date');
+  assert.equal(db.store[0].source, 'form');
+  assert.equal(db.store[0].status_history[0].to, 'waitlist_next_date');
+});
+
+test('dateless row: contacted advances to waitlist; a dated signup never falls back to it', async () => {
+  const db = makeFakeDb({ rows: [seededLead({ status: 'contacted' })] });
+  sheet._setDbForTest(db);
+  await upsertSheetRow(BIZ, row({ trial_date: null, trial_time: null }));
+  assert.equal(db.store[0].status, 'waitlist_next_date');
+
+  const db2 = makeFakeDb({ rows: [seededLead({ status: 'trial_signed_up' })] });
+  sheet._setDbForTest(db2);
+  await upsertSheetRow(BIZ, row({ trial_date: null, trial_time: null }));
+  assert.equal(db2.store[0].status, 'trial_signed_up'); // waitlist ranks below — no downgrade
+});
+
+test('a waitlisted lead is promoted to trial_signed_up the moment a date appears', async () => {
+  const db = makeFakeDb({ rows: [seededLead({ status: 'waitlist_next_date' })] });
+  sheet._setDbForTest(db);
+  await upsertSheetRow(BIZ, row());
+  assert.equal(db.store[0].status, 'trial_signed_up');
+  assert.deepEqual(
+    { from: db.store[0].status_history.at(-1).from, to: db.store[0].status_history.at(-1).to, by: db.store[0].status_history.at(-1).by },
+    { from: 'waitlist_next_date', to: 'trial_signed_up', by: 'sheet' });
+});
+
 test('a human not_relevant mark is never overwritten by the sheet', async () => {
   const db = makeFakeDb({ rows: [seededLead({ status: 'not_relevant' })] });
   sheet._setDbForTest(db);

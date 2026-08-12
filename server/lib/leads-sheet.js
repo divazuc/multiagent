@@ -254,22 +254,29 @@ const SHEET_PAYLOAD_FIELDS = [
  * Merge rules: sheet values win for the trial fields they carry (the sheet is
  * the registration source of truth), but an empty sheet cell never blanks an
  * existing value.
+ *
+ * Target status follows the מועד ניסיון cell: a DATED row is a real signup
+ * (trial_signed_up); an EMPTY slot means "wants a trial, no open date yet" —
+ * waitlist_next_date, one rung below, so the same lead is auto-promoted on a
+ * later sync the moment the coach fills the date in. Both ride
+ * nextAutoStatus, so neither can ever pull a lead backwards.
  */
 export async function upsertSheetRow(businessId, row, now = new Date()) {
   const d = await getDb();
   const nowIso = now.toISOString();
   const clean = {};
   for (const k of SHEET_PAYLOAD_FIELDS) if (row[k]) clean[k] = String(row[k]);
+  const target = row.trial_date ? 'trial_signed_up' : 'waitlist_next_date';
 
   const existing = await d.getLead(businessId, row.phone);
   if (!existing) {
     await d.insertLead({
       business_id: businessId, phone: row.phone,
       display_name: row.parent_name ?? null,
-      status: 'trial_signed_up', source: 'form',
+      status: target, source: 'form',
       first_contact_at: nowIso, last_contact_at: nowIso, last_direction: 'in',
       payload: clean,
-      status_history: [sheetHistoryEntry(null, 'trial_signed_up', nowIso)],
+      status_history: [sheetHistoryEntry(null, target, nowIso)],
     });
     return { created: true, updated: true };
   }
@@ -278,7 +285,7 @@ export async function upsertSheetRow(businessId, row, now = new Date()) {
   const patch = {};
   if (JSON.stringify(payload) !== JSON.stringify(existing.payload ?? {})) patch.payload = payload;
   if (!existing.display_name && row.parent_name) patch.display_name = row.parent_name;
-  const advanced = nextAutoStatus(existing.status, 'trial_signed_up');
+  const advanced = nextAutoStatus(existing.status, target);
   if (advanced) {
     patch.status = advanced;
     patch.status_history = [...(Array.isArray(existing.status_history) ? existing.status_history : []),
