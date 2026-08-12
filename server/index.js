@@ -165,9 +165,22 @@ app.post('/wa-inbound', async (req, res) => {
     if (!verifyMetaSignature(req)) {
       return res.status(403).json({ status: 'error', message: 'invalid signature' });
     }
-    const { kind, msgId, value } = classifyMetaPayload(req.body);
+    const { kind, msgId, value, echo } = classifyMetaPayload(req.body);
     if (kind === 'ignore') return res.json({ status: 'ignored' });
     if (seenMessage(msgId)) return res.json({ status: 'duplicate' });
+
+    // Coexistence echo — the OWNER's own message, mirrored to us by Meta.
+    // Never a customer message: no pipeline, no lead capture, no reply. For a
+    // coexistence business it arms the per-conversation owner standdown
+    // (lib/coexistence.js); for everyone else it is a plain ack.
+    if (kind === 'echo') {
+      res.json({ status: 'echo' });
+      import('./lib/coexistence.js')
+        .then(({ handleOwnerEcho }) => handleOwnerEcho(echo))
+        .catch(e => console.error('[wa-inbound] echo handling failed:', e.message));
+      return;
+    }
+
     res.json({ status: 'received' }); // fast-ack before any processing
     if (kind === 'unsupported') {
       // Task 17: an image from a sender mid-payment is a payment-proof
@@ -175,9 +188,18 @@ app.post('/wa-inbound', async (req, res) => {
       // claims that case (forward + its own reply) and returns true; anything
       // else (non-image, or a sender not in a payment-stage status) falls
       // through to today's generic fallback, unchanged.
-      handlePaymentProofImage(value)
-        .catch(e => { console.error('[wa-inbound] payment-proof handling failed:', e.message); return false; })
-        .then(handled => { if (!handled) sendUnsupportedFallback(value).catch(() => {}); });
+      //
+      // Coexistence: during an owner standdown even the "text only please"
+      // fallback must stay silent — the owner is personally handling this
+      // conversation. standdownActive fails soft to false, so every
+      // non-coexistence tenant keeps today's behaviour exactly.
+      (async () => {
+        const { standdownActive } = await import('./lib/coexistence.js');
+        if (await standdownActive(value?.messages?.[0]?.from)) return;
+        const handled = await handlePaymentProofImage(value)
+          .catch(e => { console.error('[wa-inbound] payment-proof handling failed:', e.message); return false; });
+        if (!handled) sendUnsupportedFallback(value).catch(() => {});
+      })().catch(e => console.error('[wa-inbound] unsupported handling failed:', e.message));
       return;
     }
 
@@ -276,6 +298,37 @@ async function runAgentPipeline(body) {
       const referral = extractReferral(body);
       if (referral) {
         recordCtwaReferral({ businessId: business_id, phone: session_id, referral }).catch(() => {});
+      }
+    }
+
+    // Step 2a½ — Coexistence owner standdown (live mode only).
+    //
+    // The owner answered this conversation personally from the WhatsApp
+    // Business app (an echo armed sessions.coexistence_standdown_until), so
+    // the bot says NOTHING until it expires. The message is still LOGGED into
+    // conversation history and still feeds the lead bookkeeping — the contact
+    // upsert (the client-facing lead inbox) and the billing event — exactly so
+    // that the owner going hands-on never makes a lead disappear from the
+    // board. Sits ABOVE the 2b gates: this is a stronger silence than
+    // after-hours and must not be re-answered by any of them; sits BELOW the
+    // CTWA banking for the same reason that does — data first.
+    //
+    // standdownActive fails soft to false (lib/coexistence.js), so tenants
+    // without the flag — and a DB without the column — are untouched.
+    if (session_mode === 'live' && business_id) {
+      const { standdownActive } = await import('./lib/coexistence.js');
+      if (await standdownActive(session_id)) {
+        const { supabase } = await import('./lib/supabase.js');
+        await supabase.from('conversation_messages').insert({
+          session_id, business_id, user_message: message, agent_response: '',
+          stage: 'coexistence_standdown', action: 'none',
+          qualification_progress: context.qualification_progress ?? {},
+          cta_triggered: false, escalate: false, language: 'hebrew',
+        }).then(({ error }) => { if (error) console.error('[coexistence] standdown log failed:', error.message); });
+        upsertContact({ business_id, phone: session_id, status: 'in_conversation', incrementMessage: true }).catch(() => {});
+        logBillingEvent({ business_id, session_id, type: 'user_initiated' }).catch(() => {});
+        await completeRun(run, { skipped: 'coexistence_standdown' });
+        return { http: 200, body: { status: 'success', message: '', skipped: true, skip_reason: 'coexistence_standdown' } };
       }
     }
 
@@ -421,11 +474,17 @@ async function runAgentPipeline(body) {
         checkAndSuggestFaq({ business_id, question: message, answer: outbound_response }).catch(() => {});
       }
 
-      // Send reply back to WhatsApp user
+      // Send reply back to WhatsApp user. Re-checked against the coexistence
+      // standdown at the last moment: the human-typing delay plus generation
+      // gives the owner a real window to answer from the app first, and a
+      // queued bot reply landing seconds after the owner's own message is
+      // exactly what the standdown exists to prevent. For every business
+      // without the flag the check resolves false and the send is unchanged.
       if (outbound_response && session_id && business_id) {
-        sendWhatsAppMessage({ to: session_id, text: outbound_response, businessId: business_id }).catch(e =>
-          console.error('[wa-send] non-blocking send failed:', e.message)
-        );
+        import('./lib/coexistence.js')
+          .then(({ sendUnlessStoodDown }) => sendUnlessStoodDown(session_id, () =>
+            sendWhatsAppMessage({ to: session_id, text: outbound_response, businessId: business_id })))
+          .catch(e => console.error('[wa-send] non-blocking send failed:', e.message));
       }
 
       // Non-blocking contact upsert + AI summary. The CRM status comes from
