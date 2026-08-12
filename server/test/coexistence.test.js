@@ -10,6 +10,12 @@ const coex = await import('../lib/coexistence.js');
 const { detectEcho, handleOwnerEcho, standdownActive, sendUnlessStoodDown } = coex;
 const { classifyMetaPayload } = await import('../lib/wa-webhook.js');
 
+// handleOwnerEcho also feeds the leads board (lib/leads.js) — that seam has
+// its own tests (leads-wiring.test.js); here it must simply never interfere,
+// so the module reads as disabled instead of reaching for the stub supabase.
+const leadsLib = await import('../lib/leads.js');
+leadsLib._setDbForTest({ isEnabled: async () => false });
+
 // ── Payload fixtures ─────────────────────────────────────────────────────────
 
 const PNID = '111222333444555';

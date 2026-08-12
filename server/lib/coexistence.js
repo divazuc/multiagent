@@ -138,6 +138,20 @@ export async function handleOwnerEcho({ phoneNumberId, recipient }, now = new Da
     const settings = await d.getCoexistenceSettings(biz.id);
     if (settings?.coexistence !== true) return { standdown: false, reason: 'not_coexistence' };
 
+    // Leads module: the owner personally answering IS the "נוצר קשר" signal —
+    // advance the lead board before arming the standdown. Awaited because this
+    // whole handler already runs detached from the webhook response (nothing
+    // customer-facing waits on it), which keeps the write testable and durable;
+    // recordOwnerEcho gates itself on the `leads` module and never throws
+    // (lib/leads.js), so a tenant without the module — or a database without
+    // the table yet — loses nothing, least of all the standdown below.
+    try {
+      const { recordOwnerEcho } = await import('./leads.js');
+      await recordOwnerEcho({ businessId: biz.id, phone: recipient, now });
+    } catch (e) {
+      console.error('[coexistence] lead echo bookkeeping failed (standdown unaffected):', e.message);
+    }
+
     const minutes = Number(settings.coexistence_standdown_minutes) > 0
       ? Number(settings.coexistence_standdown_minutes)
       : DEFAULT_STANDDOWN_MINUTES;

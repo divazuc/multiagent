@@ -17,6 +17,12 @@ engine._setDbForTest({
   onEvent: (e) => events.push(e),
 });
 
+// The handler also feeds the leads board (lib/leads.js) — that seam has its
+// own tests (leads-wiring.test.js); here it must simply never interfere, so
+// the module reads as disabled instead of reaching for real supabase env.
+const leadsLib = await import('../lib/leads.js');
+leadsLib._setDbForTest({ isEnabled: async () => false });
+
 // Pinned client-facing copy — the exact confirmation a parent receives.
 const CONFIRM = 'רשמתי! המאמנת תחזור אליכם לתיאום סופי 🙂';
 
