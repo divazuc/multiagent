@@ -70,6 +70,7 @@ export function createDemoApi(bizId) {
     listLeads: (filters) => rpc('listLeads', bizId, filters ?? {}),
     updateLead: (id, updates) => rpc('updateLead', bizId, id, updates),
     exportLeadsCsv: () => rpc('exportLeadsCsv', bizId), // → { filename, csv }
+    syncLeadsSheet: () => rpc('syncLeadsSheet', bizId), // → { synced, updated, … }
   }
 }
 
@@ -109,6 +110,7 @@ export function createPortalApi(token, business, onAuthExpired) {
     // ── Leads board (ניהול לידים — the `leads` module) ──
     listLeads: (filters) => rpc('listLeads', filters ?? {}),
     updateLead: (id, updates) => rpc('updateLead', id, updates),
+    syncLeadsSheet: () => rpc('syncLeadsSheet'), // → { synced, updated, … }
     // CSV rides its own GET (a real file download, Hebrew headers + BOM) —
     // fetched with the same bearer so no token ever lands in a URL.
     async exportLeadsCsv() {

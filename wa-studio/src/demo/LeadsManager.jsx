@@ -27,11 +27,19 @@ function timeAgo(ts) {
   return `לפני ${days} ימים`
 }
 
+// '2026-08-14' → '14/08' — the trial date the sheet sync banks on the payload.
+function formatTrialDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '')
+  return m ? `${m[3]}/${m[2]}` : null
+}
+
 function trialDetails(payload) {
   const parts = []
   if (payload?.child_name) parts.push(payload.child_name)
   if (payload?.child_age) parts.push(`גיל ${payload.child_age}`)
-  if (payload?.preferred_day) parts.push(payload.preferred_day)
+  const date = formatTrialDate(payload?.trial_date)
+  if (date) parts.push(payload?.trial_time ? `ניסיון ${date} בשעה ${payload.trial_time}` : `ניסיון ${date}`)
+  else if (payload?.preferred_day) parts.push(payload.preferred_day)
   return parts.length ? parts.join(' · ') : null
 }
 
@@ -106,6 +114,23 @@ export default function LeadsManager({ api, showToast }) {
     }
   }
 
+  // "סנכרון מהגיליון" — pull the trial-registration sheet now (the morning
+  // cron does the same sync automatically before sending reminders).
+  const [syncing, setSyncing] = useState(false)
+  async function syncFromSheet() {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      const out = await api.syncLeadsSheet()
+      showToast?.(`סונכרן מהגיליון ✓ (${out?.updated ?? 0} לידים עודכנו)`)
+      load()
+    } catch {
+      showToast?.('הסנכרון מהגיליון נכשל — נסו שוב')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   async function downloadCsv() {
     try {
       const { filename, csv } = await api.exportLeadsCsv()
@@ -138,6 +163,11 @@ export default function LeadsManager({ api, showToast }) {
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
+          {board.sheet_configured && (
+            <button className="lm-csv lm-sync" onClick={syncFromSheet} disabled={syncing}>
+              {syncing ? 'מסנכרן…' : '⟳ סנכרון מהגיליון'}
+            </button>
+          )}
           <button className="lm-csv" onClick={downloadCsv} disabled={!leads.length}>
             ⬇ הורדת CSV
           </button>
@@ -154,10 +184,10 @@ export default function LeadsManager({ api, showToast }) {
         {statuses.map(s => (
           <button
             key={s.key}
-            className={`lm-pill ${statusFilter === s.key ? 'on' : ''}`}
+            className={`lm-pill ${s.key === 'joined' ? 'lm-pill-joined' : ''} ${statusFilter === s.key ? 'on' : ''}`}
             onClick={() => setStatusFilter(f => f === s.key ? null : s.key)}
           >
-            {s.label} <i>{counts[s.key] ?? 0}</i>
+            {s.key === 'joined' && '🎉 '}{s.label} <i>{counts[s.key] ?? 0}</i>
           </button>
         ))}
       </div>
@@ -182,21 +212,31 @@ export default function LeadsManager({ api, showToast }) {
             </thead>
             <tbody>
               {filtered.map(lead => (
-                <tr key={lead.id}>
+                <tr key={lead.id} className={lead.status === 'joined' ? 'lm-row-joined' : ''}>
                   <td className="lm-phone">
                     <a href={`https://wa.me/${lead.phone}`} target="_blank" rel="noreferrer">
                       {formatPhone(lead.phone)}
                     </a>
                   </td>
                   <td>{lead.display_name || lead.payload?.parent_name || '—'}</td>
-                  <td className="lm-trial">{trialDetails(lead.payload) ?? '—'}</td>
+                  <td className="lm-trial">
+                    {trialDetails(lead.payload) ?? '—'}
+                    {lead.payload?.reminder_sent_on && (
+                      <span
+                        className="lm-reminded"
+                        title={`תזכורת ליום האימון נשלחה ב־${lead.payload.reminder_sent_on}`}
+                      >
+                        תזכורת נשלחה ✓
+                      </span>
+                    )}
+                  </td>
                   <td className="lm-time" title={lead.last_contact_at ?? ''}>
                     {timeAgo(lead.last_contact_at)}
                     {lead.last_direction === 'out' && <span className="lm-dir" title="ההודעה האחרונה נשלחה מהעסק"> ↩</span>}
                   </td>
                   <td>
                     <select
-                      className="lm-select"
+                      className={`lm-select ${lead.status === 'joined' ? 'lm-select-joined' : ''}`}
                       value={lead.status}
                       aria-label={`סטטוס עבור ${formatPhone(lead.phone)}`}
                       onChange={e => changeStatus(lead, e.target.value)}

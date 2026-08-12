@@ -950,6 +950,22 @@ html, body { overflow-x: hidden; }
 .lm-pill.on { background: var(--brand); border-color: var(--brand); color: #fff; }
 .lm-pill i { font-style: normal; opacity: .75; margin-inline-start: 5px; font-size: 12px; }
 
+/* "הצטרף" is the conversion — the one status that gets to celebrate. */
+.lm-pill-joined {
+  background: linear-gradient(135deg, #fef3c7, #d9fdd3);
+  border-color: #f59e0b; color: var(--brand-deep); font-weight: 800;
+}
+.lm-pill-joined:hover { border-color: #d97706; }
+.lm-pill-joined.on {
+  background: linear-gradient(135deg, #f59e0b, var(--green));
+  border-color: #d97706; color: #fff;
+}
+.lm-row-joined td { background: linear-gradient(90deg, #fffbeb, #f0fdf4); }
+.lm-select-joined {
+  background: linear-gradient(135deg, #fef3c7, #d9fdd3);
+  border-color: #f59e0b; color: var(--brand-deep); font-weight: 800;
+}
+
 .lm-table-wrap { overflow-x: auto; }
 .lm-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
 .lm-table th {
@@ -964,6 +980,11 @@ html, body { overflow-x: hidden; }
 }
 .lm-phone a:hover { text-decoration: underline; }
 .lm-trial { color: var(--ink-soft); }
+.lm-reminded {
+  display: inline-block; margin-inline-start: 8px; padding: 1px 8px;
+  background: var(--green-soft); color: var(--brand); border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; white-space: nowrap;
+}
 .lm-time { color: var(--ink-faint); font-size: 13.5px; white-space: nowrap; }
 .lm-dir { color: var(--green); }
 .lm-select {
