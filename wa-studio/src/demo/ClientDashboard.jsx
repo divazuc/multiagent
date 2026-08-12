@@ -8,6 +8,10 @@ import { leadBot, botById } from './bots.js'
 
 const DEFAULT_BIZ = '1037d6c1-e64f-4672-aa5c-19619ad6b821' // Leadz marketing
 const BIZ_ID = new URLSearchParams(window.location.search).get('biz') || DEFAULT_BIZ
+// The daily-scheduler's Telegram notice links here with ?view=leads&remind=1
+// so the owner lands straight on the trial-reminders panel (lib/daily-scheduler.js#studioLink).
+const INITIAL_VIEW = new URLSearchParams(window.location.search).get('view') || 'overview'
+const AUTO_OPEN_REMINDERS = new URLSearchParams(window.location.search).get('remind') === '1'
 
 // Covers both the seeded demo statuses and the live pipeline's ladder
 // (new_lead → in_conversation → cta_triggered → followup_sent → converted).
@@ -91,7 +95,7 @@ function followUpText(lead) {
 
 export default function ClientDashboard({ api: apiProp = null, businessName = null, onLogout = null }) {
   const api = useMemo(() => apiProp ?? createDemoApi(BIZ_ID), [apiProp])
-  const [view, setView] = useState('overview')
+  const [view, setView] = useState(INITIAL_VIEW)
   const [bizName, setBizName] = useState(businessName || 'העסק שלך')
   const [leads, setLeads] = useState([])
   const [billing, setBilling] = useState(null)
@@ -335,7 +339,7 @@ export default function ClientDashboard({ api: apiProp = null, businessName = nu
         <BotSwitcher bots={bots} active={activeBot} onSelect={setActiveBot} />
 
         {view === 'overview' && <Overview api={api} bots={bots} bot={activeBot} onSelectBot={setActiveBot} />}
-        {view === 'leads' && <LeadsManager api={api} showToast={showToast} />}
+        {view === 'leads' && <LeadsManager api={api} showToast={showToast} autoOpenReminders={AUTO_OPEN_REMINDERS} />}
         {view === 'faq' && <DemoFaq api={api} showToast={showToast} bots={bots} bot={activeBot} />}
         {view === 'settings' && <DemoSettings api={api} showToast={showToast} bots={bots} bot={activeBot} onBotsChange={setBots} />}
 

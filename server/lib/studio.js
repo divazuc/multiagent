@@ -631,6 +631,19 @@ const ops = {
     return getLeadConversation(businessId, phone);
   },
 
+  // Trial-day reminders (owner-in-the-loop manual send) — the screen the
+  // daily-scheduler's 09:00 Telegram notice links to. Same lib, same 3-mode
+  // send safety as the (now-manual-by-default) automatic run.
+  async previewTrialReminders(businessId, date) {
+    const { previewTrialReminders } = await import('./trial-reminders.js');
+    return previewTrialReminders(businessId, date ?? null);
+  },
+
+  async sendTrialReminders(businessId, { date, lead_ids } = {}) {
+    const { sendTrialReminders } = await import('./trial-reminders.js');
+    return sendTrialReminders(businessId, { dateKey: date ?? null, leadIds: lead_ids ?? [] });
+  },
+
   async createConnectLink(businessId, moduleKey) {
     const { signConnectState } = await import('../routes/oauth.js');
     const { createConnectCode } = await import('./modules/connect.js');
