@@ -1164,17 +1164,23 @@ app.post('/follow-up/process', async (req, res) => {
 });
 
 // ── Trial-day reminders (ניהול לידים) ─────────────────────────────────────────
-// External cron hits this every morning at 09:00 Asia/Jerusalem. Secured by a
-// bearer secret (CRON_SECRET env, constant-time compare — the booster's cron
-// endpoints' exact pattern). The run itself: sheet sync → today's trial leads
-// → WhatsApp reminder from each business's own number → owner Telegram
-// summary. Dry-run per business until settings.reminders_enabled is true —
-// see lib/trial-reminders.js.
+// Manual-by-default now: lib/daily-scheduler.js tells the owner over Telegram
+// when a business has trial signups today, and she sends from the studio's
+// leads-board screen (lib/trial-reminders.js#previewTrialReminders/
+// sendTrialReminders, wired through lib/studio.js). This endpoint remains as
+// a manual trigger / fallback for the OLD fully-automatic pass — secured by
+// a bearer secret (CRON_SECRET, constant-time compare) — but its auto-send
+// only runs when TRIAL_REMINDERS_CRON_AUTOSEND=true, or the caller passes
+// {"force":true} for a one-off manual run. See lib/trial-reminders.js.
 app.post('/cron/trial-reminders', async (req, res) => {
   try {
-    const { cronAuthOk, runTrialReminders } = await import('./lib/trial-reminders.js');
+    const { cronAuthOk, runTrialReminders, cronAutoSendEnabled } = await import('./lib/trial-reminders.js');
     if (!cronAuthOk(req.headers.authorization, process.env.CRON_SECRET)) {
       return res.status(401).json({ status: 'error', message: 'unauthorized' });
+    }
+    const forced = req.body?.force === true || req.query?.force === 'true';
+    if (!cronAutoSendEnabled() && !forced) {
+      return res.json({ status: 'skipped', message: 'auto-send disabled — manual mode is default. Pass {"force":true} to run anyway.' });
     }
     const result = await runTrialReminders({});
     return res.json({ status: 'success', ...result });
@@ -1396,6 +1402,12 @@ app.patch('/admin/business/:id', async (req, res) => {
 // anything, so make the deploy gap visible at boot rather than leaving it to
 // be inferred from a caught insert error weeks later (plan T17).
 warnOnIncompleteBoosterEnv();
+
+// Owner-in-the-loop trial-day Telegram notice (see lib/daily-scheduler.js) —
+// in-process, no external cron. Lazy import so a broken module degrades
+// (logged) rather than failing boot, same convention as loadAgents() below.
+import('./lib/daily-scheduler.js').then(m => m.startDailyScheduler())
+  .catch(e => console.error('[daily-scheduler] failed to start:', e.message));
 
 const PORT = process.env.PORT ?? 8080;
 loadAgents().then(() => {

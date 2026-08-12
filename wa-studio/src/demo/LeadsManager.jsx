@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 
 // ניהול לידים — the per-business lead board (the `leads` module).
 // EVERY number that wrote to the bot, in status lists the conversation itself
@@ -45,6 +45,18 @@ function formatTrialDate(iso) {
   return m ? `${m[3]}/${m[2]}` : null
 }
 
+// The trial-reminders panel's own date default — today, in Israel (the
+// board's dates are all trial DATES, an Israel wall date, never UTC).
+function todayJerusalem() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })
+}
+
+function resultLabel(status) {
+  if (status === 'sent' || status === 'template_sent') return 'נשלח ✓'
+  if (status === 'dry_run') return 'הרצת ניסיון'
+  return 'נכשל'
+}
+
 function trialDetails(payload) {
   const parts = []
   if (payload?.child_name) parts.push(payload.child_name)
@@ -55,11 +67,19 @@ function trialDetails(payload) {
   return parts.length ? parts.join(' · ') : null
 }
 
-export default function LeadsManager({ api, showToast }) {
+export default function LeadsManager({ api, showToast, autoOpenReminders = false }) {
   const [board, setBoard] = useState(null) // { enabled, ready, leads, counts, statuses }
   const [statusFilter, setStatusFilter] = useState(null) // null = הכל
   const [query, setQuery] = useState('')
   const [notesDraft, setNotesDraft] = useState(null) // { id, text }
+
+  // Trial-day reminders (owner-in-the-loop manual send). The api client
+  // exposes these ops only on the studio surface (createDemoApi) — the
+  // client portal doesn't get this button, feature-detected rather than
+  // threading a prop through every caller.
+  const remindersSupported = typeof api.previewTrialReminders === 'function'
+  const [reminders, setReminders] = useState(null) // { date, mode, test_recipient, leads, checked, loading, sending, results }
+  const autoOpenedRef = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -174,6 +194,62 @@ export default function LeadsManager({ api, showToast }) {
     }
   }
 
+  // Loads the preview for one date; already-sent leads default UNCHECKED
+  // (re-sending is a deliberate re-check), everyone else defaults CHECKED —
+  // the owner unchecks who said they won't come.
+  async function openReminders(date) {
+    const d = date || todayJerusalem()
+    setReminders({ date: d, mode: null, test_recipient: null, leads: [], checked: new Set(), loading: true, sending: false, results: null })
+    try {
+      const out = await api.previewTrialReminders(d)
+      const checked = new Set(out.leads.filter(l => !l.already_sent).map(l => l.id))
+      setReminders({ date: d, mode: out.mode, test_recipient: out.test_recipient, leads: out.leads, checked, loading: false, sending: false, results: null })
+    } catch {
+      setReminders({ date: d, mode: null, test_recipient: null, leads: [], checked: new Set(), loading: false, sending: false, results: null })
+      showToast?.('טעינת רשימת התזכורות נכשלה — נסו שוב')
+    }
+  }
+
+  function toggleReminderLead(id) {
+    setReminders(r => {
+      if (!r) return r
+      const checked = new Set(r.checked)
+      checked.has(id) ? checked.delete(id) : checked.add(id)
+      return { ...r, checked }
+    })
+  }
+
+  async function sendReminders() {
+    if (!reminders || reminders.sending || reminders.checked.size === 0) return
+    const ids = [...reminders.checked]
+    setReminders(r => ({ ...r, sending: true }))
+    try {
+      const out = await api.sendTrialReminders(reminders.date, ids)
+      showToast?.(`נשלחו ${out.sent_count}/${out.requested} תזכורות ✓`)
+      // Reload the same date — refreshes the "כבר נשלחה" badges and shows
+      // each row's per-lead result without a second round trip.
+      const preview = await api.previewTrialReminders(reminders.date)
+      setReminders(r => ({
+        ...r, mode: preview.mode, test_recipient: preview.test_recipient,
+        leads: preview.leads, sending: false, results: out.results,
+      }))
+    } catch {
+      setReminders(r => ({ ...r, sending: false }))
+      showToast?.('שליחת התזכורות נכשלה — נסו שוב')
+    }
+  }
+
+  // The daily-scheduler's Telegram notice links here with ?remind=1 — open
+  // straight to today's reminders once the board itself is ready. Fires at
+  // most once (autoOpenedRef), so a later board refresh never re-opens it.
+  useEffect(() => {
+    if (autoOpenReminders && remindersSupported && board?.enabled && !autoOpenedRef.current) {
+      autoOpenedRef.current = true
+      openReminders(todayJerusalem())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenReminders, remindersSupported, board?.enabled])
+
   if (!board) return <div className="cd-empty">טוען לידים…</div>
   if (!board.enabled) return null // the tab shouldn't even render — belt and braces
 
@@ -192,6 +268,11 @@ export default function LeadsManager({ api, showToast }) {
           {board.sheet_configured && (
             <button className="lm-csv lm-sync" onClick={syncFromSheet} disabled={syncing}>
               {syncing ? 'מסנכרן…' : '⟳ סנכרון מהגיליון'}
+            </button>
+          )}
+          {remindersSupported && (
+            <button className="lm-csv" onClick={() => openReminders(todayJerusalem())}>
+              🔔 תזכורות ניסיון
             </button>
           )}
           <button className="lm-csv" onClick={downloadCsv} disabled={!leads.length}>
@@ -383,6 +464,86 @@ export default function LeadsManager({ api, showToast }) {
                 )
               })}
             </div>
+          </aside>
+        </div>
+      )}
+
+      {reminders && (
+        <div className="lm-convo-overlay" onClick={() => setReminders(null)}>
+          <aside
+            className="lm-convo lm-reminders"
+            role="dialog"
+            aria-label="תזכורות ניסיון"
+            onClick={e => e.stopPropagation()}
+          >
+            <header className="lm-convo-head">
+              <div className="lm-convo-who">
+                <strong>🔔 תזכורות ניסיון</strong>
+                <input
+                  className="lm-reminders-date"
+                  type="date"
+                  value={reminders.date}
+                  onChange={e => openReminders(e.target.value)}
+                  aria-label="תאריך"
+                />
+              </div>
+              <div className="lm-convo-actions">
+                <button className="lm-convo-close" onClick={() => setReminders(null)} aria-label="סגירה">✕</button>
+              </div>
+            </header>
+
+            {reminders.mode === 'test_redirect' && (
+              <div className="lm-reminders-banner">
+                מצב בדיקה — כל השליחות יופנו ל-{formatPhone(reminders.test_recipient)}, אף ליד אמיתי לא יקבל הודעה
+              </div>
+            )}
+            {reminders.mode === 'dry_run' && (
+              <div className="lm-reminders-banner">מצב הרצת ניסיון — התזכורות לא יישלחו בפועל (המנגנון כבוי)</div>
+            )}
+
+            <div className="lm-convo-body">
+              {reminders.loading && <div className="cd-empty">טוען…</div>}
+              {!reminders.loading && reminders.leads.length === 0 && (
+                <div className="cd-empty">אין רישומים לניסיון בתאריך הזה</div>
+              )}
+              {!reminders.loading && reminders.leads.length > 0 && (
+                <ul className="lm-reminders-list">
+                  {reminders.leads.map(l => {
+                    const result = reminders.results?.find(r => r.id === l.id)
+                    return (
+                      <li key={l.id} className="lm-reminders-row">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={reminders.checked.has(l.id)}
+                            onChange={() => toggleReminderLead(l.id)}
+                          />
+                          <span>{l.child_name || l.display_name || formatPhone(l.phone)}</span>
+                          <span dir="ltr">{formatPhone(l.phone)}</span>
+                          {l.trial_time && <span>{l.trial_time}</span>}
+                        </label>
+                        {result
+                          ? <span className={`lm-reminder-result lm-reminder-result-${result.status}`}>{resultLabel(result.status)}</span>
+                          : l.already_sent && (
+                            <span className="lm-reminded" title={l.reminder_sent_at ?? ''}>כבר נשלחה תזכורת ✓</span>
+                          )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <footer className="lm-reminders-foot">
+              <span>{reminders.checked.size} מסומנים מתוך {reminders.leads.length}</span>
+              <button
+                className="cd-qa cd-qa-primary"
+                disabled={reminders.sending || reminders.checked.size === 0}
+                onClick={sendReminders}
+              >
+                {reminders.sending ? 'שולח…' : 'שלח תזכורת'}
+              </button>
+            </footer>
           </aside>
         </div>
       )}

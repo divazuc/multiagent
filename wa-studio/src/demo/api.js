@@ -72,6 +72,9 @@ export function createDemoApi(bizId) {
     exportLeadsCsv: () => rpc('exportLeadsCsv', bizId), // → { filename, csv }
     syncLeadsSheet: () => rpc('syncLeadsSheet', bizId), // → { synced, updated, … }
     getLeadConversation: (phone) => rpc('getLeadConversation', bizId, phone), // → { messages }
+    // ── Trial-day reminders (owner-in-the-loop manual send) ──
+    previewTrialReminders: (date) => rpc('previewTrialReminders', bizId, date ?? null), // → { date, mode, leads }
+    sendTrialReminders: (date, leadIds) => rpc('sendTrialReminders', bizId, { date, lead_ids: leadIds }),
   }
 }
 
