@@ -7,18 +7,20 @@
 // and a slow one felt broken. Now a slow generation simply consumes the budget
 // and nothing is added.
 
-// Owner, after her live demo: "תעדכן את זמן התגובה בין הודעות בוואטסאפ כ3-4
-// שניות, לא יותר". The bands used to run 4-14s, which felt considered in
-// testing and felt like being ignored in front of a customer.
+// Owner, kids pilot 2026-08-12: "תקצר את זמן ההמתנה למענה ל4-6 שניות לא
+// יותר" — 6000ms is the ceiling of the TOTAL wait this module controls.
+// (Supersedes the earlier 3-4s window from the Divaz demo.) A generation
+// slower than the band still goes out the moment it is ready — nothing is
+// ever added on top — so the only waits above 6s are answers the model
+// itself took longer to compose.
 //
-// 4000ms is a ceiling, not a target. The bands still differ from one another —
-// a one-line answer landing at the same beat as a long one is its own tell —
-// but the whole ladder now fits inside her window, and the randomness inside
-// each band is what keeps the rhythm from sounding metronomic.
+// The bands still differ from one another — a one-line answer landing at the
+// same beat as a long one is its own tell — and the randomness inside each
+// band keeps the rhythm from sounding metronomic.
 export const DELAY_WINDOWS = {
-  short:    [3000, 3600],
-  medium:   [3200, 3800],
-  detailed: [3400, 4000],
+  short:    [4000, 4700],
+  medium:   [4400, 5300],
+  detailed: [4800, 6000],
 };
 
 function bandFor(words, answerLength) {
