@@ -18,9 +18,14 @@
 //      — that field is ALSO the dedupe key, so a second cron hit the same day
 //      sends nothing.
 //
-// SAFETY SWITCH: module setting `reminders_enabled` (default FALSE). Until the
-// owner approves the copy and the orchestrator flips it, the run is a logged
-// dry-run — "would send" lines in the log, no WhatsApp send, no payload write.
+// SAFETY (three states, owner's hard rule):
+//   1. DRY-RUN (default; reminders_enabled != true) — logged "would send"
+//      lines only. No WhatsApp send, no payload write.
+//   2. TEST-REDIRECT (enabled + reminder_test_recipient set) — every send is
+//      redirected to the test number, prefixed "[בדיקה — היה נשלח אל …]";
+//      no real lead can receive anything, and the board is left untouched so
+//      going live later still reminds everyone.
+//   3. LIVE (enabled + no test recipient) — real sends to real leads.
 //
 // After the run the OWNER gets one Telegram summary (the existing
 // lib/approvals.js plumbing — TELEGRAM_* env already on Railway), skipped
@@ -60,29 +65,40 @@ const displayDate = (dateKey) => {
 
 export function buildReminderText({ child_name = null, trial_time = null, copy = null } = {}) {
   if (copy) {
-    return copy
-      .replaceAll('{שם}', child_name ?? '')
-      .replaceAll('{שעה}', trial_time ?? '')
-      .replace(/[ ]{2,}/g, ' ')
-      .trim();
+    // A missing value drops its WHOLE phrase, never just the token, so the
+    // owner-approved copy stays grammatical: with no hour,
+    // "…קידס 🐉 היום בשעה {שעה}. כתובתנו…" → "…קידס 🐉 היום. כתובתנו…"
+    let text = copy;
+    text = child_name
+      ? text.replaceAll('{שם}', child_name)
+      : text.replace(/ ?של \{שם\}/g, '').replaceAll('{שם}', '');
+    text = trial_time
+      ? text.replaceAll('{שעה}', trial_time)
+      : text.replace(/ ?בשעה \{שעה\}/g, '').replaceAll('{שעה}', '');
+    return text.replace(/[ ]{2,}/g, ' ').trim();
   }
   const who = child_name ? ` של ${child_name}` : '';
   const when = trial_time ? ` בשעה ${trial_time}` : '';
   return `בוקר טוב! מזכירות שהיום מתקיים אימון הניסיון${who}${when} — מחכים לכם! נתראה 🐉`;
 }
 
-// Template params can never be empty (Graph rejects the whole send) — the
-// utility template body reads naturally with these fallbacks:
-// "אימון הניסיון של {{1}} ... בשעה {{2}}".
-export const TEMPLATE_PARAM_FALLBACKS = { child_name: 'הילד/ה', trial_time: 'שנקבעה' };
+// Template params can never be empty (Graph rejects the whole send). The
+// trial_reminder_he body carries ONE variable — {{1}} = the hour — and reads
+// naturally with this fallback: "…היום בשעה שנקבעה." (see
+// scripts/create-trial-reminder-template.mjs for the full owner-approved body).
+export const TEMPLATE_PARAM_FALLBACKS = { trial_time: 'שנקבעה' };
+
+// '972520000000' → '0520000000' — how a number reads in owner-facing copy.
+const localPhone = (p) => String(p ?? '').startsWith('972') ? '0' + String(p).slice(3) : String(p ?? '');
 
 // ── Owner summary copy ───────────────────────────────────────────────────────
 
-export function buildOwnerSummary({ dateKey, sent, windowFailed, wouldSend }) {
+export function buildOwnerSummary({ dateKey, sent, windowFailed, wouldSend, testRecipient = null }) {
   const lines = [];
   if (sent + windowFailed > 0) {
     let line = `🐉 תזכורות אימון ניסיון (${displayDate(dateKey)}): נשלחו ${sent}.`;
     if (windowFailed > 0) line += ` ${windowFailed} לא נשלחו (מחוץ לחלון).`;
+    if (testRecipient) line += ` (מצב בדיקה — הכל הופנה ל-${localPhone(testRecipient)})`;
     lines.push(line);
   }
   if (wouldSend > 0) {
@@ -162,6 +178,7 @@ export async function runTrialReminders({ now = new Date() } = {}) {
   const today = jerusalemDateKey(now);
   const totals = { sent: 0, templateSent: 0, windowFailed: 0, wouldSend: 0 };
   const perBusiness = [];
+  let anyTestRecipient = null; // set while any business runs in test-redirect
 
   const businesses = await d.listLeadsBusinesses();
   for (const biz of businesses) {
@@ -194,7 +211,18 @@ export async function runTrialReminders({ now = new Date() } = {}) {
       l.payload?.reminder_sent_on !== today &&
       l.status !== 'not_relevant');
 
+    // THREE STATES (owner's hard safety rule — no real lead may be messaged
+    // during testing):
+    //   dry-run       reminders_enabled != true       nothing sent at all
+    //   test-redirect enabled + reminder_test_recipient EVERY send goes to the
+    //                                                  test number, prefixed
+    //                                                  with the real target
+    //   live          enabled + NO test recipient      real sends to leads
     const dryRun = settings.reminders_enabled !== true;
+    const testRecipient = String(settings.reminder_test_recipient ?? '').trim() || null;
+    const mode = dryRun ? 'dry_run' : (testRecipient ? 'test_redirect' : 'live');
+    result.mode = mode;
+    if (mode === 'test_redirect') anyTestRecipient = testRecipient;
     const templateName = (settings.reminder_template ?? process.env.WHATSAPP_TRIAL_REMINDER_TEMPLATE)?.trim() || null;
 
     for (const lead of due) {
@@ -213,20 +241,26 @@ export async function runTrialReminders({ now = new Date() } = {}) {
         continue;
       }
 
+      // In test-redirect the LEAD'S number never reaches a send seam — the
+      // one destination is the test recipient, and the prefix line names who
+      // the message was really for.
+      const to = testRecipient ?? lead.phone;
+      const outText = testRecipient
+        ? `[בדיקה — היה נשלח אל ${localPhone(lead.phone)}]\n${text}`
+        : text;
+
       // 3. Free-form first (leads usually wrote to the bot recently)…
       let status = 'window_failed';
-      const res = await sendText({ to: lead.phone, text, businessId });
+      const res = await sendText({ to, text: outText, businessId });
       if (delivered(res)) {
         status = 'sent';
         totals.sent++;
       } else if (templateName) {
-        // …then the approved utility template for out-of-window leads.
+        // …then the approved utility template for out-of-window leads
+        // ({{1}} = the hour — the only variable in trial_reminder_he).
         const tres = await sendTemplate({
-          to: lead.phone, templateName, langCode: 'he',
-          bodyParams: [
-            lead.payload?.child_name || TEMPLATE_PARAM_FALLBACKS.child_name,
-            lead.payload?.trial_time || TEMPLATE_PARAM_FALLBACKS.trial_time,
-          ],
+          to, templateName, langCode: 'he',
+          bodyParams: [lead.payload?.trial_time || TEMPLATE_PARAM_FALLBACKS.trial_time],
           businessId,
         });
         if (delivered(tres)) { status = 'template_sent'; totals.templateSent++; }
@@ -236,14 +270,21 @@ export async function runTrialReminders({ now = new Date() } = {}) {
       }
 
       // 4. Record either way — reminder_sent_on doubles as the dedupe key.
-      try {
-        await d.updateLead(lead.id, {
-          payload: { ...(lead.payload ?? {}), reminder_sent_on: today, reminder_status: status },
-        });
-      } catch (e) {
-        console.error(`[trial-reminders] could not record reminder outcome for lead ${lead.id}:`, e.message);
+      //    NOT in test-redirect: a rehearsal must leave the board untouched,
+      //    so going live later still reminds everyone (and repeat test runs
+      //    keep producing the full picture).
+      if (!testRecipient) {
+        try {
+          await d.updateLead(lead.id, {
+            payload: { ...(lead.payload ?? {}), reminder_sent_on: today, reminder_status: status },
+          });
+        } catch (e) {
+          console.error(`[trial-reminders] could not record reminder outcome for lead ${lead.id}:`, e.message);
+        }
       }
-      result.reminders.push({ phone: lead.phone, status });
+      result.reminders.push(testRecipient
+        ? { phone: lead.phone, status, redirected_to: testRecipient }
+        : { phone: lead.phone, status });
     }
     perBusiness.push(result);
   }
@@ -255,6 +296,7 @@ export async function runTrialReminders({ now = new Date() } = {}) {
     sent: totals.sent + totals.templateSent,
     windowFailed: totals.windowFailed,
     wouldSend: totals.wouldSend,
+    testRecipient: anyTestRecipient,
   });
   let summarySent = false;
   if (summary && telegramConfigured()) {

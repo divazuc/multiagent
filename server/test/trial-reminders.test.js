@@ -106,10 +106,23 @@ test('buildReminderText: a per-business reminder_copy override with {שם}/{שע
   assert.equal(
     buildReminderText({ child_name: 'איתי', trial_time: '17:30', copy: 'היי! {שם} מתאמן היום בשעה {שעה} 🥋' }),
     'היי! איתי מתאמן היום בשעה 17:30 🥋');
-  // missing values collapse cleanly — no double spaces left behind
+  // a missing value drops its WHOLE phrase, never just the token
   assert.equal(
     buildReminderText({ copy: 'היי! {שם} מתאמן היום בשעה {שעה} 🥋' }),
-    'היי! מתאמן היום בשעה 🥋');
+    'היי! מתאמן היום 🥋');
+});
+
+// The owner-approved kids copy, verbatim — the configure script seeds it as
+// reminder_copy, so this pins the EXACT message parents receive.
+const KIDS_COPY = 'בוקר טוב! מזכירה לך שנרשמת לאימון נסיון בקרוספיט הדרקונים קידס 🐉 היום בשעה {שעה}. כתובתנו: אילן רמון 5, נס ציונה. נתראה! במידה ואין באפשרותכם להגיע נשמח לעדכון, תודה';
+
+test('the kids copy: hour filled in; unknown hour drops "בשעה {שעה}" but keeps היום', () => {
+  assert.equal(
+    buildReminderText({ trial_time: '16:00', copy: KIDS_COPY }),
+    'בוקר טוב! מזכירה לך שנרשמת לאימון נסיון בקרוספיט הדרקונים קידס 🐉 היום בשעה 16:00. כתובתנו: אילן רמון 5, נס ציונה. נתראה! במידה ואין באפשרותכם להגיע נשמח לעדכון, תודה');
+  assert.equal(
+    buildReminderText({ copy: KIDS_COPY }),
+    'בוקר טוב! מזכירה לך שנרשמת לאימון נסיון בקרוספיט הדרקונים קידס 🐉 היום. כתובתנו: אילן רמון 5, נס ציונה. נתראה! במידה ואין באפשרותכם להגיע נשמח לעדכון, תודה');
 });
 
 test('buildOwnerSummary: the exact Telegram copy per outcome mix', () => {
@@ -122,6 +135,10 @@ test('buildOwnerSummary: the exact Telegram copy per outcome mix', () => {
   assert.equal(
     buildOwnerSummary({ dateKey: TODAY, sent: 0, windowFailed: 0, wouldSend: 2 }),
     '🐉 תזכורות אימון ניסיון (12.08.2026) — הרצת ניסיון: 2 תזכורות היו נשלחות (המנגנון כבוי עד אישור).');
+  // test-redirect mode is named in the summary, with the redirect number
+  assert.equal(
+    buildOwnerSummary({ dateKey: TODAY, sent: 2, windowFailed: 0, wouldSend: 0, testRecipient: '972520000000' }),
+    '🐉 תזכורות אימון ניסיון (12.08.2026): נשלחו 2. (מצב בדיקה — הכל הופנה ל-0520000000)');
   assert.equal(buildOwnerSummary({ dateKey: TODAY, sent: 0, windowFailed: 0, wouldSend: 0 }), null);
 });
 
@@ -216,7 +233,7 @@ test('a reminder recorded YESTERDAY does not block today (dedupe is per-day)', a
 
 // ── Window failure → template fallback ───────────────────────────────────────
 
-test('out-of-window: template approved → template_sent with child/time params', async () => {
+test('out-of-window: template approved → template_sent with the hour as {{1}}', async () => {
   process.env.WHATSAPP_TRIAL_REMINDER_TEMPLATE = 'trial_reminder_he';
   const db = makeFakeDb({
     businesses: [enabledBiz()],
@@ -231,7 +248,7 @@ test('out-of-window: template approved → template_sent with child/time params'
   const out = await runTrialReminders({ now: NOW });
   assert.deepEqual(templates, [{
     to: '972501234567', templateName: 'trial_reminder_he', langCode: 'he',
-    bodyParams: ['יובל', '16:00'], businessId: BIZ,
+    bodyParams: ['16:00'], businessId: BIZ,
   }]);
   assert.equal(out.templateSent, 1);
   assert.equal(out.windowFailed, 0);
@@ -259,7 +276,7 @@ test('out-of-window with NO template configured → window_failed, still recorde
   assert.equal(tg[0].text, '🐉 תזכורות אימון ניסיון (12.08.2026): נשלחו 0. 1 לא נשלחו (מחוץ לחלון).');
 });
 
-test('template fallback params fall back for a dateless-slot lead (no child name / no time)', async () => {
+test('template {{1}} falls back to שנקבעה when the hour is unknown', async () => {
   process.env.WHATSAPP_TRIAL_REMINDER_TEMPLATE = 'trial_reminder_he';
   const db = makeFakeDb({
     businesses: [enabledBiz()],
@@ -271,7 +288,62 @@ test('template fallback params fall back for a dateless-slot lead (no child name
   tr._setTemplateSenderForTest(async (msg) => { templates.push(msg); return { messages: [{ id: 'x' }] }; });
   armTelegram();
   await runTrialReminders({ now: NOW });
-  assert.deepEqual(templates[0].bodyParams, ['הילד/ה', 'שנקבעה']); // Graph rejects empty params
+  assert.deepEqual(templates[0].bodyParams, ['שנקבעה']); // Graph rejects empty params — "היום בשעה שנקבעה"
+});
+
+// ── Test-redirect (the owner's hard safety rule) ─────────────────────────────
+
+test('test-redirect: EVERY send goes to the test number only, prefixed, board untouched', async () => {
+  process.env.WHATSAPP_TRIAL_REMINDER_TEMPLATE = 'trial_reminder_he';
+  const TEST_NUMBER = '972520000000';
+  const db = makeFakeDb({
+    businesses: [enabledBiz({ reminder_test_recipient: TEST_NUMBER })],
+    leadsByBiz: { [BIZ]: [
+      lead({ id: 'l-1' }),                                                        // free-form succeeds
+      lead({ id: 'l-2', phone: '972502222222', payload: { trial_date: TODAY, trial_time: '17:00' } }), // free-form fails → template
+    ] },
+  });
+  tr._setDbForTest(db);
+  const sends = [];
+  tr._setSenderForTest(async (msg) => {
+    sends.push(msg);
+    return msg.text.includes('0501234567') ? { messages: [{ id: 'wamid.1' }] } : null;
+  });
+  const templates = [];
+  tr._setTemplateSenderForTest(async (msg) => { templates.push(msg); return { messages: [{ id: 'wamid.t' }] }; });
+  const tg = armTelegram();
+
+  const out = await runTrialReminders({ now: NOW });
+
+  // the hard rule: NO destination other than the test number, ever
+  for (const s of [...sends, ...templates]) assert.equal(s.to, TEST_NUMBER);
+  assert.ok(sends.length >= 2);
+
+  // the prefix names the REAL target so the tester knows who each message was for
+  assert.ok(sends[0].text.startsWith('[בדיקה — היה נשלח אל 0501234567]\n'));
+  assert.ok(sends[1].text.startsWith('[בדיקה — היה נשלח אל 0502222222]\n'));
+
+  // a rehearsal leaves the board untouched — going live later still reminds everyone
+  assert.equal(db.updates.length, 0);
+  assert.deepEqual(out.businesses[0].reminders.map(r => r.redirected_to), [TEST_NUMBER, TEST_NUMBER]);
+
+  // and the owner's summary says it was a test
+  assert.equal(tg[0].text, '🐉 תזכורות אימון ניסיון (12.08.2026): נשלחו 2. (מצב בדיקה — הכל הופנה ל-0520000000)');
+});
+
+test('dry-run outranks the test recipient: disabled means NOTHING is sent anywhere', async () => {
+  const db = makeFakeDb({
+    businesses: [{ business_id: BIZ, settings: { reminder_test_recipient: '972520000000' } }],
+    leadsByBiz: { [BIZ]: [lead()] },
+  });
+  tr._setDbForTest(db);
+  const sends = [];
+  tr._setSenderForTest(async (msg) => { sends.push(msg); return { messages: [{ id: 'x' }] }; });
+  armTelegram();
+  const out = await runTrialReminders({ now: NOW });
+  assert.equal(sends.length, 0);
+  assert.equal(out.wouldSend, 1);
+  assert.equal(out.businesses[0].mode, 'dry_run');
 });
 
 // ── Sheet-sync integration ───────────────────────────────────────────────────

@@ -10,8 +10,9 @@
 // trial_reminder_he on Railway — the send path stays free-form-only until
 // that env exists (same gating pattern as WHATSAPP_ESCALATION_TEMPLATE).
 //
-// Body params: {{1}} = child name (fallback 'הילד/ה'), {{2}} = trial time
-// (fallback 'שנקבעה') — see TEMPLATE_PARAM_FALLBACKS in lib/trial-reminders.js.
+// The body is the OWNER-APPROVED reminder copy, verbatim, with one variable:
+// {{1}} = the trial hour (send-path fallback 'שנקבעה' → "היום בשעה שנקבעה" —
+// see TEMPLATE_PARAM_FALLBACKS in lib/trial-reminders.js).
 
 const GRAPH_API = 'https://graph.facebook.com/v21.0';
 
@@ -33,8 +34,8 @@ const template = {
   components: [
     {
       type: 'BODY',
-      text: 'בוקר טוב! מזכירות שהיום מתקיים אימון הניסיון של {{1}} בשעה {{2}} — מחכים לכם! נתראה 🐉',
-      example: { body_text: [['יובל', '16:30']] },
+      text: 'בוקר טוב! מזכירה לך שנרשמת לאימון נסיון בקרוספיט הדרקונים קידס 🐉 היום בשעה {{1}}. כתובתנו: אילן רמון 5, נס ציונה. נתראה! במידה ואין באפשרותכם להגיע נשמח לעדכון, תודה',
+      example: { body_text: [['16:00']] },
     },
   ],
 };

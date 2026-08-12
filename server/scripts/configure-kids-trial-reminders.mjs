@@ -1,14 +1,21 @@
 // Configure the CrossFit Kids trial-reminder pipeline: point the leads module
-// at the registration Google Sheet, and (once the owner approves the copy)
-// flip the reminders safety switch.
+// at the registration Google Sheet, seed the OWNER-APPROVED reminder copy,
+// and step through the three safety states (dry-run → test-redirect → live).
 //
-//   node --env-file=.env.local scripts/configure-kids-trial-reminders.mjs --sheet <fileId> [--gid <gid>] [--enable]
+//   node --env-file=.env.local scripts/configure-kids-trial-reminders.mjs --sheet <fileId> [--gid <gid>] \
+//     [--test-recipient <phone>|off] [--copy <text>] [--enable]
 //
-//   --sheet   Drive file id of the trial-form sheet (from the sheet URL:
-//             docs.google.com/spreadsheets/d/<fileId>/…). Required.
-//   --gid     optional tab gid (default: the first tab)
-//   --enable  set reminders_enabled=true — WITHOUT it the morning run stays a
-//             logged dry-run (the safety default; see lib/trial-reminders.js)
+//   --sheet           Drive file id of the trial-form sheet (from the sheet URL:
+//                     docs.google.com/spreadsheets/d/<fileId>/…). Required.
+//   --gid             optional tab gid (default: the first tab)
+//   --test-recipient  redirect EVERY reminder to this number (test mode — no
+//                     real lead can be messaged). Pass `off` to clear it and
+//                     go live. Accepts 05X… or 972… forms.
+//   --copy            override the reminder copy; DEFAULT is the owner-approved
+//                     kids copy baked in below ({שעה} = the trial hour, whose
+//                     phrase drops cleanly when the hour is unknown)
+//   --enable          set reminders_enabled=true — WITHOUT it the morning run
+//                     stays a logged dry-run (the safety default)
 //
 // Idempotent, and MERGES into existing settings rather than replacing them —
 // rerunning with --enable after an earlier --sheet-only run keeps the sheet.
@@ -17,6 +24,12 @@ import { supabase } from '../lib/supabase.js';
 
 const BIZ = 'f53bdccc-e62d-45f8-8c08-eee5594ce221'; // קרוספיט קידס — הדרקונים
 
+// The owner's approved copy, verbatim (only {שעה} varies; no child name).
+// lib/trial-reminders.js#buildReminderText drops " בשעה {שעה}" cleanly when
+// the hour is unknown — "…קידס 🐉 היום. כתובתנו…".
+const KIDS_REMINDER_COPY =
+  'בוקר טוב! מזכירה לך שנרשמת לאימון נסיון בקרוספיט הדרקונים קידס 🐉 היום בשעה {שעה}. כתובתנו: אילן רמון 5, נס ציונה. נתראה! במידה ואין באפשרותכם להגיע נשמח לעדכון, תודה';
+
 const args = process.argv.slice(2);
 const flag = (name) => {
   const i = args.indexOf(`--${name}`);
@@ -24,11 +37,20 @@ const flag = (name) => {
 };
 const sheetId = flag('sheet');
 const gid = flag('gid');
+const copy = flag('copy');
+const testRecipientRaw = flag('test-recipient');
 const enable = args.includes('--enable');
 
 if (!sheetId || sheetId === true) {
-  console.error('usage: node scripts/configure-kids-trial-reminders.mjs --sheet <fileId> [--gid <gid>] [--enable]');
+  console.error('usage: node scripts/configure-kids-trial-reminders.mjs --sheet <fileId> [--gid <gid>] [--test-recipient <phone>|off] [--copy <text>] [--enable]');
   process.exit(1);
+}
+
+// '052-000 0000' / '+972520000000' → '972520000000'
+function normalizePhone(raw) {
+  let d = String(raw ?? '').replace(/\D/g, '');
+  if (d.startsWith('0')) d = '972' + d.slice(1);
+  return /^\d{10,15}$/.test(d) ? d : null;
 }
 
 const { data: existing, error: readErr } = await supabase.from('business_modules')
@@ -42,8 +64,23 @@ const settings = {
   ...(existing?.settings ?? {}),
   sheet_file_id: sheetId,
   ...(gid && gid !== true ? { sheet_gid: String(gid) } : {}),
+  reminder_copy: (copy && copy !== true) ? copy : (existing?.settings?.reminder_copy ?? KIDS_REMINDER_COPY),
   reminders_enabled: enable ? true : (existing?.settings?.reminders_enabled ?? false),
 };
+
+// Test-redirect handling: set, keep, or clear (`off` → live sends allowed).
+if (testRecipientRaw && testRecipientRaw !== true) {
+  if (testRecipientRaw === 'off') {
+    delete settings.reminder_test_recipient;
+  } else {
+    const normalized = normalizePhone(testRecipientRaw);
+    if (!normalized) {
+      console.error(`[configure-kids-trial-reminders] --test-recipient "${testRecipientRaw}" is not a usable phone number`);
+      process.exit(1);
+    }
+    settings.reminder_test_recipient = normalized;
+  }
+}
 
 const { error } = await supabase.from('business_modules').upsert({
   business_id: BIZ, module_key: 'leads',
@@ -56,5 +93,9 @@ if (error) {
 
 console.log('[configure-kids-trial-reminders] leads-module settings for קרוספיט קידס:', settings);
 if (!settings.reminders_enabled) {
-  console.log('[configure-kids-trial-reminders] NOTE: reminders_enabled=false — the 09:00 run is a logged DRY-RUN until you rerun with --enable.');
+  console.log('[configure-kids-trial-reminders] state: DRY-RUN — nothing is sent until you rerun with --enable.');
+} else if (settings.reminder_test_recipient) {
+  console.log(`[configure-kids-trial-reminders] state: TEST-REDIRECT — every reminder goes to ${settings.reminder_test_recipient}, no real lead can be messaged. Rerun with --test-recipient off to go live.`);
+} else {
+  console.log('[configure-kids-trial-reminders] state: LIVE — reminders go to real leads at the next 09:00 run.');
 }
