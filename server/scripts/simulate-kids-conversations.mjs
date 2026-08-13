@@ -48,6 +48,14 @@ const SCENARIOS = [
   { name: 'התאמה לילד ביישן', turns: [
     'הבת שלי בת 8 וממש ביישנית, לא בטוחה שזה מתאים לה',
   ]},
+  { name: 'FAQ חוזר באמצע שיחה (feat 2026-08-13: אמור להיות חינם)', turns: [
+    'היי, מתלבטת לגבי החוג לילד שלי',
+    'כמה עולה החוג לשנה?',
+    'כמה פעמים בשבוע מתאמנים?',
+  ]},
+  { name: 'שתי שאלות מדויקות בהודעה אחת (feat: פיצול לשתי הודעות, חינם)', turns: [
+    'כמה עולה החוג לשנה? כמה פעמים בשבוע מתאמנים?',
+  ]},
 ];
 
 // in-memory context, mirroring lib/context.js's shape for live mode
@@ -95,10 +103,12 @@ for (const sc of SCENARIOS) {
     totalCost += cost; totalMsgs++; if (direct) directHits++;
     lines.push(`**הורה:** ${msg}`);
     lines.push(`**נועה:** ${r.response || '(ללא תשובה — ' + (res?.error ?? r.escalation_reason ?? '?') + ')'}`);
-    lines.push(`<sub>${direct ? '⚡ תשובה ישירה מהמאגר — ₪0' : `עלות: $${cost.toFixed(4)}`}${r.escalate ? ' · 🔺 הוסלם' : ''}</sub>`);
+    for (const extra of r.extra_messages ?? []) lines.push(`**נועה (הודעה נוספת):** ${extra}`);
+    lines.push(`<sub>${direct ? '⚡ תשובה ישירה מהמאגר — ₪0' : `עלות: $${cost.toFixed(4)}`}${r.escalate ? ' · 🔺 הוסלם' : ''}${r.extra_messages?.length ? ` · ✂️ פוצל ל-${1 + r.extra_messages.length} הודעות` : ''}</sub>`);
     lines.push('');
     history.push({ role: 'user', content: msg });
-    if (r.response) history.push({ role: 'assistant', content: r.response });
+    const assistantText = [r.response, ...(r.extra_messages ?? [])].filter(Boolean).join('\n\n');
+    if (assistantText) history.push({ role: 'assistant', content: assistantText });
   }
   lines.push('---');
 }
