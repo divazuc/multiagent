@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeHebrew, scoreRow, retrieveTopK, formatKbContextBlock } from '../lib/kb-retrieval.js';
+import { normalizeHebrew, scoreRow, retrieveTopK, formatKbContextBlock, splitCoreRows, formatCoreKbBlock } from '../lib/kb-retrieval.js';
 
 const ROWS = [
   { question: 'מה שעות הפעילות שלכם?', answer: 'אנחנו פתוחים בימים א-ה בין 9:00 ל-18:00.', category: 'שעות' },
@@ -75,4 +75,30 @@ test('formatKbContextBlock renders Q/A pairs and the anti-hallucination guard li
 test('formatKbContextBlock returns an empty string for no matches', () => {
   assert.equal(formatKbContextBlock([]), '');
   assert.equal(formatKbContextBlock(undefined), '');
+});
+
+test('splitCoreRows partitions by the core archetype and formatCoreKbBlock renders only core', () => {
+    const rows = [
+      { question: 'שעות?', answer: '16:45', archetypes: ['core'] },
+      { question: 'ביטול?', answer: 'עד 30.11', archetypes: [] },
+      { question: 'טופס?', answer: 'קישור', archetypes: ['core', 'other'] },
+      { question: 'חגים?', answer: 'אין פעילות' },
+    ];
+    const { core, rest } = splitCoreRows(rows);
+    assert.equal(core.length, 2);
+    assert.equal(rest.length, 2);
+    const block = formatCoreKbBlock(core);
+    assert.ok(block.includes('16:45') && block.includes('קישור'));
+    assert.ok(!block.includes('30.11'));
+    assert.equal(formatCoreKbBlock([]), '');
+});
+
+test('core rows are excluded from retrieval input by the caller contract (rest only)', () => {
+    const rows = [
+      { question: 'כמה עולה החוג', answer: '400', archetypes: ['core'] },
+      { question: 'כמה עולה חולצה', answer: '50', archetypes: [] },
+    ];
+    const { rest } = splitCoreRows(rows);
+    const scored = retrieveTopK({ message: 'כמה עולה החוג?', rows: rest });
+    assert.ok(scored.every(s => s.row.answer !== '400'));
 });

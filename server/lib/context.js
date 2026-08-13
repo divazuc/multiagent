@@ -125,7 +125,7 @@ export async function loadContext({ message, session_id, phone_number_id = null 
       // behavior item 3 asks for.
       isSetup ? Promise.resolve({ data: [], error: null }) :
         supabase.from('knowledge_items')
-          .select('question, answer, category')
+          .select('question, answer, category, archetypes')
           .eq('business_id', session.business_id)
           .eq('is_active', true),
     ]);

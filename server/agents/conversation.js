@@ -6,7 +6,7 @@ import { replyDelayMs } from '../lib/reply-delay.js';
 import { extractModuleAction } from '../lib/modules/actions.js';
 import { stripWrappingQuotes } from '../lib/outbound-text.js';
 import { extractUsage, sumUsage } from '../lib/model-usage.js';
-import { retrieveTopK, formatKbContextBlock } from '../lib/kb-retrieval.js';
+import { retrieveTopK, formatKbContextBlock, splitCoreRows, formatCoreKbBlock } from '../lib/kb-retrieval.js';
 import { matchDirectKb } from '../lib/kb-direct-match.js';
 import { alertCreditExhaustion } from '../lib/credit-alert.js';
 
@@ -129,16 +129,22 @@ export async function runConversation({ message, session_id, context }) {
     let candidate;
 
     const modules_context = context.modules_context ?? null;
+    // Owner incident 2026-08-13: rows marked 'core' (schedule, pricing, the
+    // trial-form link) are exempt from retrieval — they ride in the STABLE
+    // cached block so they are ALWAYS visible regardless of how the customer
+    // phrased the message. Retrieval runs over the remaining rows only.
+    const { core: coreKbRows, rest: restKbRows } = splitCoreRows(kbRows);
+    const coreKbText = formatCoreKbBlock(coreKbRows);
     const kbContext = buildKbContext({
-      message, kbRows, faqSummary: business_profile?.knowledge?.faq_summary ?? null,
+      message, kbRows: restKbRows, faqSummary: coreKbRows.length ? null : (business_profile?.knowledge?.faq_summary ?? null),
     });
 
     if (agent_mode === 'support') {
-      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context, kbContext, model, usageLog });
+      candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context, kbContext, coreKbText, model, usageLog });
     } else if (agent_mode === 'hybrid') {
-      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog });
+      candidate = await generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, coreKbText, model, usageLog });
     } else {
-      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog });
+      candidate = await generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, coreKbText, model, usageLog });
     }
 
     // Modules: the model may append an ACTION marker — extract it BEFORE
@@ -351,12 +357,12 @@ function hebrewPatternsText(hebrew_patterns) {
 
 // ── Sales mode response ───────────────────────────────────────────────────────
 
-async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog }) {
+async function generateSalesResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, coreKbText, model, usageLog }) {
   const lang = intent.language ?? 'hebrew';
   // STABLE prefix — cost-efficiency pass item 2: byte-identical across every
   // turn of the SAME business (no per-turn interpolation in here — cta_goal,
-  // guardrails and persona only change when the owner edits her profile, not
-  // per message). Marked cache_control below in callClaude().
+  // guardrails, persona and the core-KB block only change when the owner
+  // edits her profile/KB, not per message). Marked cache_control in callClaude().
   const stableText = `You are a sales representative for this business. Sound 100% human — NEVER like AI.
 Mode: SALES. Your goal is to qualify the lead and push toward: ${cta_goal}.
 Use the persona's language patterns EXACTLY. Ask ONE question max. Keep it SHORT (1-4 sentences).
@@ -367,7 +373,7 @@ ${ADDRESS_GENDER_RULE}
 ${AUTHENTICITY_RULE}
 ${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
 ${hebrewPatternsText(hebrew_patterns)}
-Persona: ${JSON.stringify(persona)}`;
+Persona: ${JSON.stringify(persona)}${coreKbText ? '\n' + coreKbText : ''}`;
 
   // DYNAMIC tail — everything that varies turn to turn: this turn's CTA
   // decision, live module state, the retrieved KB rows for THIS question,
@@ -382,7 +388,7 @@ ${langInstruction(lang)}`;
 
 // ── Support mode response ─────────────────────────────────────────────────────
 
-async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context, kbContext, model, usageLog }) {
+async function generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context, kbContext, coreKbText, model, usageLog }) {
   const lang = intent.language ?? 'hebrew';
   const stableText = `You are a customer support representative for this business. Sound 100% human — NEVER like AI.
 Mode: SUPPORT. Your goal is to resolve the customer's question or issue fully.
@@ -395,7 +401,7 @@ ${AUTHENTICITY_RULE}
 ${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
 ${hebrewPatternsText(hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
-Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}`;
+Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}${coreKbText ? '\n' + coreKbText : ''}`;
 
   const dynamicText = `${modules_context ? '\n' + modules_context + '\n' : ''}
 ${kbContext ? '\n' + kbContext + '\n' : ''}
@@ -406,7 +412,7 @@ ${langInstruction(lang)}`;
 
 // ── Hybrid mode response ──────────────────────────────────────────────────────
 
-async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, model, usageLog }) {
+async function generateHybridResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, cta_goal, guardrails, modules_context, kbContext, coreKbText, model, usageLog }) {
   const lang = intent.language ?? 'hebrew';
   const isFrustrated = ['frustrated', 'angry'].includes(intent.sentiment);
   const isHighIntent = ['high_intent', 'ready_to_buy'].includes(intent.detected_intent);
@@ -424,7 +430,7 @@ ${AUTHENTICITY_RULE}
 ${NO_QUOTE_WRAP_RULE}${policyText(guardrails)}${identityText(persona)}
 ${hebrewPatternsText(hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
-Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}`;
+Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}${coreKbText ? '\n' + coreKbText : ''}`;
 
   const part2 = isFrustrated
     ? 'Part 2 — Customer seems frustrated. Stay in support mode only. No sales nudge this turn.'

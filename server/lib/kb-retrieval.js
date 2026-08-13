@@ -83,3 +83,25 @@ export function formatKbContextBlock(scored) {
   const lines = scored.map(({ row }) => `Q: ${row.question}\nA: ${row.answer}`).join('\n\n');
   return `Relevant knowledge for this question:\n${lines}\n\nאם אין במידע תשובה — אל תמציא.`;
 }
+
+// ── Core facts (owner incident 2026-08-13) ────────────────────────────────────
+// Word-overlap retrieval has a blind spot: facts a customer needs that share
+// no words with what they typed ("רועי בן 7" needs the schedule; "מתי מתקיים
+// החוג" needs the trial-form link the answer should end with). Rows the owner
+// marks with the 'core' archetype are exempt from retrieval entirely: they
+// ride in the STABLE (cached) system block, always visible, ~free after the
+// first turn. splitCoreRows partitions once per turn; retrieval then runs
+// only over the rest so a core row never occupies a top-K slot too.
+export function splitCoreRows(rows) {
+  const core = [], rest = [];
+  for (const row of rows ?? []) {
+    (Array.isArray(row?.archetypes) && row.archetypes.includes('core') ? core : rest).push(row);
+  }
+  return { core, rest };
+}
+
+export function formatCoreKbBlock(core) {
+  if (!core?.length) return '';
+  const lines = core.map((row) => `Q: ${row.question}\nA: ${row.answer}`).join('\n\n');
+  return `Core business facts (always applicable — use these whenever relevant, e.g. schedule, pricing, and the trial signup link):\n${lines}`;
+}
