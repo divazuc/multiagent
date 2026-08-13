@@ -7,7 +7,7 @@ import { extractModuleAction } from '../lib/modules/actions.js';
 import { stripWrappingQuotes } from '../lib/outbound-text.js';
 import { extractUsage, sumUsage } from '../lib/model-usage.js';
 import { retrieveTopK, formatKbContextBlock, splitCoreRows, formatCoreKbBlock } from '../lib/kb-retrieval.js';
-import { matchDirectKb } from '../lib/kb-direct-match.js';
+import { matchDirectKb, matchMultiDirectKb } from '../lib/kb-direct-match.js';
 import { alertCreditExhaustion } from '../lib/credit-alert.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -58,26 +58,56 @@ export async function runConversation({ message, session_id, context }) {
     const model = resolveModel(persona);
     const usageLog = [];
 
-    // ── Step 0: Direct-KB short-circuit (item 4) — zero model cost ─────────────
-    // Runs BEFORE intent detection: a confident exact-question FAQ hit needs
-    // neither. See lib/kb-direct-match.js for the precision-first bar.
+    // ── Step 0: Direct-KB short-circuit (item 4, extended 2026-08-13) — zero
+    // model cost. Runs BEFORE intent detection. Two independent shapes, tried
+    // in this order — they never compete for the same message, since a
+    // multi-question message (2-3 '?') can never pass the single-question
+    // standalone-shape gate matchDirectKb requires:
+    //   - matchMultiDirectKb: every segment of a 2-3-part message near-exact-
+    //     matches a DIFFERENT stored question -> one WhatsApp message per
+    //     segment (extra_messages), still zero model calls. Any miss (or a
+    //     segment count outside 2-3) falls all the way through to the normal
+    //     COMBINED-message model path below — never a per-segment model call.
+    //     Segments that all land on the SAME row collapse into one ordinary
+    //     direct answer instead of repeating it.
+    //   - matchDirectKb: the single-question path. A NEAR-EXACT match now
+    //     fires mid-conversation too ("תשובות חוזרות" — the real saving); the
+    //     looser scoring-margin tier still requires empty history. See
+    //     lib/kb-direct-match.js.
     const kbRows = business_profile?.knowledge?.items ?? [];
-    const directHit = matchDirectKb({
-      message,
-      rows: kbRows,
-      historyNonTrivial: (conversation_history?.length ?? 0) > 0,
-    });
-    if (directHit) {
-      const answerText = stripWrappingQuotes(String(directHit.answer ?? ''));
+    const historyNonTrivial = (conversation_history?.length ?? 0) > 0;
+
+    let kbHit = null;       // { question, answer } — the first/main answer
+    let kbExtraHits = [];   // [{ question, answer }, ...] — sent as extra_messages
+
+    const multiHit = matchMultiDirectKb({ message, rows: kbRows });
+    if (multiHit?.multi) {
+      [kbHit, ...kbExtraHits] = multiHit.hits;
+    } else if (multiHit) {
+      kbHit = { question: multiHit.question, answer: multiHit.answer };
+    } else {
+      kbHit = matchDirectKb({ message, rows: kbRows, historyNonTrivial });
+    }
+
+    if (kbHit) {
+      const [answerText, ...extraTexts] = [kbHit, ...kbExtraHits]
+        .map((hit) => stripWrappingQuotes(String(hit.answer ?? '')));
       const answerLength = business_profile?.answer_length ?? persona?.answer_length ?? 'short';
+      // The reply-delay budget is measured against the FIRST message only —
+      // extras get a short human-feeling gap instead (index.js, at send time).
       await humanDelay(answerText, answerLength, startedAt);
       return ok({
         response: answerText,
+        ...(extraTexts.length ? { extra_messages: extraTexts } : {}),
         next_stage: current_stage ?? 'clarification', action: 'none', cta_triggered: false,
         escalate: false, escalation_reason: null,
         qualification_progress: context.qualification_progress ?? {},
         language: detectMessageLanguage(message),
-        kb_direct: { matched: true, question: directHit.question },
+        kb_direct: {
+          matched: true,
+          question: kbHit.question,
+          questions: [kbHit, ...kbExtraHits].map((hit) => hit.question),
+        },
         model_usage: [], model_usage_total: sumUsage([]),
       });
     }

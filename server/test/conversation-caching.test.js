@@ -215,14 +215,11 @@ test('a confident direct-KB hit answers without ANY model call', async () => {
   assert.deepEqual(out.result.model_usage, []);
 });
 
-test('a follow-up-shaped turn (non-trivial history) never takes the direct-KB path, even for an exact question', async () => {
-  let n = 0;
-  _setMessagesCreateForTest(async () => {
-    n += 1;
-    return n === 1
-      ? { content: [{ text: INTENT_OK }], usage: usage() }
-      : { content: [{ text: REPLY_OK }], usage: usage() };
-  });
+// ── item 4b (2026-08-13, "תשובות חוזרות"): near-exact fires mid-conversation ──
+
+test('a near-exact match still costs zero model calls with non-trivial conversation history', async () => {
+  let calls = 0;
+  _setMessagesCreateForTest(async () => { calls += 1; throw new Error('must never be called'); });
 
   const out = await runConversation({
     message: 'מה שעות הפעילות שלכם?', session_id: 's1',
@@ -237,8 +234,134 @@ test('a follow-up-shaped turn (non-trivial history) never takes the direct-KB pa
     }),
   });
 
+  assert.equal(calls, 0, 'zero model calls — the real saving');
+  assert.equal(out.result.kb_direct.matched, true);
+  assert.equal(out.result.response, 'פתוחים א-ה 9-18.');
+});
+
+test('the looser scoring-margin tier still requires empty history — a follow-up-shaped turn takes the model path', async () => {
+  let n = 0;
+  _setMessagesCreateForTest(async () => {
+    n += 1;
+    return n === 1
+      ? { content: [{ text: INTENT_OK }], usage: usage() }
+      : { content: [{ text: REPLY_OK }], usage: usage() };
+  });
+
+  const out = await runConversation({
+    // Margin-tier, not near-exact: 'בבקשה' drops the jaccard overlap with the
+    // stored question below 0.85 (see kb-direct-match.test.js), so this only
+    // ever qualified via the score-vs-runner-up margin — the tier that stays
+    // empty-history-only.
+    message: 'מה שעות הפעילות שלכם בבקשה?', session_id: 's1',
+    context: baseContext({
+      conversation_history: [{ role: 'user', content: 'היי' }, { role: 'assistant', content: 'שלום, איך אפשר לעזור?' }],
+      business_profile: {
+        business_name: 'עסק לדוגמה', agent_mode: 'support', cta_goal: 'book_call',
+        knowledge: { items: [
+          { question: 'מה שעות הפעילות שלכם?', answer: 'פתוחים א-ה 9-18.', category: 'שעות' },
+        ] },
+      },
+    }),
+  });
+
   assert.equal(n, 2, 'the model path was taken (intent + reply)');
   assert.equal(out.result.kb_direct, undefined);
+});
+
+// ── item 4c (2026-08-13): multi-question split, both-direct only ────────────
+
+const SPLIT_ROWS = [
+  { question: 'מה שעות הפעילות שלכם?', answer: 'פתוחים א-ה 9-18.', category: 'שעות' },
+  { question: 'איך מבטלים מנוי?', answer: 'ביטול בהודעה עד 48 שעות מראש.', category: 'מנוי' },
+];
+
+test('every segment near-exact-matching a DIFFERENT row -> response + extra_messages, zero model calls', async () => {
+  let calls = 0;
+  _setMessagesCreateForTest(async () => { calls += 1; throw new Error('must never be called'); });
+
+  const out = await runConversation({
+    message: 'מה שעות הפעילות שלכם? איך מבטלים מנוי?', session_id: 's1',
+    context: baseContext({
+      business_profile: {
+        business_name: 'עסק לדוגמה', agent_mode: 'support', cta_goal: 'book_call',
+        knowledge: { items: SPLIT_ROWS },
+      },
+    }),
+  });
+
+  assert.equal(calls, 0, 'zero model calls — splitting only pays when it is all-free');
+  assert.equal(out.result.response, 'פתוחים א-ה 9-18.');
+  assert.deepEqual(out.result.extra_messages, ['ביטול בהודעה עד 48 שעות מראש.']);
+  assert.equal(out.result.kb_direct.matched, true);
+  assert.deepEqual(out.result.kb_direct.questions, [SPLIT_ROWS[0].question, SPLIT_ROWS[1].question]);
+  assert.deepEqual(out.result.model_usage, []);
+});
+
+test('one of two segments missing -> a single combined model reply, no extras, no per-segment model call', async () => {
+  let n = 0;
+  _setMessagesCreateForTest(async () => {
+    n += 1;
+    return n === 1
+      ? { content: [{ text: INTENT_OK }], usage: usage() }
+      : { content: [{ text: REPLY_OK }], usage: usage() };
+  });
+
+  const out = await runConversation({
+    message: 'מה שעות הפעילות שלכם? זה לגמרי לא קשור לשום שורה בבסיס הידע?', session_id: 's1',
+    context: baseContext({
+      business_profile: {
+        business_name: 'עסק לדוגמה', agent_mode: 'support', cta_goal: 'book_call',
+        knowledge: { items: SPLIT_ROWS },
+      },
+    }),
+  });
+
+  assert.equal(n, 2, 'exactly one combined model turn (intent + reply), never per-segment');
+  assert.equal(out.result.extra_messages, undefined);
+  assert.equal(out.result.kb_direct, undefined);
+});
+
+test('segments that all match the SAME row answer once directly, no extra_messages', async () => {
+  let calls = 0;
+  _setMessagesCreateForTest(async () => { calls += 1; throw new Error('must never be called'); });
+
+  const out = await runConversation({
+    message: 'מה שעות הפעילות שלכם? מה שעות הפעילות שלכם?', session_id: 's1',
+    context: baseContext({
+      business_profile: {
+        business_name: 'עסק לדוגמה', agent_mode: 'support', cta_goal: 'book_call',
+        knowledge: { items: SPLIT_ROWS },
+      },
+    }),
+  });
+
+  assert.equal(calls, 0);
+  assert.equal(out.result.response, 'פתוחים א-ה 9-18.');
+  assert.equal(out.result.extra_messages, undefined);
+  assert.equal(out.result.kb_direct.matched, true);
+  assert.deepEqual(out.result.kb_direct.questions, [SPLIT_ROWS[0].question]);
+});
+
+test('stripWrappingQuotes is applied to every part of a multi-question split answer', async () => {
+  _setMessagesCreateForTest(async () => { throw new Error('must never be called'); });
+
+  const quotedRows = [
+    { question: 'מה שעות הפעילות שלכם?', answer: '"פתוחים א-ה 9-18."', category: 'שעות' },
+    { question: 'איך מבטלים מנוי?', answer: '"ביטול בהודעה עד 48 שעות מראש."', category: 'מנוי' },
+  ];
+  const out = await runConversation({
+    message: 'מה שעות הפעילות שלכם? איך מבטלים מנוי?', session_id: 's1',
+    context: baseContext({
+      business_profile: {
+        business_name: 'עסק לדוגמה', agent_mode: 'support', cta_goal: 'book_call',
+        knowledge: { items: quotedRows },
+      },
+    }),
+  });
+
+  assert.equal(out.result.response, 'פתוחים א-ה 9-18.');
+  assert.deepEqual(out.result.extra_messages, ['ביטול בהודעה עד 48 שעות מראש.']);
 });
 
 // ── item 5: per-business model override ─────────────────────────────────────

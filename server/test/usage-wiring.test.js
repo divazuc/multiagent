@@ -35,6 +35,14 @@ test('a kb_direct hit gets its own step, separate from conversation_agent, carry
   assert.match(window, /stepDone\(h,/);
 });
 
+// 2026-08-13, multi-question split: a kb_direct step must show EVERY matched
+// row, not just the first — matched_question stays for existing consumers.
+test('the kb_direct step also carries matched_questions — ALL matched rows, for a multi-question split', () => {
+  const kbStepIdx = src.indexOf("stepStart(run, 'kb_direct'");
+  const window = src.slice(kbStepIdx, kbStepIdx + 300);
+  assert.match(window, /matched_questions:\s*r\.kb_direct\.questions/);
+});
+
 test('logUsage failures are swallowed — a logging problem must never fail the reply', () => {
   const logIdx = src.indexOf('logUsage(run, r.model_usage)');
   const window = src.slice(logIdx, logIdx + 150);
