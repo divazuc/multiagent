@@ -276,6 +276,20 @@ app.post('/wa-inbound', async (req, res) => {
   return res.status(out.http).json(out.body);
 });
 
+// Cost-efficiency pass 2 (2026-08-13): a multi-question kb_direct hit
+// (agents/conversation.js#matchMultiDirectKb) answers with more than one
+// WhatsApp message — extra_messages, one per matched segment. A short
+// randomized pause between them reads as a person sending a quick follow-up
+// thought, not a burst of bot spam. Deliberately NOT lib/reply-delay.js's
+// total-budget window — that governs the FIRST message only and is measured
+// against generation time; this is a plain pause between already-decided
+// sends, so a fresh random pick every time is correct here.
+const EXTRA_MESSAGE_GAP_MS = [1500, 3000];
+function extraMessageGapMs(random = Math.random) {
+  const [min, max] = EXTRA_MESSAGE_GAP_MS;
+  return Math.round(min + random() * (max - min));
+}
+
 async function runAgentPipeline(body) {
   const run = await startRun({ session_id: 'unknown', inbound_message: '[pending]' });
 
@@ -526,21 +540,38 @@ async function runAgentPipeline(body) {
         : { text: moduleStep.moduleText });
     }
     const outbound_response = moduleStep.text;
+    // Multi-question kb_direct hits carry the rest of their answers here —
+    // one WhatsApp message per matched segment, sent after outbound_response.
+    // Anything but a live conversation-agent hit leaves this empty.
+    const extra_messages = Array.isArray(r?.extra_messages)
+      ? r.extra_messages.filter((t) => typeof t === 'string' && t.length > 0)
+      : [];
 
     // Cost-efficiency pass, item 4: a direct-KB answer (zero model calls —
     // see lib/kb-direct-match.js) still gets its own visible step, distinct
     // from 'conversation_agent', so it's queryable which turns cost nothing.
+    // matched_questions carries EVERY row a multi-question split answered
+    // (agents/conversation.js#matchMultiDirectKb); matched_question stays the
+    // first/main one, unchanged, for existing consumers.
     if (r?.kb_direct?.matched) {
-      h = stepStart(run, 'kb_direct', { matched_question: r.kb_direct.question });
-      await stepDone(h, { response: outbound_response });
+      h = stepStart(run, 'kb_direct', {
+        matched_question: r.kb_direct.question,
+        matched_questions: r.kb_direct.questions ?? (r.kb_direct.question ? [r.kb_direct.question] : []),
+      });
+      await stepDone(h, { response: outbound_response, extra_messages });
     }
 
     // Step 4 — Persist state
     if (session_mode === 'live') {
       h = stepStart(run, 'save_conversation', {});
+      // A multi-message kb_direct turn sends SEVERAL WhatsApp messages, but
+      // conversation_messages still holds one row per turn — join them so
+      // the saved history reads as the whole assistant turn actually seen,
+      // without changing saveConversation's shape (or callers) at all.
+      const agent_response_for_history = [outbound_response, ...extra_messages].join('\n\n');
       const saved = await saveConversation({
         session_id, business_id,
-        user_message: message, agent_response: outbound_response,
+        user_message: message, agent_response: agent_response_for_history,
         stage: r.next_stage, action: r.action,
         qualification_progress: r.qualification_progress,
         cta_triggered: r.cta_triggered, escalate: r.escalate,
@@ -553,17 +584,31 @@ async function runAgentPipeline(body) {
         checkAndSuggestFaq({ business_id, question: message, answer: outbound_response }).catch(() => {});
       }
 
-      // Send reply back to WhatsApp user. Re-checked against the coexistence
-      // standdown at the last moment: the human-typing delay plus generation
-      // gives the owner a real window to answer from the app first, and a
-      // queued bot reply landing seconds after the owner's own message is
-      // exactly what the standdown exists to prevent. For every business
-      // without the flag the check resolves false and the send is unchanged.
+      // Send reply back to WhatsApp user, then any extra messages (multi-
+      // question kb_direct hits) in order, with a short human-feeling gap
+      // between each. Every send — main and extras alike — is re-checked
+      // against the coexistence standdown at the last moment: the
+      // human-typing delay plus generation gives the owner a real window to
+      // answer from the app first, and a queued bot reply (or a burst still
+      // mid-flight) landing after the owner's own message is exactly what
+      // the standdown exists to prevent. For every business without the flag
+      // the check resolves false and every send is unchanged. Each send goes
+      // through the SAME sendWhatsAppMessage as any other outbound message,
+      // so self-send-ring registration (lib/sent-ids.js) happens exactly the
+      // same way for extras as for the first message.
       if (outbound_response && session_id && business_id) {
-        import('./lib/coexistence.js')
-          .then(({ sendUnlessStoodDown }) => sendUnlessStoodDown(session_id, business_id, () =>
-            sendWhatsAppMessage({ to: session_id, text: outbound_response, businessId: business_id })))
-          .catch(e => console.error('[wa-send] non-blocking send failed:', e.message));
+        (async () => {
+          const { sendUnlessStoodDown } = await import('./lib/coexistence.js');
+          const first = await sendUnlessStoodDown(session_id, business_id, () =>
+            sendWhatsAppMessage({ to: session_id, text: outbound_response, businessId: business_id }));
+          if (first.cancelled) return;
+          for (const extra of extra_messages) {
+            await new Promise((resolve) => setTimeout(resolve, extraMessageGapMs()));
+            const sent = await sendUnlessStoodDown(session_id, business_id, () =>
+              sendWhatsAppMessage({ to: session_id, text: extra, businessId: business_id }));
+            if (sent.cancelled) break;
+          }
+        })().catch(e => console.error('[wa-send] non-blocking send failed:', e.message));
       }
 
       // Non-blocking contact upsert + AI summary. The CRM status comes from
