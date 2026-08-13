@@ -19,3 +19,10 @@ SECURITY_AUDIT_SPEC.md
 # Meta App Review recording docs — local only; contain WABA number + flow details
 wa-studio/docs/meta-app-review-videos.md
 wa-studio/docs/meta-video2-commands.ps1
+
+# local-only: debug artifacts and data backups — never in the public repo
+/scripts/
+server/scripts/backups/
+server/scripts/shot_*.png
+wa-studio/docs/prompts/
+wa-studio/public/biz/
