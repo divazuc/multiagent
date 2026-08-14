@@ -83,13 +83,18 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
       return `הקישור להצעת המחיר שלך פג תוקף ⏳ אם עדיין רלוונטי — כתבו לי כאן ונשמח לחדש אותו.`;
     }
     // ── Materials stage (funnel track 1, T8) ─────────────────────────────────
-    // Payload per the booster's meeting-before-payment plan Task 9:
-    // { quote_number, folder_url, materials_doc_url, content_doc_url } — until
-    // the booster ships that, events arrive with only { package_id }, so every
-    // link line is optional and an empty/missing URL is skipped, never printed
-    // blank. No prices, no payment talk: by this stage payment is behind us.
+    // Payload per the booster's meeting-before-payment plan Task 9 + the client
+    // personal area (vault spec 19, phase A):
+    // { quote_number, folder_url, materials_doc_url, content_doc_url, page_url }
+    // — older events may arrive with only { package_id }, so every link line is
+    // optional and an empty/missing URL is skipped, never printed blank.
+    // No prices, no payment talk: by this stage payment is behind us.
+    // With page_url the declaration path is the project page's button (spec 19
+    // decision; the chat "סיימתי" stays a secondary path); without it the copy
+    // falls back to the old chat instruction.
     case 'send_materials_checklist': {
       const links = [
+        ['🏠 עמוד הפרויקט שלך', payload.page_url],
         ['📁 תיקיית החומרים שלך', payload.folder_url],
         ['📋 מסמך הנחיות החומרים', payload.materials_doc_url],
         ['📝 מסמך התכנים למילוי', payload.content_doc_url],
@@ -98,7 +103,11 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
       const linkBlock = links.length
         ? `\n${links.map(([label, url]) => `${label}: ${url}`).join('\n')}\n`
         : '\n';
-      return `עוברים לשלב החומרים${orderRef} 🙌 הכנתי לך את כל מה שצריך כדי שנוכל להתחיל:${linkBlock}\nכשסיימת להעלות את הכל — כתבו לי כאן "סיימתי" ואני אעדכן את דיוה 🙂`;
+      const hasPage = typeof payload.page_url === 'string' && payload.page_url.trim() !== '';
+      const closing = hasPage
+        ? 'כשסיימתם להעלות ולמלא הכל — לוחצים בעמוד הפרויקט על "סיימתי לערוך תכנים" וזה מעדכן את דיוה מיד 🙂'
+        : 'כשסיימת להעלות את הכל — כתבו לי כאן "סיימתי" ואני אעדכן את דיוה 🙂';
+      return `עוברים לשלב החומרים${orderRef} 🙌 הכנתי לך את כל מה שצריך כדי שנוכל להתחיל:${linkBlock}\n${closing}`;
     }
     case 'ack_materials':
       // The client declared completion on the /q screen (the chat path acks
