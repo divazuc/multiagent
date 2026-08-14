@@ -109,6 +109,16 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
         : 'כשסיימת להעלות את הכל — כתבו לי כאן "סיימתי" ואני אעדכן את דיוה 🙂';
       return `עוברים לשלב החומרים${orderRef} 🙌 הכנתי לך את כל מה שצריך כדי שנוכל להתחיל:${linkBlock}\n${closing}`;
     }
+    // ── Deliverables ready (client personal area phase B, vault spec 19) ────
+    // Payload: { page_url, quote_number? } — enqueued when Diva publishes
+    // sketches / a dev-environment link to the client's project page. Without
+    // page_url the notice still goes out, just without a dead link line.
+    case 'send_deliverables_ready': {
+      const orderRef = payload.quote_number ? ` להזמנה ${payload.quote_number}` : '';
+      const hasPage = typeof payload.page_url === 'string' && payload.page_url.trim() !== '';
+      const link = hasPage ? `\nלצפייה בעמוד הפרויקט: ${payload.page_url}\n` : '\n';
+      return `יש חדש בפרויקט שלכם${orderRef} 🎨 דיוה העלתה סקיצות ועדכונים לצפייה.${link}\nנשמח לשמוע מה דעתכם — אפשר לכתוב לי כאן 🙂`;
+    }
     case 'ack_materials':
       // The client declared completion on the /q screen (the chat path acks
       // via the bot's own materials_done action instead). Never "אושר" — only
