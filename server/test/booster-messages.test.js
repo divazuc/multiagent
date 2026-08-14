@@ -286,6 +286,20 @@ test('send_materials_checklist with page_url leads with the project page and poi
   assert.doesNotMatch(msg, /כתבו לי כאן "סיימתי"/, 'the chat keyword is no longer the instructed path');
 });
 
+test('send_deliverables_ready links the project page; without page_url no dead link line is printed', () => {
+  const msg = boosterMessageFor('send_deliverables_ready', {
+    quote_number: 'DZ-2026-1042', page_url: 'https://divazuc.com/project/aabbcc',
+  }, lead);
+  assert.match(msg, /סקיצות/);
+  assert.match(msg, /https:\/\/divazuc\.com\/project\/aabbcc/);
+  assert.doesNotMatch(msg, /₪|תשלום/);
+
+  const bare = boosterMessageFor('send_deliverables_ready', {}, lead);
+  assert.ok(bare && bare.length > 0);
+  assert.doesNotMatch(bare, /https?:\/\//, 'no invented links');
+  assert.doesNotMatch(bare, /null|undefined/);
+});
+
 test('ack_materials acknowledges without ever claiming the materials were approved', () => {
   const msg = boosterMessageFor('ack_materials', {}, lead);
   assert.ok(msg && msg.length > 0);
