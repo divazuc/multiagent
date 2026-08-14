@@ -3,6 +3,11 @@
 // for that story). In-process scheduler, registered from index.js with ONE
 // line at boot (startDailyScheduler()) — no external cron.
 //
+// OPT-IN: the scheduler arms itself only when DAILY_TRIAL_NOTICE_ENABLED=true
+// (Diva's call, 2026-08-14: no automatic 09:00 firing for now — the studio's
+// manual-send screen is the only reminder path). Flipping the Railway var
+// back on re-arms it on the next boot; no code change needed.
+//
 // Every day, once, at local 09:00 Asia/Jerusalem: for every leads-enabled
 // business, ask lib/trial-reminders.js#previewTrialReminders for TODAY's
 // trial signups — the exact same list the studio's manual-send screen shows.
@@ -164,6 +169,10 @@ async function tick(now = new Date()) {
 export async function _tickForTest(now = new Date()) { return tick(now); }
 
 export function startDailyScheduler() {
+  if (process.env.DAILY_TRIAL_NOTICE_ENABLED !== 'true') {
+    console.log('[daily-scheduler] disabled — set DAILY_TRIAL_NOTICE_ENABLED=true to arm the 09:00 owner notice (manual studio send is unaffected)');
+    return null;
+  }
   if (timer) return timer; // idempotent — index.js registers this once; never arm a second timer
   tick(); // boot-recovery: fires immediately if we start inside 09:00–09:59 and haven't run today
   timer = setInterval(tick, POLL_MS);

@@ -1467,8 +1467,10 @@ app.patch('/admin/business/:id', async (req, res) => {
 warnOnIncompleteBoosterEnv();
 
 // Owner-in-the-loop trial-day Telegram notice (see lib/daily-scheduler.js) —
-// in-process, no external cron. Lazy import so a broken module degrades
-// (logged) rather than failing boot, same convention as loadAgents() below.
+// in-process, no external cron, and OPT-IN: arms only when
+// DAILY_TRIAL_NOTICE_ENABLED=true (off for now — manual studio send only).
+// Lazy import so a broken module degrades (logged) rather than failing boot,
+// same convention as loadAgents() below.
 import('./lib/daily-scheduler.js').then(m => m.startDailyScheduler())
   .catch(e => console.error('[daily-scheduler] failed to start:', e.message));
 
