@@ -240,9 +240,10 @@ test('send_expiry_notice: the materials_3m closure prints no ₪ of the bot\'s o
 
 // ── T8 (funnel track 1): the materials-stage templates ───────────────────────
 // Payload shapes verified against the booster repo: send_materials_checklist
-// will carry { quote_number, folder_url, materials_doc_url, content_doc_url }
-// (meeting-before-payment plan Task 9); ack_materials / notify_live carry
-// nothing; send_start_date carries { start_date: 'YYYY-MM-DD' }.
+// carries { quote_number, folder_url, materials_doc_url, content_doc_url,
+// page_url } (meeting-before-payment plan Task 9 + client personal area,
+// vault spec 19 phase A); ack_materials / notify_live carry nothing;
+// send_start_date carries { start_date: 'YYYY-MM-DD' }.
 
 test('send_materials_checklist carries the links and quote number, skipping any empty link line', () => {
   const msg = boosterMessageFor('send_materials_checklist', {
@@ -266,6 +267,23 @@ test('send_materials_checklist with no links at all (today\'s payload) still ope
   assert.match(msg, /סיימתי/);
   assert.doesNotMatch(msg, /https?:\/\//, 'no invented links');
   assert.doesNotMatch(msg, /null|undefined/);
+});
+
+test('send_materials_checklist with page_url leads with the project page and points at its button, not the chat keyword', () => {
+  const msg = boosterMessageFor('send_materials_checklist', {
+    quote_number: 'DZ-2026-1042',
+    folder_url: 'https://drive.google.com/drive/folders/fake123',
+    materials_doc_url: 'https://docs.google.com/document/d/fake-materials',
+    content_doc_url: 'https://docs.google.com/document/d/fake-content',
+    page_url: 'https://divazuc.com/project/aabbcc',
+  }, lead);
+  assert.ok(msg && msg.length > 0);
+  const pageIdx = msg.indexOf('https://divazuc.com/project/aabbcc');
+  const folderIdx = msg.indexOf('https://drive.google.com/drive/folders/fake123');
+  assert.ok(pageIdx > -1 && folderIdx > -1 && pageIdx < folderIdx, 'the project page is the FIRST link');
+  assert.match(msg, /עמוד הפרויקט/);
+  assert.match(msg, /סיימתי לערוך תכנים/, 'points at the page button (spec 19 decision)');
+  assert.doesNotMatch(msg, /כתבו לי כאן "סיימתי"/, 'the chat keyword is no longer the instructed path');
 });
 
 test('ack_materials acknowledges without ever claiming the materials were approved', () => {
