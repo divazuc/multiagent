@@ -42,6 +42,7 @@ test.afterEach(() => {
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_CHAT_ID;
   delete process.env.STUDIO_BASE_URL;
+  delete process.env.DAILY_TRIAL_NOTICE_ENABLED;
 });
 
 test('outside the 09:00 local hour, the tick does nothing at all — no db call, no Telegram', async () => {
@@ -155,10 +156,19 @@ test('the studio link honors STUDIO_BASE_URL when set', async () => {
   assert.ok(tg[0].text.includes('https://staging.example.com/demo.html?biz='));
 });
 
-test('startDailyScheduler is idempotent and stoppable', () => {
+test('OPT-IN default: without DAILY_TRIAL_NOTICE_ENABLED=true, startDailyScheduler arms nothing', () => {
+  ds._setDbForTest({ listLeadsEnabledBusinesses: async () => { throw new Error('must not be called'); } });
+  assert.equal(ds.startDailyScheduler(), null); // no flag
+  process.env.DAILY_TRIAL_NOTICE_ENABLED = 'false';
+  assert.equal(ds.startDailyScheduler(), null); // explicit false is still off
+});
+
+test('startDailyScheduler is idempotent and stoppable when enabled', () => {
+  process.env.DAILY_TRIAL_NOTICE_ENABLED = 'true';
   ds._setDbForTest({ listLeadsEnabledBusinesses: async () => [] });
   const t1 = ds.startDailyScheduler();
   const t2 = ds.startDailyScheduler();
+  assert.ok(t1, 'enabled flag must arm the timer');
   assert.equal(t1, t2);
   ds.stopDailyScheduler();
 });
