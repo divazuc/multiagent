@@ -217,9 +217,21 @@ test('a confident direct-KB hit answers without ANY model call', async () => {
 
 // ── item 4b (2026-08-13, "תשובות חוזרות"): near-exact fires mid-conversation ──
 
-test('a near-exact match still costs zero model calls with non-trivial conversation history', async () => {
-  let calls = 0;
-  _setMessagesCreateForTest(async () => { calls += 1; throw new Error('must never be called'); });
+// Reworked 2026-08-21 (owner feedback: canned DB strings mid-chat read robotic):
+// a mid-conversation near-exact hit no longer short-circuits verbatim — it takes
+// the normal model path with the matched row PINNED into the dynamic tail, so the
+// reply carries the same facts in the persona's voice. First-message hits keep
+// the zero-cost short-circuit (covered by the test above).
+test('a near-exact match mid-conversation takes the model path with the matched row pinned', async () => {
+  const captured = [];
+  let n = 0;
+  _setMessagesCreateForTest(async (params) => {
+    captured.push(params);
+    n += 1;
+    return n === 1
+      ? { content: [{ text: INTENT_OK }], usage: usage() }
+      : { content: [{ text: REPLY_OK }], usage: usage() };
+  });
 
   const out = await runConversation({
     message: 'מה שעות הפעילות שלכם?', session_id: 's1',
@@ -234,9 +246,12 @@ test('a near-exact match still costs zero model calls with non-trivial conversat
     }),
   });
 
-  assert.equal(calls, 0, 'zero model calls — the real saving');
-  assert.equal(out.result.kb_direct.matched, true);
-  assert.equal(out.result.response, 'פתוחים א-ה 9-18.');
+  assert.equal(out.status, 'success');
+  assert.equal(n, 2, 'intent + reply — one model pass, no verbatim short-circuit');
+  assert.ok(!out.result.kb_direct, 'not reported as a verbatim direct hit');
+  const dynamicTail = captured[1]?.system?.[1]?.text ?? '';
+  assert.match(dynamicTail, /Matched FAQ/, 'matched row is pinned into the reply prompt');
+  assert.match(dynamicTail, /פתוחים א-ה 9-18/, 'the stored answer rides along as facts');
 });
 
 test('the looser scoring-margin tier still requires empty history — a follow-up-shaped turn takes the model path', async () => {
