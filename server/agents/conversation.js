@@ -41,7 +41,28 @@ async function createMessage(params, usageLog) {
 }
 
 const MAX_VALIDATION_RETRIES = 2;
-const GENERIC_AI_PHRASES = ['certainly', 'of course', 'absolutely', 'as an ai', 'i am an ai', 'i cannot'];
+const GENERIC_AI_PHRASES = [
+  'certainly', 'of course', 'absolutely', 'as an ai', 'i am an ai', 'i cannot',
+  // Hebrew AI-isms (owner feedback 2026-08-21: "מרגיש AI מדי") — toLowerCase is a
+  // no-op for Hebrew so plain includes() works.
+  'כעוזרת וירטואלית', 'כעוזר וירטואלי', 'כבינה מלאכותית', 'כמודל שפה',
+  'אני מודל שפה', 'אני בוט', 'אני רק בוט', 'איני יכולה לספק', 'איני יכול לספק',
+];
+
+// Links the bot already sent in this conversation — the once-per-conversation
+// brake for CTA links (owner feedback 2026-08-21: the trial link was pushed four
+// times in one short chat).
+const URL_RE = /https?:\/\/\S+/g;
+function extractSentLinks(history = []) {
+  const links = new Set();
+  for (const m of history) {
+    if (m.role !== 'assistant') continue;
+    for (const u of String(m.content ?? '').match(URL_RE) ?? []) {
+      links.add(u.replace(/[).,!?׃:]+$/, ''));
+    }
+  }
+  return [...links];
+}
 
 export async function runConversation({ message, session_id, context }) {
   // The reply-delay window is measured end-to-end from here, so a slow model
@@ -79,6 +100,7 @@ export async function runConversation({ message, session_id, context }) {
 
     let kbHit = null;       // { question, answer } — the first/main answer
     let kbExtraHits = [];   // [{ question, answer }, ...] — sent as extra_messages
+    let pinnedKbRow = null; // mid-conversation near-exact hit, answered via the model
 
     const multiHit = matchMultiDirectKb({ message, rows: kbRows });
     if (multiHit?.multi) {
@@ -87,6 +109,15 @@ export async function runConversation({ message, session_id, context }) {
       kbHit = { question: multiHit.question, answer: multiHit.answer };
     } else {
       kbHit = matchDirectKb({ message, rows: kbRows, historyNonTrivial });
+      // Mid-conversation, a near-exact hit is no longer returned VERBATIM — a
+      // canned DB string in the middle of a warm chat reads robotic (owner
+      // feedback 2026-08-21). The matched row is pinned into the model call
+      // instead: same facts, the persona's voice. First-message hits (the
+      // classic FAQ opener) still short-circuit at zero model cost.
+      if (kbHit && historyNonTrivial) {
+        pinnedKbRow = kbHit;
+        kbHit = null;
+      }
     }
 
     if (kbHit) {
@@ -142,9 +173,25 @@ export async function runConversation({ message, session_id, context }) {
             persona,
           })
         : null;
-      const phrase = relayed?.holdingLine
+      let phrase = relayed?.holdingLine
         ?? persona?.escalation_phrase
         ?? (persona?.bot_gender === 'male' ? 'אני מעביר אותך לנציג שלנו כעת.' : 'אני מעבירה אותך לנציגה שלנו כעת.');
+      // Already-escalated conversations must not get the SAME canned line for
+      // every further message (owner feedback 2026-08-21: three identical
+      // replies in a row, including to "שמי ליאת"). One tiny model call turns
+      // it into a varied human acknowledgement; any failure falls back to the
+      // canned phrase — never worse than before. Applies whenever there is
+      // real conversation context — mid-chat, the canned opener reads wrong
+      // even on a FIRST escalation ("בסדר אתאם!" → "אני אבדוק עם המאמנת"), and
+      // the customer's message often carries details worth acknowledging.
+      if (current_stage === 'escalated' || (conversation_history?.length ?? 0) >= 2) {
+        try {
+          phrase = await generateEscalatedAck({
+            message, persona, conversation_history,
+            language: intent.language ?? 'hebrew', model, usageLog,
+          });
+        } catch { /* keep the canned phrase */ }
+      }
       return ok({
         response: phrase, next_stage: 'escalated', action: 'none',
         cta_triggered: false, escalate: true,
@@ -165,9 +212,12 @@ export async function runConversation({ message, session_id, context }) {
     // phrased the message. Retrieval runs over the remaining rows only.
     const { core: coreKbRows, rest: restKbRows } = splitCoreRows(kbRows);
     const coreKbText = formatCoreKbBlock(coreKbRows);
-    const kbContext = buildKbContext({
+    let kbContext = buildKbContext({
       message, kbRows: restKbRows, faqSummary: coreKbRows.length ? null : (business_profile?.knowledge?.faq_summary ?? null),
     });
+    if (pinnedKbRow) {
+      kbContext = `Matched FAQ — answer using exactly these facts, phrased naturally in your own voice:\nQ: ${pinnedKbRow.question}\nA: ${pinnedKbRow.answer}${kbContext ? '\n' + kbContext : ''}`;
+    }
 
     if (agent_mode === 'support') {
       candidate = await generateSupportResponse({ message, business_profile, persona, hebrew_patterns, conversation_history, intent, guardrails, modules_context, kbContext, coreKbText, model, usageLog });
@@ -183,11 +233,17 @@ export async function runConversation({ message, session_id, context }) {
     candidate = extracted.text;
 
     // ── Step 3: Validate + rewrite loop ───────────────────────────────────────
-    const validated = await validateAndFix({ candidate, persona, guardrails, intent, agent_mode, model, usageLog });
+    const validated = await validateAndFix({ candidate, persona, guardrails, intent, agent_mode, model, usageLog, conversation_history });
 
     if (!validated.passed) {
+      // The customer must never get SILENCE (sim finding 2026-08-21: a warm,
+      // slightly-too-long empathy answer failed validation twice and the reply
+      // came back empty). The holding line is the safe floor — the content that
+      // failed validation is still discarded.
+      const holdingPhrase = persona?.escalation_phrase
+        ?? (persona?.bot_gender === 'male' ? 'אני אבדוק את זה ואחזור אליך בהקדם 🙂' : 'אני אבדוק את זה ואחזור אלייך בהקדם 🙂');
       return ok({
-        response: '', next_stage: 'escalated', action: 'none',
+        response: holdingPhrase, next_stage: 'escalated', action: 'none',
         cta_triggered: false, escalate: true,
         escalation_reason: 'Response failed validation after max retries',
         qualification_progress: intent.qualification_progress ?? {},
@@ -462,13 +518,23 @@ ${hebrewPatternsText(hebrew_patterns)}
 Persona: ${JSON.stringify(persona)}
 Business info: ${JSON.stringify(businessProfileForPrompt(business_profile))}${coreKbText ? '\n' + coreKbText : ''}`;
 
+  // Once-per-conversation CTA brake: a link the bot already sent must never be
+  // sent again, and after the customer agreed (or brushed off with a short
+  // reaction) the right move is a warm close, not another pitch.
+  const sentLinks = extractSentLinks(conversation_history);
+  const linkNote = sentLinks.length
+    ? `\nAlready sent in this conversation (NEVER send again, NEVER re-offer): ${sentLinks.join(' ')}`
+    : '';
+
   const part2 = isFrustrated
     ? 'Part 2 — Customer seems frustrated. Stay in support mode only. No sales nudge this turn.'
     : isHighIntent
-      ? `Part 2 — Customer seems interested. Add a direct CTA toward: ${cta_goal}`
-      : 'Part 2 — Add ONE soft forward-moving statement or gentle question (never a hard push)';
+      ? (sentLinks.length
+          ? 'Part 2 — Customer is interested and the signup link was ALREADY sent. Confirm warmly and close — no link, no repeated offer.'
+          : `Part 2 — Customer seems interested. Add a direct CTA toward: ${cta_goal}`)
+      : 'Part 2 — Continue the conversation naturally. Only if it genuinely helps, add ONE soft forward-moving statement or gentle question — never a hard push. Short reactions (laughter, emoji, "ואי", acknowledgements) get a light human reply with NO sales nudge at all.';
 
-  const dynamicText = `${part2}
+  const dynamicText = `${part2}${linkNote}
 ${modules_context ? '\n' + modules_context + '\n' : ''}
 ${kbContext ? '\n' + kbContext + '\n' : ''}
 ${langInstruction(lang)}`;
@@ -478,12 +544,13 @@ ${langInstruction(lang)}`;
 
 // ── Validation + rewrite ──────────────────────────────────────────────────────
 
-async function validateAndFix({ candidate, persona, guardrails, intent, agent_mode, model, usageLog }) {
+async function validateAndFix({ candidate, persona, guardrails, intent, agent_mode, model, usageLog, conversation_history }) {
   let text = candidate;
   let retries = 0;
+  const linkAlreadySent = extractSentLinks(conversation_history).length > 0;
 
   while (retries <= MAX_VALIDATION_RETRIES) {
-    const issues = validate(text, guardrails, agent_mode);
+    const issues = validate(text, guardrails, agent_mode, { linkAlreadySent });
     if (issues.length === 0) return { passed: true, text, rewrite_applied: retries > 0 };
     if (retries === MAX_VALIDATION_RETRIES) break;
     text = await rewrite({ text, issues, persona, guardrails, language: intent.language, agent_mode, model, usageLog });
@@ -493,15 +560,21 @@ async function validateAndFix({ candidate, persona, guardrails, intent, agent_mo
   return { passed: false, text: '', rewrite_applied: true };
 }
 
-function validate(text, guardrails, agent_mode) {
+function validate(text, guardrails, agent_mode, { linkAlreadySent = false } = {}) {
   const issues = [];
   const words  = text.trim().split(/\s+/);
 
   if (words.length > 80) issues.push(`Too long: ${words.length} words (max 80)`);
   if ((text.match(/\?/g) ?? []).length > 1) issues.push('More than one question');
 
-  // Forward motion only required for sales/hybrid
-  if (agent_mode !== 'support' && words.length > 10 && !/([\?!]|book|call|schedule|contact|שלח|אשמח)/i.test(text)) {
+  // Forward motion only required for sales/hybrid — and only for substantial
+  // replies. The old 10-word bar forced a persona-less rewrite onto perfectly
+  // calm answers (owner feedback 2026-08-21: pushy + flattened tone), and a
+  // reply whose forward motion IS a link ("מחכים לך בטופס: https://…") failed
+  // it too. Once the CTA link was already delivered in this conversation, a
+  // reply with no fresh nudge is exactly right — no issue at all.
+  if (agent_mode !== 'support' && !linkAlreadySent && words.length > 25 &&
+      !/([\?!]|https?:\/\/|book|call|schedule|contact|שלח|אשמח)/i.test(text)) {
     issues.push('No forward motion signal');
   }
 
@@ -519,10 +592,16 @@ async function rewrite({ text, issues, persona, guardrails, language, agent_mode
   // The rewrite never sees the conversation, so it cannot re-derive whether the
   // customer is a woman — it can only preserve what the original already got
   // right. Without this line a correctly-feminine reply comes back masculine.
+  // The rewrite must keep the PERSONA's voice — a rewrite that only knows
+  // "Tone: warm" strips the character out of the reply (owner feedback
+  // 2026-08-21: rewritten replies read flat and AI-ish).
   const prompt = `Rewrite this message to fix: ${issues.join('; ')}.
-Keep the same intent. Sound human. Max 80 words. One question max.
+Keep the same intent. Sound 100% human — never like AI. Max 80 words. One question max.
 Keep the Hebrew gender of address (masculine vs feminine second person) exactly as it is in the original — do not change who is being addressed or how.
 Mode: ${agent_mode}. Tone: ${JSON.stringify(persona?.tone ?? 'warm')}.
+${identityText(persona)}
+Persona style: ${JSON.stringify(persona?.style_notes ?? '')}
+CTA policy: ${JSON.stringify(persona?.cta_style ?? '')}
 Language: ${language}.
 Forbidden: ${JSON.stringify(guardrails?.forbidden_phrases ?? [])}.
 Original: "${text}"
@@ -578,6 +657,27 @@ async function callClaude(stableText, dynamicText, history, message, model, usag
   }, usageLog);
   // Live pilot 2026-08-12: a perfect reply arrived wrapped in quotation marks.
   // NO_QUOTE_WRAP_RULE asks the model not to; this settles it either way.
+  return stripWrappingQuotes(response.content[0].text.trim());
+}
+
+// ── Already-escalated acknowledgement ────────────────────────────────────────
+// The conversation is with the coach already; the customer just added another
+// message (their name, a phone number, more context). One short varied human
+// sentence instead of repeating the holding line verbatim.
+async function generateEscalatedAck({ message, persona, conversation_history, language, model, usageLog }) {
+  const historyTail = (conversation_history ?? []).slice(-6)
+    .map(m => `${m.role === 'assistant' ? 'REP' : 'CUSTOMER'}: ${m.content}`).join('\n');
+  const prompt = `This conversation is being handed off to the coach (it may already have been earlier).
+${identityText(persona)}
+Write ONE short, warm, human sentence in ${language === 'english' ? 'English' : 'Hebrew'} that fits the customer's LATEST message: acknowledge it, and if it contains a name, phone number or preference — confirm those were passed to the coach (address them by name when you have it). The coach will get back to them. No questions, no links, no sales, and never reuse a sentence that already appears in the conversation.
+Conversation:
+${historyTail}
+Customer's new message: ${message}
+Reply:`;
+  const response = await createMessage({
+    model, max_tokens: 120,
+    messages: [{ role: 'user', content: prompt }],
+  }, usageLog);
   return stripWrappingQuotes(response.content[0].text.trim());
 }
 
