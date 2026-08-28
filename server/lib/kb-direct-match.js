@@ -76,10 +76,6 @@ function jaccard(aWords, bWords) {
   return union ? intersection / union : 0;
 }
 
-function isNearExactMatch(message, question) {
-  return jaccard(normalizeHebrew(message), normalizeHebrew(question)) >= DIRECT_MATCH.jaccardThreshold;
-}
-
 // Returns { question, answer } for a confident hit, or null — meaning "take
 // the normal model path".
 export function matchDirectKb({ message, rows, historyNonTrivial = false }) {
@@ -89,20 +85,26 @@ export function matchDirectKb({ message, rows, historyNonTrivial = false }) {
   const messageWordSet = new Set(normalizeHebrew(message));
   if (!messageWordSet.size) return null;
 
+  // Near-exact wording is checked against EVERY row — not just the top-scored
+  // one. Sibling rows on the same topic can tie the keyword score and win the
+  // sort tiebreak, shadowing the row the customer literally typed (found
+  // 2026-08-28: "אפשר רק פעם בשבוע?" tied at 15 with its longer sibling and
+  // fell through to the model). Same bestNearExactRow the multi-question path
+  // uses per segment. Near-exact is strong enough evidence of a
+  // self-contained message that it is allowed mid-conversation too — checked,
+  // and allowed to return, before the historyNonTrivial gate below.
+  const nearExact = bestNearExactRow(message, rows);
+  if (nearExact) {
+    return { question: nearExact.question, answer: nearExact.answer };
+  }
+  if (historyNonTrivial) return null;
+
   const scored = rows
     .map((row) => ({ row, score: scoreRow(messageWordSet, row) }))
     .sort((a, b) => b.score - a.score);
 
   const top = scored[0];
   if (!top || top.score === 0) return null;
-
-  // Near-exact wording is strong enough evidence of a self-contained message
-  // that it is allowed mid-conversation too — checked, and allowed to
-  // return, before the historyNonTrivial gate below.
-  if (isNearExactMatch(message, top.row.question)) {
-    return { question: top.row.question, answer: top.row.answer };
-  }
-  if (historyNonTrivial) return null;
 
   const runnerUpScore = scored[1]?.score ?? 0;
   const overwhelmingMargin = top.score >= DIRECT_MATCH.minScoreForMargin &&
