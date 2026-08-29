@@ -331,7 +331,7 @@ test('reschedule: event deleted, hold released end-to-end (the gate passes again
     assert.equal(sent[0].to, '972521234567');
     assert.match(sent[0].text, /המועד הזה כבר לא מסתדר 🙏/);
     assert.match(sent[0].text, /מועדים פנויים/, 'the CURRENT free slots ride the same message');
-    assert.match(sent[0].text, /\d{4}-\d{2}-\d{2}: \d{2}:\d{2}/, 'real computed slots, not invented ones');
+    assert.match(sent[0].text, /\d{2}\/\d{2}\/\d{4}: \d{2}:\d{2}/, 'real computed slots, not invented ones (dd/mm/yyyy)');
 
     assert.equal(approvals.events[0].detail.status, 'rescheduled');
 

@@ -164,7 +164,7 @@ test('a tentative owner_confirmed booking is recorded as meeting_requested, neve
   // The double-meaning live bug: the model's "אני מאשרת את הפגישה" used to be
   // stapled above the module's "awaiting approval" copy. The module copy is
   // now the ENTIRE outbound text — nothing above it, nothing below it.
-  assert.equal(step.text, 'שלחתי את הבקשה לאישור — ברגע שתאושר, יישלח לך זימון למייל 🙏',
+  assert.equal(step.text, 'מעולה! העברתי את המועד לאישור סופי ואחזור אליך ממש בקרוב 🙏 ברגע שהמועד יאושר — יישלח לך זימון למייל.',
     'the tentative reply is ONLY the module copy');
   assert.ok(!step.text.includes(MODEL_TEXT), 'the model\'s own contradicting text must not survive');
   assert.equal(typed(notes, 'meeting_booked').length, 0,

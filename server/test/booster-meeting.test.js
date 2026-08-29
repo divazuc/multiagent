@@ -151,8 +151,8 @@ test('formatSlotOffer lists real slots grouped by day and carries the quote numb
   const text = formatSlotOffer(SLOTS, { quoteNumber: 'DZ-2026-1042' });
   assert.ok(text && text.length > 0);
   assert.match(text, /DZ-2026-1042/, 'the quote number is interpolated verbatim');
-  assert.match(text, /2026-08-10.*10:00, 10:30/, 'same-day slots are grouped on one line');
-  assert.match(text, /2026-08-11.*12:00/);
+  assert.match(text, /10\/08\/2026.*10:00, 10:30/, 'same-day slots are grouped on one line (dd/mm/yyyy since 2026-08-29)');
+  assert.match(text, /11\/08\/2026.*12:00/);
   assert.match(text, /פגישת האפיון/, 'names the characterization meeting');
   // a payload with no quote number still produces a usable offer
   const noQuote = formatSlotOffer(SLOTS, {});
@@ -172,7 +172,7 @@ test('formatSlotOffer never prints "undefined" for a date it cannot name', () =>
   const text = formatSlotOffer([{ date: '2026-13-45', from: '10:00', to: '10:30' }], { quoteNumber: 'DZ-1' });
   assert.ok(text);
   assert.doesNotMatch(text, /undefined/);
-  assert.match(text, /2026-13-45: 10:00/, 'the slot itself is still offered');
+  assert.match(text, /45\/13\/2026: 10:00/, 'the slot itself is still offered (the date is re-ordered blindly, never validated here)');
 });
 
 test('formatSlotOffer never prints a price or a ₪ sign', () => {

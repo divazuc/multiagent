@@ -83,7 +83,27 @@ async function computeCurrentSlots(row) {
   return computeSlots({ settings, busy, now: nowIl(), holidays: JEWISH_HOLIDAYS });
 }
 
+import { hebDateDMY } from '../../heb-date.js';
+
 const HEB_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+
+// One customer-facing rendering of a slot — day of week + dd/mm/yyyy + time
+// (owner, 2026-08-29: no ISO dates in Hebrew sentences).
+export function formatSlotForClient(date, from) {
+  const dayName = HEB_DAYS[new Date(`${date}T00:00:00`).getDay()];
+  return `${dayName ? `יום ${dayName} ` : ''}${hebDateDMY(date)} בשעה ${from}`;
+}
+
+// While the owner approves a requested slot (owner_confirmed mode), the client
+// hears that it is with HER and that the bot is coming right back — in the
+// tenant's own owner name from the calendar settings, never a hard-coded one
+// (owner, 2026-08-29).
+export function tentativeText(ownerDisplayName) {
+  const owner = String(ownerDisplayName ?? '').trim();
+  return owner
+    ? `מעולה! העברתי את המועד ל${owner} לאישור סופי ואחזור אליך ממש בקרוב 🙏 ברגע שהמועד יאושר — יישלח לך זימון למייל.`
+    : 'מעולה! העברתי את המועד לאישור סופי ואחזור אליך ממש בקרוב 🙏 ברגע שהמועד יאושר — יישלח לך זימון למייל.';
+}
 
 const calendarModule = {
   key: 'calendar',
@@ -128,7 +148,7 @@ const calendarModule = {
         const slots = await computeCurrentSlots(row);
         const match = slots.find(s => s.date === date && s.from === from);
         const alternatives = (list) => list.slice(0, 2)
-          .map(s => `${HEB_DAYS[new Date(`${s.date}T00:00:00`).getDay()]} ${s.date} בשעה ${s.from}`).join(' או ');
+          .map(s => formatSlotForClient(s.date, s.from)).join(' או ');
         // Every path also returns a STRUCTURED result. The decision layer used
         // to infer success from this Hebrew copy, so a new failure string here
         // would silently have read as "booked" upstream; the text itself is
@@ -190,18 +210,14 @@ const calendarModule = {
         // הפגישה...") used to arrive stapled above it, promising the exact
         // opposite of "awaiting approval".
         if (tentative) {
-          const owner = (settings.owner_display_name ?? '').trim();
           return {
             result: { ok: true, tentative: true },
-            confirmationText: owner
-              ? `שלחתי ל${owner} לאישור הפגישה 🙏 ברגע שתאושר — יישלח לך זימון למייל.`
-              : 'שלחתי את הבקשה לאישור — ברגע שתאושר, יישלח לך זימון למייל 🙏',
+            confirmationText: tentativeText(settings.owner_display_name),
             replaceResponse: true,
           };
         }
-        const dayName = HEB_DAYS[new Date(`${date}T00:00:00`).getDay()];
         return { result: { ok: true, tentative: false },
-          confirmationText: `הפגישה נקבעה! 🎉 יום ${dayName} ${date} בשעה ${from}. נתראה!` };
+          confirmationText: `הפגישה נקבעה! 🎉 ${formatSlotForClient(date, from)}. נתראה!` };
       },
     },
   },

@@ -44,7 +44,7 @@ test('a booster that never answers is aborted rather than holding the reply open
 
   const started = Date.now();
   const watchdog = new Promise((resolve) => {
-    const t = setTimeout(() => resolve('still-hanging'), 2500);
+    const t = setTimeout(() => resolve('still-hanging'), LOOKUP_TIMEOUT_MS * 2 + 800); // two attempts: one retry on a timeout (2026-08-29)
     t.unref?.();
   });
   const outcome = await Promise.race([
@@ -55,7 +55,7 @@ test('a booster that never answers is aborted rather than holding the reply open
   assert.ok(sawSignal, 'the request must carry an abort signal');
   assert.equal(outcome, 'aborted',
     'the lookup must give up on its own — the rejection is what the callers\' fail-soft paths already handle');
-  assert.ok(Date.now() - started < 2500);
+  assert.ok(Date.now() - started < LOOKUP_TIMEOUT_MS * 2 + 500, 'two attempts at most — the retry is bounded like the first try');
 });
 
 test('an unparseable phone still short-circuits before any fetch', async () => {

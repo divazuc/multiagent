@@ -171,16 +171,34 @@ const STAGE_GUIDANCE = {
 // to both would share one cache entry. Key it on the business too at that
 // point.
 const STATUS_TTL_MS = 60_000;
+// Stale-while-error horizon (owner E2E 2026-08-29): a lookup that fails must not
+// erase what we already knew about the client mid-conversation — a signed lead
+// was asked for her name. Within this window the last fetched lead still drives
+// the context; beyond it we admit we do not know.
+const STATUS_STALE_OK_MS = 24 * 60 * 60_000;
 const statusCache = new Map(); // session_id -> { at, lead }
 export function _clearStatusCacheForTest() { statusCache.clear(); }
+export function _seedStatusCacheForTest(sessionId, lead, at = Date.now()) { statusCache.set(sessionId, { at, lead }); }
+
+function rememberLead(sessionId, lead) {
+  statusCache.set(sessionId, { at: Date.now(), lead });
+  if (statusCache.size > 500) statusCache.delete(statusCache.keys().next().value);
+}
 
 async function leadForSession(sessionId) {
   const hit = statusCache.get(sessionId);
   if (hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.lead;
-  const lead = await boosterClient.lookupBoosterLeadByPhone(sessionId);
-  statusCache.set(sessionId, { at: Date.now(), lead });
-  if (statusCache.size > 500) statusCache.delete(statusCache.keys().next().value);
-  return lead;
+  try {
+    const lead = await boosterClient.lookupBoosterLeadByPhone(sessionId);
+    rememberLead(sessionId, lead);
+    return lead;
+  } catch (e) {
+    if (hit?.lead && Date.now() - hit.at < STATUS_STALE_OK_MS) {
+      console.error('[booster] status lookup failed — serving the last known lead:', e.message);
+      return hit.lead;
+    }
+    throw e;
+  }
 }
 
 async function statusContext(sessionId) {
@@ -261,6 +279,12 @@ const boosterModule = {
           ...(name ? { name } : {}),
           ...(payload.email ? { email: payload.email } : {}),
           ...(utm ? { utm } : {}),
+        });
+        // The bot just made this lead — the next turns must not depend on a
+        // lookup round-trip to know the client's name and stage.
+        if (sessionCtx?.session_id) rememberLead(sessionCtx.session_id, {
+          leadId: lead.leadId, name: lead.name ?? (name || null), packageId: lead.packageId ?? payload.package_id,
+          quoteUrl: lead.linkUrl ?? null, status: lead.status ?? 'lead', email: lead.email ?? payload.email ?? null,
         });
         return { confirmationText: quoteLinkText(lead) };
       },

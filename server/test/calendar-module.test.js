@@ -140,7 +140,7 @@ test('book under owner_confirmed reports tentative:true — a request, not a boo
   const r = await calendar.actions.book.handler(BIZ, pending, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
   assert.deepEqual(r.result, { ok: true, tentative: true },
     'the DEFAULT mode returns a pending request — a caller must be able to tell it from a confirmed meeting');
-  assert.equal(r.confirmationText, 'שלחתי את הבקשה לאישור — ברגע שתאושר, יישלח לך זימון למייל 🙏',
+  assert.equal(r.confirmationText, 'מעולה! העברתי את המועד לאישור סופי ואחזור אליך ממש בקרוב 🙏 ברגע שהמועד יאושר — יישלח לך זימון למייל.',
     'no owner_display_name → the neutral phrasing, verbatim');
   assert.equal(r.replaceResponse, true,
     'the tentative copy must be the ENTIRE reply — the model\'s own "מאשרת את הפגישה" text must never ride above it');
@@ -155,7 +155,7 @@ test('owner_display_name names the approver in the tentative copy — and only v
   const pending = row({ mode: 'owner_confirmed', owner_display_name: 'דיוה' });
   const slots = await calendar._computeCurrentSlots(pending);
   const r = await calendar.actions.book.handler(BIZ, pending, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
-  assert.equal(r.confirmationText, 'שלחתי לדיוה לאישור הפגישה 🙏 ברגע שתאושר — יישלח לך זימון למייל.',
+  assert.equal(r.confirmationText, 'מעולה! העברתי את המועד לדיוה לאישור סופי ואחזור אליך ממש בקרוב 🙏 ברגע שהמועד יאושר — יישלח לך זימון למייל.',
     'the owner-dictated copy, with the settings-supplied name');
   assert.equal(r.replaceResponse, true);
   // the autonomous confirmation is untouched by the redesign

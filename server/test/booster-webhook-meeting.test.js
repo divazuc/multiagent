@@ -81,8 +81,8 @@ test('send_signed_summary: real slots ride the SAME message — one send — and
 
     assert.equal(sent.length, 1, 'the offer must ride the same message, never a second send');
     assert.match(sent[0].text, /נחתמה/, 'the existing signed-summary copy is kept');
-    assert.match(sent[0].text, /2026-08-10.*10:00, 10:30/, 'real slots appear in the same text');
-    assert.match(sent[0].text, /2026-08-11.*12:00/);
+    assert.match(sent[0].text, /10\/08\/2026.*10:00, 10:30/, 'real slots appear in the same text (dd/mm/yyyy)');
+    assert.match(sent[0].text, /11\/08\/2026.*12:00/);
 
     const invite = db.events.find(e => e.event_type === 'meeting_invite');
     assert.ok(invite, 'a meeting_invite note must be recorded for the gate/title fallback (F5)');
@@ -105,7 +105,7 @@ test('send_meeting_reminder also carries the slot offer and records an invite', 
     assert.equal(r.status, 200);
     assert.equal(sent.length, 1);
     assert.match(sent[0].text, /תזכורת/);
-    assert.match(sent[0].text, /2026-08-10.*10:00/);
+    assert.match(sent[0].text, /10\/08\/2026.*10:00/);
     assert.ok(db.events.some(e => e.event_type === 'meeting_invite'));
   } finally {
     server.close();
@@ -270,7 +270,7 @@ test('the real fetcher reads Diva\'s connected calendar module (fake provider) e
     assert.equal(r.status, 200);
     assert.equal(sent.length, 1);
     assert.match(sent[0].text, /פגישת האפיון/);
-    assert.match(sent[0].text, /\d{4}-\d{2}-\d{2}.*\d{2}:\d{2}/, 'real computed slots appear');
+    assert.match(sent[0].text, /\d{2}\/\d{2}\/\d{4}.*\d{2}:\d{2}/, 'real computed slots appear (dd/mm/yyyy)');
     assert.ok(db.events.some(e => e.event_type === 'meeting_invite'));
   } finally {
     server.close();

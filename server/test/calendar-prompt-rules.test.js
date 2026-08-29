@@ -12,8 +12,8 @@ test('the slot list carries the weekday next to each date', () => {
   // A live run offered "יום שלישי 29.7" when 29.7 was a Wednesday. The model
   // must read the day off the list rather than deriving it.
   const ctx = formatSlotsContext(SLOTS, SETTINGS);
-  assert.match(ctx, /שלישי 2026-07-28/);
-  assert.match(ctx, /חמישי 2026-07-30/);
+  assert.match(ctx, /שלישי 28\/07\/2026/); // dd/mm/yyyy for the client (2026-08-29); the ISO key follows in brackets
+  assert.match(ctx, /חמישי 30\/07\/2026/);
   assert.match(ctx, /אל תחשב\/י בעצמך איזה יום בשבוע/);
 });
 

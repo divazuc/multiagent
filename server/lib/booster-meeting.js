@@ -207,6 +207,8 @@ export function cancellationReleases(requested, cancelled) {
 
 // ── Slot offer copy ──────────────────────────────────────────────────────────
 
+import { hebDateDMY } from './heb-date.js';
+
 const HEB_DAYS = ['יום ראשון', 'יום שני', 'יום שלישי', 'יום רביעי', 'יום חמישי', 'יום שישי', 'שבת'];
 const MAX_OFFER_DAYS = 3;
 const MAX_TIMES_PER_DAY = 3;
@@ -230,7 +232,7 @@ export function formatSlotOffer(slots, { quoteNumber } = {}) {
   if (!byDay.size) return null;
   const lines = [...byDay.entries()].map(([date, times]) => {
     const day = HEB_DAYS[new Date(`${date}T00:00:00`).getDay()]; // NaN index → undefined
-    return `- ${day ? `${day} ` : ''}${date}: ${times.join(', ')}`;
+    return `- ${day ? `${day} ` : ''}${hebDateDMY(date)}: ${times.join(', ')}`; // dd/mm/yyyy for the client (owner, 2026-08-29)
   });
   const orderRef = quoteNumber ? ` (הזמנה ${quoteNumber})` : '';
   return `יש לי כמה מועדים פנויים לפגישת האפיון שלנו${orderRef}:\n${lines.join('\n')}\nאיזה מועד נוח לך? אפשר פשוט לענות לי כאן 🙂`;

@@ -101,15 +101,23 @@ export async function createBoosterLead({ name, phone, email, packageId, busines
 // no Meta retries to cut it short, because /wa-inbound fast-acks; the client
 // simply waits. Give up quickly instead and let the callers' existing
 // fail-soft paths (static context, fail-open gate) do their job.
-export const LOOKUP_TIMEOUT_MS = 1500;
+// 2s (was 1.5s): the E2E of 2026-08-29 logged four timeouts in a row — a cold
+// booster function behind CF Access needs ~1.5-2s — and every one of them
+// dropped the client's name and stage from the model's context. One retry
+// on a timeout (a warm function answers fast) keeps the worst case at 4s.
+export const LOOKUP_TIMEOUT_MS = 2000;
+const isTimeout = (e) => e?.name === 'TimeoutError' || e?.name === 'AbortError';
 
 export async function lookupBoosterLeadByPhone(phone) {
   const normalized = normalizeIlPhone(phone);
   if (!normalized) return null;
-  const res = await fetch(`${BASE()}/api/leads/by-ref/${boosterClientRef(normalized)}`, {
+  const attempt = () => fetch(`${BASE()}/api/leads/by-ref/${boosterClientRef(normalized)}`, {
     headers: { Authorization: `Bearer ${process.env.BOOSTER_BOT_LOOKUP_SECRET}`, ...cfAccessHeaders() },
     signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
   });
+  let res;
+  try { res = await attempt(); }
+  catch (e) { if (!isTimeout(e)) throw e; res = await attempt(); } // one retry, timeouts only
   if (res.status === 404) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`booster-client: by-ref ${res.status}`);
