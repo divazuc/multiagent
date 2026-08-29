@@ -264,7 +264,7 @@ test('gate: a repeat customer\'s SECOND order is bookable — a fresh invite sup
   await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
   const sameOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
   assert.equal(sameOrder.allow, false, 'F7 preserved: the SAME order still gets exactly one meeting');
-  assert.equal(sameOrder.replyText, BLOCKED_REPLY);
+  assert.match(sameOrder.replyText, /כבר יש לך פגישת אפיון קבועה — יום שני 10\/08\/2026 בשעה 10:00/, 'the client is told WHICH meeting holds the order (2026-08-29)');
 
   // November, order DZ-2: the webhook recorded a fresh invite for the new order.
   await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2' });
@@ -313,7 +313,7 @@ test('gate: a pending meeting_requested holds the order\'s one meeting, and a ne
 
   const second = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
   assert.equal(second.allow, false, 'one characterization meeting per order, pending or confirmed');
-  assert.equal(second.replyText, BLOCKED_REPLY);
+  assert.match(second.replyText, /המועד שביקשת \(יום שני 10\/08\/2026 בשעה 10:00\) עדיין ממתין לאישור/, 'a pending request is named, not hidden (2026-08-29)');
 
   await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2' });
   const nextOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
@@ -360,7 +360,7 @@ test('gate: a request made AFTER the cancel holds again — a stale cancel canno
 
   const r = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
   assert.equal(r.allow, false, 'the re-picked slot is a live pending request — one meeting per order still stands');
-  assert.equal(r.replyText, BLOCKED_REPLY);
+  assert.match(r.replyText, /המועד שביקשת \(יום חמישי 13\/08\/2026 בשעה 11:00\) עדיין ממתין לאישור/);
 });
 
 test('gate: a cancel scoped to the PREVIOUS order does not release the new order\'s pending request', async () => {
@@ -417,5 +417,5 @@ test('gate: any other status — and a second booking after meeting_booked — i
   await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
   const second = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
   assert.equal(second.allow, false);
-  assert.equal(second.replyText, BLOCKED_REPLY);
+  assert.match(second.replyText, /כבר יש לך פגישת אפיון קבועה — יום שני 10\/08\/2026 בשעה 10:00/);
 });

@@ -48,7 +48,7 @@ export async function runModuleActionStep({
   // is to thread the loaded rows through rather than to cache them.
   const gate = await gateCalendarBooking({ business, action, sessionCtx });
   if (!gate.allow) {
-    const replyText = await handleBlockedBooking({ business, session_id, question, history, persona });
+    const replyText = await handleBlockedBooking({ business, session_id, question, history, persona, replyText: gate.replyText });
     return { text: replyText, moduleText: null, blocked: true, booking: null };
   }
 

@@ -244,6 +244,27 @@ export function formatSlotOffer(slots, { quoteNumber } = {}) {
 // fixed line the callback escalation uses, and Diva gets the relay ping.
 export const BLOCKED_REPLY = 'דיוה תחזור אליך בהקדם 🙂';
 
+// Owner, 2026-08-29 (E2E): a client with a CONFIRMED meeting asked for another
+// time and got only the locked line — 'שוב תשובה גנרית'. The gate still holds
+// (one characterization meeting per order); the reply now says what the
+// system knows — the meeting that exists, or the request still awaiting
+// approval — and that a change goes through Diva. Nothing known → the locked
+// line, unchanged.
+const slotForClient = (note) => {
+  const slot = String(note?.detail?.slot ?? '');
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(slot);
+  if (!m) return null;
+  const day = HEB_DAYS[new Date(`${m[1]}T00:00:00`).getDay()];
+  return `${day ? `${day} ` : ''}${hebDateDMY(m[1])} בשעה ${m[2]}`;
+};
+export function blockedReplyFor({ booked = null, requested = null } = {}) {
+  const bookedAt = slotForClient(booked);
+  if (bookedAt) return `כבר יש לך פגישת אפיון קבועה — ${bookedAt}. רוצה לשנות את המועד? דיוה תחזור אלייך בהקדם לתיאום מחדש 🙂`;
+  const requestedAt = slotForClient(requested);
+  if (requestedAt) return `המועד שביקשת (${requestedAt}) עדיין ממתין לאישור של דיוה — היא תחזור אלייך ממש בקרוב 🙂`;
+  return BLOCKED_REPLY;
+}
+
 // Decision policy (the plan's "מדיניות שער ההזמנה", verbatim):
 //   · not calendar.book, or the tenant has no booster module → allow untouched
 //   · no booster lead for the sender → allow (non-express calendar is protected)
@@ -268,6 +289,7 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
   if (!boosterEnabled) return { allow: true };
 
   const phone = sessionCtx?.session_id;
+  let replyText = BLOCKED_REPLY;
   let lead;
   try {
     lead = await boosterClient.lookupBoosterLeadByPhone(phone);
@@ -292,7 +314,9 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
     // UNLESS the owner rescheduled it away (cancellationReleases): the client
     // must then be able to book the replacement slot.
     const requestHolds = noteCoversOrder(requested, invite) && !cancellationReleases(requested, cancelled);
-    const held = noteCoversOrder(booked, invite) || requestHolds;
+    const bookedHolds = noteCoversOrder(booked, invite);
+    const held = bookedHolds || requestHolds;
+    replyText = blockedReplyFor({ booked: bookedHolds ? booked : null, requested: requestHolds ? requested : null });
     if (!held) {
       const quoteNumber = invite?.detail?.quote_number ?? null;
       const eventTitleOverride = quoteNumber
@@ -311,7 +335,7 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
   logModuleEvent(business.id, 'booster', 'calendar_book_blocked', {
     phone: normalizeIlPhone(phone), status: lead.status,
   });
-  return { allow: false, replyText: BLOCKED_REPLY };
+  return { allow: false, replyText };
 }
 
 // ── Blocked-booking handling (T7) ────────────────────────────────────────────
@@ -326,7 +350,7 @@ export function _setRelayForTest(fn) { relayRaise = fn; }
 // best-effort by design: with WHATSAPP_ESCALATION_TEMPLATE unset (F1, today's
 // production state) raiseEscalation refuses and the client still gets the
 // fixed reply — Diva's ping is her action item, never the client's problem.
-export async function handleBlockedBooking({ business, session_id, question, history = null, persona = {} }) {
+export async function handleBlockedBooking({ business, session_id, question, history = null, persona = {}, replyText = BLOCKED_REPLY }) {
   try {
     const raise = relayRaise ?? (await import('./relay/index.js')).raiseEscalation;
     await raise({
@@ -336,5 +360,5 @@ export async function handleBlockedBooking({ business, session_id, question, his
   } catch (e) {
     console.error('[booster-meeting] block escalation failed — the client still gets the fixed reply:', e.message);
   }
-  return BLOCKED_REPLY;
+  return replyText || BLOCKED_REPLY;
 }
