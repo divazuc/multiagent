@@ -478,6 +478,9 @@ test('a blank WhatsApp profile name is not sent as a name', async () => {
 const OWNER_PROCESS_LINE =
   'ממלאים שאלון היכרות קצר, בוחרים מסלול ותוספות ומקבלים הצעת מחיר מותאמת בלי להמתין!';
 const MEETING_LINE = 'אחרי החתימה נתאם כאן פגישת אפיון קצרה עם דיוה.';
+// Owner, 2026-08-29 ("חשוב לי שיהיה להם שקיפות"): until the meeting nothing is
+// paid and nothing is owed — the decision to go ahead is made after it.
+const NO_COMMITMENT_LINE = 'עד הפגישה אין תשלום ואין שום התחייבות — מחליטים רק אחריה 🙂';
 
 test('the confirmation message explains the process and carries the link', async () => {
   _setBoosterClientForTest(stubClient({
@@ -490,6 +493,7 @@ test('the confirmation message explains the process and carries the link', async
   assert.ok(text.includes('👇'), 'the opener points down at the link');
   assert.ok(text.includes(OWNER_PROCESS_LINE), 'the owner\'s sentence, verbatim');
   assert.ok(text.includes(MEETING_LINE), 'the meeting is scheduled here in the chat');
+  assert.ok(text.includes(NO_COMMITMENT_LINE), 'no payment and no commitment before the meeting (owner, 2026-08-29)');
   assert.match(text, /בתוקף/, 'the link validity window');
   assert.doesNotMatch(text, /₪/, 'the bot never prints a price');
   assert.doesNotMatch(text, /אזור אישי/, 'never promises the personal area — it is not live');
@@ -509,7 +513,9 @@ test('the confirmation keeps the dictated order: link, then the process line, th
   const valid   = text.indexOf('בתוקף');
   assert.ok(link < process, 'the link comes first — it is what the 👇 points at');
   assert.ok(process < meeting, 'what happens on the link, then what happens after signing');
-  assert.ok(meeting < valid, 'the clock closes the message');
+  const noCommit = text.indexOf(NO_COMMITMENT_LINE);
+  assert.ok(meeting < noCommit, 'the reassurance follows the meeting line it qualifies');
+  assert.ok(noCommit < valid, 'the clock closes the message');
 });
 
 // Owner, live demo: the word "מחשבון" is banned — "נשמע זול ומיושן". Banned

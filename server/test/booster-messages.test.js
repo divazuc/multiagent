@@ -211,7 +211,8 @@ test('send_expiry_notice: materials_3m renders the closure message with the boos
   assert.ok(msg.includes(REFUND_SENTENCE),
     'the booster pre-formats the Hebrew — the bot interpolates it verbatim, never reformats or re-derives it');
   assert.match(msg, /נסגרה/, 'says plainly that the order was closed');
-  assert.match(msg, /שלושת החודשים/, 'names the contractual window that lapsed');
+  assert.match(msg, /ארבעים וחמישה הימים/, 'names the contractual window that lapsed — 45 days since terms v1.2 (2026-08-29), spelled out: the no-refund variant bans digits');
+  assert.doesNotMatch(msg, /שלושת החודשים|3 חודשים/, 'the retired 3-month window never reappears');
   assert.match(msg, /דיוה/, 'the voice is דיוה, not a corporate "אנחנו"');
   assert.doesNotMatch(msg, /אנחנו/);
   assert.doesNotMatch(msg, /פג תוקף/, 'a client who PAID must never be told their link expired');
@@ -283,7 +284,12 @@ test('send_materials_checklist with page_url leads with the project page and poi
   assert.ok(pageIdx > -1 && folderIdx > -1 && pageIdx < folderIdx, 'the project page is the FIRST link');
   assert.match(msg, /עמוד הפרויקט/);
   assert.match(msg, /סיימתי לערוך תכנים/, 'points at the page button (spec 19 decision)');
-  assert.doesNotMatch(msg, /כתבו לי כאן "סיימתי"/, 'the chat keyword is no longer the instructed path');
+  // Owner, 2026-08-29: the chat path is OFFERED next to the button (it has
+  // worked since T4; the gap was that nobody told the client). Button first.
+  const buttonIdx = msg.indexOf('סיימתי לערוך תכנים');
+  const chatIdx = msg.search(/או פשוט .*"סיימתי"/);
+  assert.ok(chatIdx > -1, 'offers writing "סיימתי" here in the chat as an alternative');
+  assert.ok(buttonIdx < chatIdx, 'the page button stays the primary path, the chat is the "או"');
 });
 
 test('send_deliverables_ready links the project page; without page_url no dead link line is printed', () => {
@@ -391,4 +397,32 @@ test('toWaNumber leaves an already-international number alone', () => {
 test('toWaNumber returns a short/empty string unchanged rather than throwing on bad input', () => {
   assert.equal(toWaNumber(''), '');
   assert.equal(toWaNumber(null), '');
+});
+
+// ── Review deadline (terms v1.2 clause 29, owner 2026-08-29) ─────────────────
+// Three events the booster's review-deadline mechanism enqueues. Dates arrive
+// ISO (yyyy-mm-dd) and are printed dd.mm.yyyy, like send_start_date.
+test('send_review_reminder names the deadline, the consequence, and links the project page', () => {
+  const msg = boosterMessageFor('send_review_reminder', { quote_number: 'DZ-2026-1042', due_date: '2026-09-14', page_url: 'https://divazuc.com/project/aabbcc' }, lead);
+  assert.ok(msg.includes('14.09.2026'), 'the deadline, Hebrew-formatted');
+  assert.match(msg, /נחשבת מאושרת/, 'says what happens if no notes arrive');
+  assert.ok(msg.includes('https://divazuc.com/project/aabbcc'), 'links the project page');
+  assert.doesNotMatch(msg, /₪|תשלום|אנחנו/);
+});
+test('send_review_reminder without page_url prints no dead link line', () => {
+  const msg = boosterMessageFor('send_review_reminder', { due_date: '2026-09-14' }, lead);
+  assert.ok(msg.includes('14.09.2026'));
+  assert.ok(!msg.includes('http'), 'no dead link line without page_url');
+});
+test('send_review_extended announces the new deadline', () => {
+  const msg = boosterMessageFor('send_review_extended', { due_date: '2026-09-21', page_url: 'https://divazuc.com/project/aabbcc' }, lead);
+  assert.ok(msg.includes('21.09.2026'));
+  assert.match(msg, /האריכה|הארכ/);
+  assert.ok(msg.includes('https://divazuc.com/project/aabbcc'), 'links the project page');
+});
+test('send_review_closed says the version counts as approved and keeps the door open', () => {
+  const msg = boosterMessageFor('send_review_closed', { due_date: '2026-09-14' }, lead);
+  assert.match(msg, /נחשבת מאושרת/);
+  assert.match(msg, /לכתוב לי כאן/, 'the client can still reach out');
+  assert.doesNotMatch(msg, /אושר על ידי|אישרתי/, 'the bot never claims to be the approver — Diva is');
 });

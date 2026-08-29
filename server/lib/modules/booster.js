@@ -113,6 +113,12 @@ const QUOTE_PROCESS = 'ממלאים שאלון היכרות קצר, בוחרים
 // after signing is a separate promise this chat has to honour.
 const MEETING_AFTER_SIGNATURE = 'אחרי החתימה נתאם כאן פגישת אפיון קצרה עם דיוה.';
 
+// Owner, 2026-08-29 ("חשוב לי שיהיה להם שקיפות… זה מייצר ביטחון"): the one
+// sentence every surface was missing — nothing is paid and nothing is owed
+// until the meeting; the payment step after it is where the decision is made.
+// Sits right after the meeting line it qualifies, before the validity clock.
+const NO_COMMITMENT_BEFORE_MEETING = 'עד הפגישה אין תשלום ואין שום התחייבות — מחליטים רק אחריה 🙂';
+
 // The express pre-signature link window. Only a fallback: the booster stamps
 // the real number on the lead and it arrives as lead.validDays. Read the
 // three-clocks warning in lib/booster-messages.js before touching this — 14
@@ -125,7 +131,7 @@ function quoteLinkText(lead) {
     ? 'הנה הקישור האישי שלך להצעת המחיר 👇'
     : 'הנה שוב הקישור האישי שלך להצעת המחיר 👇';
   const days = lead.validDays ?? EXPRESS_LINK_VALID_DAYS;
-  return `${opener}\n${lead.linkUrl}\n\n${QUOTE_PROCESS}\n${MEETING_AFTER_SIGNATURE}\nהקישור בתוקף ל-${days} ימים.`;
+  return `${opener}\n${lead.linkUrl}\n\n${QUOTE_PROCESS}\n${MEETING_AFTER_SIGNATURE}\n${NO_COMMITMENT_BEFORE_MEETING}\nהקישור בתוקף ל-${days} ימים.`;
 }
 const MATERIALS_ACK = 'קיבלתי! עדכנתי את דיוה — היא תעבור על החומרים ותאשר שמתחילים 🙏';
 const MATERIALS_ALREADY = 'כבר עדכנתי את דיוה, היא בודקת 🙏';
