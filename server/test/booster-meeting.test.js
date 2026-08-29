@@ -263,8 +263,8 @@ test('gate: a repeat customer\'s SECOND order is bookable — a fresh invite sup
   await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1' });
   await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
   const sameOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
-  assert.equal(sameOrder.allow, false, 'F7 preserved: the SAME order still gets exactly one meeting');
-  assert.match(sameOrder.replyText, /כבר יש לך פגישת אפיון קבועה — יום שני 10\/08\/2026 בשעה 10:00/, 'the client is told WHICH meeting holds the order (2026-08-29)');
+  assert.equal(sameOrder.allow, true, 'F7 evolved (2026-08-29): the same order\'s meeting can be MOVED — a reschedule request, through approval');
+  assert.deepEqual(sameOrder.reschedule, { previousEventId: null, previousSlot: '2026-08-10T10:00' }, 'the gate names the meeting a reschedule replaces');
 
   // November, order DZ-2: the webhook recorded a fresh invite for the new order.
   await recordMeetingInvite({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-2' });
@@ -293,7 +293,7 @@ test('gate: with no quote number to compare, the booking is ordered against the 
 
   db.events.push(note('meeting_booked', '2026-11-02T09:00:00.000Z'));
   const sameOrder = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
-  assert.equal(sameOrder.allow, false, 'a booking made AFTER the latest invite is the current order — still blocked');
+  assert.equal(sameOrder.allow, true, 'a booking made AFTER the latest invite is the current order — bookable again only as a reschedule of it'); assert.ok(sameOrder.reschedule, 'flagged as a reschedule, never a second meeting');
 });
 
 // Policy for a booking still awaiting Diva's approval (the calendar module's
@@ -394,7 +394,7 @@ test('gate: a cancel never releases a CONFIRMED meeting_booked — only the pend
   await recordMeetingRequestCancelled({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-12T10:00' });
 
   const r = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
-  assert.equal(r.allow, false, 'F7: an approved meeting stays exactly one per order');
+  assert.equal(r.allow, true, 'F7 evolved: a cancel does not release a confirmed meeting — it can only be MOVED (a reschedule, through approval)'); assert.equal(r.reschedule?.previousSlot, '2026-08-12T10:00');
 });
 
 test('gate: any other status — and a second booking after meeting_booked — is blocked with the exact fixed reply', async () => {
@@ -416,6 +416,6 @@ test('gate: any other status — and a second booking after meeting_booked — i
   }));
   await recordMeetingBooked({ businessId: 'b1', phone: '0521234567', quoteNumber: 'DZ-1', slot: '2026-08-10T10:00' });
   const second = await gateCalendarBooking({ business: BIZ, action: bookAction, sessionCtx: SESSION });
-  assert.equal(second.allow, false);
-  assert.match(second.replyText, /כבר יש לך פגישת אפיון קבועה — יום שני 10\/08\/2026 בשעה 10:00/);
+  assert.equal(second.allow, true, 'after meeting_booked a new pick is a reschedule request, not a blocked second meeting');
+  assert.deepEqual(second.reschedule, { previousEventId: null, previousSlot: '2026-08-10T10:00' });
 });

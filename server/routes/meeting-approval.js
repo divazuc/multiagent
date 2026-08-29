@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { page, sendPage as send, escapeHtml } from '../lib/approvals.js';
 import { findApprovalByToken, consumeApproval, slotParts } from '../lib/meeting-approval.js';
 import { recordMeetingBooked, recordMeetingRequestCancelled, formatSlotOffer } from '../lib/booster-meeting.js';
+import { hebDateDMY } from '../lib/heb-date.js';
 import { getEnabledModules } from '../lib/modules/engine.js';
 import calendarModule, { providerForSettings, TENTATIVE_TITLE_PREFIX } from '../lib/modules/calendar/index.js';
 import { decryptSecrets } from '../lib/modules/crypto.js';
@@ -97,17 +98,25 @@ router.post('/meeting/:token/approve', async (req, res) => {
 
     // (b) The confirmed note — also what suppresses the booster's 3-day
     // reminder. Logs its own failures, never throws.
+    // A reschedule: the meeting this one replaces leaves the calendar now —
+    // and only now, on Diva's approval (owner, 2026-08-29). Best-effort: a
+    // stale/missing old event must not fail the approval of the new one.
+    const moved = !!d.replaces_event_id;
+    if (cal && d.replaces_event_id) {
+      await cal.provider.deleteEvent(cal.secrets, d.replaces_event_id).catch(e =>
+        console.error('[meeting-approval] previous event not removed after a reschedule:', e.message));
+    }
+
     await recordMeetingBooked({
-      businessId: row.business_id, phone: d.phone, quoteNumber: d.quote_number, slot: d.slot,
+      businessId: row.business_id, phone: d.phone, quoteNumber: d.quote_number, slot: d.slot, eventId: d.event_id ?? null,
     });
 
-    // (c) Tell the client — the e-mail sentence only when an invite really
-    // went out to an address.
     if (d.phone) {
       const { date, from, day } = slotParts(d.slot);
-      const text = d.client_email
-        ? `הפגישה אושרה! 🎉 יום ${day} ${date} בשעה ${from}. שלחתי לך זימון למייל 📧`
-        : `הפגישה אושרה! 🎉 יום ${day} ${date} בשעה ${from}.`;
+      const when = `יום ${day} ${hebDateDMY(date)} בשעה ${from}`;
+      const text = moved
+        ? (d.client_email ? `הפגישה הוזזה! 🎉 ${when}. שלחתי לך זימון מעודכן למייל 📧` : `הפגישה הוזזה! 🎉 ${when}.`)
+        : (d.client_email ? `הפגישה אושרה! 🎉 ${when}. שלחתי לך זימון למייל 📧` : `הפגישה אושרה! 🎉 ${when}.`);
       await Promise.resolve(sendFn({ to: toWaNumber(d.phone), text, businessId: row.business_id })).catch(() => {});
     }
 

@@ -18,6 +18,7 @@
 import { z } from 'zod';
 import * as boosterClientReal from '../booster-client.js';
 import { realLeadName } from '../booster-client.js';
+import { hebDateDMY } from '../heb-date.js';
 import { latestCtwaReferral, toBoosterAttribution } from '../ctwa.js';
 
 // Test seam — same convention as booster-webhook.js's _setSendForTest:
@@ -64,6 +65,7 @@ async function boosterAttribution(business, sessionCtx) {
 
 const settingsSchema = z.object({}).passthrough();
 
+const HEB_DAY_NAMES = ['יום ראשון', 'יום שני', 'יום שלישי', 'יום רביעי', 'יום חמישי', 'יום שישי', 'שבת'];
 const PACKAGE_LABELS = { mini: 'מיני לנדינג', landing: 'דף נחיתה', corporate: 'אתר תדמית' };
 const packageLegend = Object.entries(PACKAGE_LABELS).map(([id, label]) => `${label}=${id}`).join(', ');
 
@@ -201,7 +203,7 @@ async function leadForSession(sessionId) {
   }
 }
 
-async function statusContext(sessionId) {
+async function statusContext(sessionId, businessId = null) {
   if (!sessionId) return null;
   // Fail-soft: an unreachable booster must never break the reply pipeline —
   // the static block alone is what shipped before T4 and it still stands.
@@ -227,6 +229,19 @@ async function statusContext(sessionId) {
     blocks.push(`## שם הלקוח ידוע\nהשם של הלקוח הזה כבר ידוע מההצעה: ${knownName}. לעולם אל תבקש/י ממנו את שמו — השתמש/י בשם הזה בכל מקום שנדרש שם (למשל בקביעת פגישה).`);
   }
   if (stage) blocks.push(`## השלב הנוכחי של הלקוח בתהליך\n${stage}`);
+  // Owner, 2026-08-29: a client with a CONFIRMED meeting who asks about it or
+  // wants another time is offered a change — on the same road as the first
+  // booking, through Diva's approval. The model must name the meeting that
+  // exists and never announce a move before it is approved.
+  if (lead.status === 'awaiting_meeting') {
+    // Lazy: booster-meeting.js reaches the module registry, which loads this file — a static import would be a cycle.
+    const booked = await import('../booster-meeting.js').then(m => m.getLatestMeetingEvent({ businessId, type: 'meeting_booked', phone: sessionId })).catch(() => null);
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(String(booked?.detail?.slot ?? ''));
+    if (m) {
+      const day = HEB_DAY_NAMES[new Date(`${m[1]}T00:00:00`).getDay()];
+      blocks.push(`## פגישה קבועה\nללקוח הזה כבר קבועה פגישת אפיון: ${day ? `${day} ` : ''}${hebDateDMY(m[1])} בשעה ${m[2]}. אם הוא שואל על הפגישה או מבקש מועד אחר — ציין/י את המועד הקבוע ושאל/י אם הוא רוצה להחליף אותו. אם כן — הצע/י מועדים מהרשימה ושלח/י calendar.book עם המועד החדש כרגיל; הבקשה תעבור לאישור דיוה, והמועד הקודם יוחלף רק אחרי האישור. אל תבטיח/י שהפגישה הוזזה.`);
+    }
+  }
   return blocks.join('\n\n');
 }
 
@@ -238,7 +253,7 @@ const boosterModule = {
   defaultSettings: settingsSchema.parse({}),
 
   async contextProvider(_business, _row, sessionCtx) {
-    const dynamic = await statusContext(sessionCtx?.session_id);
+    const dynamic = await statusContext(sessionCtx?.session_id, _business?.id ?? null);
     return dynamic ? `${CONTEXT}\n\n${dynamic}` : CONTEXT;
   },
 

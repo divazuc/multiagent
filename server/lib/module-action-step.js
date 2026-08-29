@@ -53,6 +53,7 @@ export async function runModuleActionStep({
   }
 
   if (gate.eventTitleOverride) sessionCtx.event_title_override = gate.eventTitleOverride;
+  if (gate.reschedule) sessionCtx.reschedule = gate.reschedule; // the confirmed meeting this booking would replace
   // An express lead's identity is already on the signed quote — the model must
   // never have to ask for it again ("רק צריכה את שמך המלא" after the client
   // picked a slot was a live bug). Everything here is server-built: the name
@@ -86,6 +87,7 @@ export async function runModuleActionStep({
       phone: session_id,
       quoteNumber: gate.expressLead.quoteNumber,
       slot: action.payload?.slot ?? null,
+      eventId: booking.eventId ?? null,
     };
     // Fire-and-forget: both helpers log their own failures and never throw.
     // A tentative booking (the calendar module's DEFAULT owner_confirmed mode)

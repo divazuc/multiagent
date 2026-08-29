@@ -72,7 +72,7 @@ async function realDb() {
 // Phones arrive in two shapes — the booster's 05XXXXXXXX (webhook lead.phone)
 // and WhatsApp's 972XXXXXXXXX (sessionCtx.session_id). Everything is stored
 // and matched in the normalized 05… form so the two always meet.
-async function recordMeetingEvent(eventType, { businessId, phone, quoteNumber, slot }) {
+async function recordMeetingEvent(eventType, { businessId, phone, quoteNumber, slot, eventId }) {
   // Hard precondition, not a fallback: module_events.business_id is NOT NULL,
   // so `businessId ?? null` could only ever buy a caught-and-logged constraint
   // violation on every single insert. Skip the write with a log that names the
@@ -94,7 +94,7 @@ async function recordMeetingEvent(eventType, { businessId, phone, quoteNumber, s
     // self-describing and noteCoversOrder can order two notes by recency
     // without a second round-trip.
     created_at: new Date().toISOString(),
-    detail: { phone: normalized, quote_number: quoteNumber ?? null, ...(slot ? { slot } : {}) },
+    detail: { phone: normalized, quote_number: quoteNumber ?? null, ...(slot ? { slot } : {}), ...(eventId ? { eventId } : {}) },
   };
   try {
     if (db) { db.events.push(row); db.onInsert?.(row); return true; }
@@ -315,20 +315,27 @@ export async function gateCalendarBooking({ business, action, sessionCtx }) {
     // must then be able to book the replacement slot.
     const requestHolds = noteCoversOrder(requested, invite) && !cancellationReleases(requested, cancelled);
     const bookedHolds = noteCoversOrder(booked, invite);
-    const held = bookedHolds || requestHolds;
-    replyText = blockedReplyFor({ booked: bookedHolds ? booked : null, requested: requestHolds ? requested : null });
-    if (!held) {
+    // Owner, 2026-08-29: a CONFIRMED meeting is not a wall — the client may move
+    // it, on the same road as the first booking (request → Diva approves → the
+    // old event is replaced). Only a request still awaiting approval blocks.
+    if (requestHolds) {
+      replyText = blockedReplyFor({ booked: null, requested });
+    } else {
       const quoteNumber = invite?.detail?.quote_number ?? null;
       const eventTitleOverride = quoteNumber
         ? `פגישת אפיון — הזמנה ${quoteNumber}`
         : `פגישת אפיון — ${(lead.name ?? '').trim() || 'לקוח אקספרס'}`;
-      return {
+      const allowed = {
         allow: true,
         eventTitleOverride,
         // email tolerates both by-ref shapes — the booster is only now adding
         // the field, so an old response simply carries null here.
         expressLead: { leadId: lead.leadId, name: lead.name ?? null, quoteNumber, email: lead.email ?? null },
       };
+      if (bookedHolds) {
+        allowed.reschedule = { previousEventId: booked?.detail?.eventId ?? null, previousSlot: booked?.detail?.slot ?? null };
+      }
+      return allowed;
     }
   }
 

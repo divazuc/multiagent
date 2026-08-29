@@ -103,7 +103,7 @@ test('a confirmed booking writes exactly ONE meeting_booked note, carrying the o
     business: BIZ, action: bookAction(slot), session_id: SESSION, finalResponse: MODEL_TEXT,
   });
 
-  assert.deepEqual(step.booking, { ok: true, tentative: false });
+  assert.deepEqual({ ok: step.booking.ok, tentative: step.booking.tentative }, { ok: true, tentative: false });
   assert.ok(step.text.startsWith(MODEL_TEXT), 'a normal action is appended to the model reply');
   assert.match(step.text, /נקבעה/);
   assert.equal(created[0].title, 'פגישת אפיון — הזמנה DZ-2026-1042',
@@ -160,7 +160,7 @@ test('a tentative owner_confirmed booking is recorded as meeting_requested, neve
     session_id: SESSION, finalResponse: MODEL_TEXT,
   });
 
-  assert.deepEqual(step.booking, { ok: true, tentative: true });
+  assert.deepEqual({ ok: step.booking.ok, tentative: step.booking.tentative }, { ok: true, tentative: true });
   // The double-meaning live bug: the model's "אני מאשרת את הפגישה" used to be
   // stapled above the module's "awaiting approval" copy. The module copy is
   // now the ENTIRE outbound text — nothing above it, nothing below it.
@@ -257,7 +257,7 @@ test('a book the model sent without a name is completed with the express lead\'s
     business: BIZ, action: namelessBook(slot), session_id: SESSION, finalResponse: MODEL_TEXT,
   });
 
-  assert.deepEqual(step.booking, { ok: true, tentative: false }, 'the booking went through — nobody asked for a name');
+  assert.deepEqual({ ok: step.booking.ok, tentative: step.booking.tentative }, { ok: true, tentative: false }, 'the booking went through — nobody asked for a name');
   assert.equal(created.length, 1);
   assert.match(created[0].description, /דנה כהן/, 'the event carries the lead\'s real name, injected server-side');
   assert.equal(typed(notes, 'meeting_booked').length, 1);
@@ -301,7 +301,7 @@ test('the express lead\'s email and quote number reach the approval layer of a t
     const step = await runModuleActionStep({
       business: BIZ, action: namelessBook(slot), session_id: SESSION, finalResponse: MODEL_TEXT,
     });
-    assert.deepEqual(step.booking, { ok: true, tentative: true });
+    assert.deepEqual({ ok: step.booking.ok, tentative: step.booking.tentative }, { ok: true, tentative: true });
     assert.equal(approvals.length, 1);
     assert.equal(approvals[0].clientEmail, 'dana@example.com', 'threaded from the by-ref lookup via expressLead');
     assert.equal(approvals[0].quoteNumber, 'DZ-2026-1042');
@@ -320,7 +320,7 @@ test('an old-shape by-ref response (no email field) books exactly the same, with
       business: BIZ, action: namelessBook(await bookableSlot('owner_confirmed')),
       session_id: SESSION, finalResponse: MODEL_TEXT,
     });
-    assert.deepEqual(step.booking, { ok: true, tentative: true });
+    assert.deepEqual({ ok: step.booking.ok, tentative: step.booking.tentative }, { ok: true, tentative: true });
     assert.equal(approvals.length, 1);
     assert.equal(approvals[0].clientEmail, null, 'absence normalizes to null — never undefined surprises, never a throw');
   } finally {

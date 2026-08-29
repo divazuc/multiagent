@@ -172,6 +172,11 @@ const calendarModule = {
         // 3. Create the event
         const phone = payload.phone || sessionCtx?.session_id || '';
         const tentative = settings.mode === 'owner_confirmed';
+        // A reschedule (module-action-step threads the gate's finding): the
+        // confirmed meeting this booking replaces. In owner_confirmed mode it
+        // rides on the approval and is replaced only when Diva approves; in
+        // autonomous mode the old event goes the moment the new one exists.
+        const reschedule = sessionCtx?.reschedule ?? null;
         // General seam (T6): the reply pipeline's decision layer may hand a
         // fully-formed title through sessionCtx (e.g. the express booking gate
         // names the characterization meeting after its order). Used verbatim —
@@ -200,6 +205,8 @@ const calendarModule = {
             phone, name, slot: payload.slot,
             quoteNumber: sessionCtx?.quote_number ?? null,
             clientEmail: sessionCtx?.client_email ?? null,
+            replacesEventId: reschedule?.previousEventId ?? null,
+            replacesSlot: reschedule?.previousSlot ?? null,
           })).catch(() => {});
         }
 
@@ -211,12 +218,18 @@ const calendarModule = {
         // opposite of "awaiting approval".
         if (tentative) {
           return {
-            result: { ok: true, tentative: true },
+            result: { ok: true, tentative: true, eventId: createdEvent?.eventId ?? null },
             confirmationText: tentativeText(settings.owner_display_name),
             replaceResponse: true,
           };
         }
-        return { result: { ok: true, tentative: false },
+        if (reschedule?.previousEventId) {
+          await provider(settings).deleteEvent(secrets, reschedule.previousEventId).catch(e =>
+            console.error('[calendar] previous event not removed after a reschedule:', e.message));
+          return { result: { ok: true, tentative: false, eventId: createdEvent?.eventId ?? null },
+            confirmationText: `הפגישה הוזזה! 🎉 ${formatSlotForClient(date, from)}. נתראה!` };
+        }
+        return { result: { ok: true, tentative: false, eventId: createdEvent?.eventId ?? null },
           confirmationText: `הפגישה נקבעה! 🎉 ${formatSlotForClient(date, from)}. נתראה!` };
       },
     },

@@ -121,7 +121,7 @@ test('book reports a structured result on every path, with its existing text unc
   const slots = await calendar._computeCurrentSlots(auto);
 
   const ok = await calendar.actions.book.handler(BIZ, auto, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
-  assert.deepEqual(ok.result, { ok: true, tentative: false });
+  assert.deepEqual({ ok: ok.result.ok, tentative: ok.result.tentative }, { ok: true, tentative: false }); // eventId rides along since 2026-08-29
   assert.ok(ok.confirmationText.includes('נקבעה'), 'existing autonomous copy is unchanged');
 
   const gone = await calendar.actions.book.handler(BIZ, auto, { slot: '2030-01-01T03:00', name: 'דנה' }, {});
@@ -138,7 +138,7 @@ test('book under owner_confirmed reports tentative:true — a request, not a boo
   const pending = row({ mode: 'owner_confirmed' });
   const slots = await calendar._computeCurrentSlots(pending);
   const r = await calendar.actions.book.handler(BIZ, pending, { slot: `${slots[0].date}T${slots[0].from}`, name: 'דנה' }, {});
-  assert.deepEqual(r.result, { ok: true, tentative: true },
+  assert.deepEqual({ ok: r.result.ok, tentative: r.result.tentative }, { ok: true, tentative: true },
     'the DEFAULT mode returns a pending request — a caller must be able to tell it from a confirmed meeting');
   assert.equal(r.confirmationText, 'מעולה! העברתי את המועד לאישור סופי ואחזור אליך ממש בקרוב 🙏 ברגע שהמועד יאושר — יישלח לך זימון למייל.',
     'no owner_display_name → the neutral phrasing, verbatim');
@@ -205,7 +205,7 @@ test('a book without a payload name uses the server-known client name', async ()
   const slots = await calendar._computeCurrentSlots(row());
   const r = await calendar.actions.book.handler(BIZ, row(), { slot: `${slots[0].date}T${slots[0].from}` },
     { session_id: '0501234567', known_name: 'דנה כהן', profile_name: 'DK' });
-  assert.deepEqual(r.result, { ok: true, tentative: false });
+  assert.deepEqual({ ok: r.result.ok, tentative: r.result.tentative }, { ok: true, tentative: false });
   assert.ok(created[0].title.includes('דנה כהן'), 'known_name outranks the WhatsApp profile name');
 });
 
@@ -218,7 +218,7 @@ test('a book without a payload name falls back to the WhatsApp profile name', as
   const slots = await calendar._computeCurrentSlots(row());
   const r = await calendar.actions.book.handler(BIZ, row(), { slot: `${slots[0].date}T${slots[0].from}` },
     { session_id: '0501234567', profile_name: 'דנה לוי' });
-  assert.deepEqual(r.result, { ok: true, tentative: false });
+  assert.deepEqual({ ok: r.result.ok, tentative: r.result.tentative }, { ok: true, tentative: false });
   assert.ok(created[0].title.includes('דנה לוי'));
 });
 

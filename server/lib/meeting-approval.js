@@ -13,6 +13,7 @@
 // WhatsApp owner notify rather than to silence.
 import { hashToken, mintToken, TOKEN_RE, telegramConfigured, publicBaseUrl, sendTelegramText } from './approvals.js';
 import { normalizeIlPhone } from './booster-client.js';
+import { hebDateDMY } from './heb-date.js';
 
 // The token/Telegram plumbing moved to lib/approvals.js when process
 // approvals (lib/process-approval.js) arrived — re-exported here so this
@@ -49,7 +50,7 @@ async function realDb() {
 }
 
 // Returns the RAW token (for the Telegram links) — only its hash is stored.
-export async function createMeetingApproval({ businessId, eventId, calendarRowId, phone, name, slot, quoteNumber, clientEmail }) {
+export async function createMeetingApproval({ businessId, eventId, calendarRowId, phone, name, slot, quoteNumber, clientEmail, replacesEventId = null, replacesSlot = null }) {
   // module_events.business_id is NOT NULL — same hard precondition as the
   // meeting notes (lib/booster-meeting.js#recordMeetingEvent).
   if (!businessId) {
@@ -65,6 +66,9 @@ export async function createMeetingApproval({ businessId, eventId, calendarRowId
       event_id: eventId ?? null, calendar_row_id: calendarRowId ?? null,
       phone: normalizeIlPhone(phone), name: name ?? null, slot,
       quote_number: quoteNumber ?? null, client_email: clientEmail ?? null,
+      // A reschedule request: the confirmed meeting that leaves the calendar
+      // if — and only if — this one is approved (owner, 2026-08-29).
+      replaces_event_id: replacesEventId ?? null, replaces_slot: replacesSlot ?? null,
     },
   };
   if (db) { db.events.push(row); return token; }
@@ -97,16 +101,18 @@ export function slotParts(slot) {
   return { date, from, day: HEB_DAYS[new Date(`${date}T00:00:00`).getDay()] ?? '' };
 }
 
-export async function sendTelegramApproval({ token, name, phone, slot, quoteNumber }) {
+export async function sendTelegramApproval({ token, name, phone, slot, quoteNumber, replacesSlot = null }) {
   const { date, from, day } = slotParts(slot);
   const base = publicBaseUrl();
   // Both links open the same GET page — it is side-effect-free (Telegram
   // prefetches links), and the real approve/reschedule are its POST buttons.
+  const prev = replacesSlot ? slotParts(replacesSlot) : null;
   const text = [
-    '📅 בקשת פגישה חדשה',
+    prev ? '🔁 בקשת שינוי מועד' : '📅 בקשת פגישה חדשה',
     `שם: ${name ?? '—'}`,
     `טלפון: ${phone ?? '—'}`,
-    `מועד: יום ${day} ${date} בשעה ${from}`,
+    ...(prev ? [`מועד קודם: יום ${prev.day} ${hebDateDMY(prev.date)} בשעה ${prev.from} (יוסר מהיומן עם האישור)`] : []),
+    `${prev ? 'מועד מבוקש' : 'מועד'}: יום ${day} ${hebDateDMY(date)} בשעה ${from}`,
     ...(quoteNumber ? [`הזמנה: ${quoteNumber}`] : []),
     '',
     `אישור: ${base}/meeting/${token}?a=approve`,
@@ -131,14 +137,14 @@ async function sendWa(args) {
 // or ANY failure along the Telegram path. Never throws: by the time this runs
 // the client's booking already succeeded, so a notification problem is the
 // owner's action item, never the client's.
-export async function requestOwnerApproval({ business, calendarRowId, ownerNotifyPhone, eventId, phone, name, slot, quoteNumber, clientEmail }) {
+export async function requestOwnerApproval({ business, calendarRowId, ownerNotifyPhone, eventId, phone, name, slot, quoteNumber, clientEmail, replacesEventId = null, replacesSlot = null }) {
   try {
     if (telegramConfigured()) {
       const token = await createMeetingApproval({
-        businessId: business.id, eventId, calendarRowId, phone, name, slot, quoteNumber, clientEmail,
+        businessId: business.id, eventId, calendarRowId, phone, name, slot, quoteNumber, clientEmail, replacesEventId, replacesSlot,
       });
       if (token && await sendTelegramApproval({
-        token, name, phone: normalizeIlPhone(phone) ?? phone, slot, quoteNumber,
+        token, name, phone: normalizeIlPhone(phone) ?? phone, slot, quoteNumber, replacesSlot,
       })) return 'telegram';
     }
   } catch (e) {
