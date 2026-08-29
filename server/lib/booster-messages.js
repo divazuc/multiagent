@@ -15,6 +15,12 @@ const nextStepLine = (payload) =>
     ? `השלב הבא — פגישת אפיון קצרה איתי. אפשר לקבוע כאן: ${payload.meeting_link}`
     : `השלב הבא — פגישת אפיון קצרה איתי. בואו נתאם כאן בהודעות 🙂`;
 
+// ISO yyyy-mm-dd → dd.mm.yyyy for Hebrew eyes; anything else is passed through
+// VERBATIM (a booster payload string is never "fixed" on this side).
+const hebDate = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ''));
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso ?? '').trim();
+};
 export function boosterMessageFor(event, payload = {}, lead = {}) {
   const first = (lead.name ?? '').trim().split(/\s+/)[0] || '';
   switch (event) {
@@ -72,7 +78,8 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
       // A materials-shaped reason we do not know is NOT guessed into a closure.
       if (payload.reason === 'materials_3m') {
         const refund = String(payload.refund ?? '').trim();
-        const closed = `ההזמנה נסגרה — החומרים לא התקבלו בתוך שלושת החודשים שנקבעו בהסכם 📄`;
+        // 45 days since terms v1.2 (owner 2026-08-29); the reason key stayed 'materials_3m'.
+        const closed = `ההזמנה נסגרה — החומרים לא התקבלו בתוך ארבעים וחמישה הימים שנקבעו בהסכם 📄`;
         return refund
           ? `${closed}\n${refund}\nלכל שאלה על הסגירה אפשר לכתוב לי כאן ואעביר לדיוה 🙂`
           : `${closed}\nפרטי הסגירה יגיעו ישירות מדיוה 🙏 אם יש שאלה — אפשר לכתוב לי כאן.`;
@@ -105,7 +112,7 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
         : '\n';
       const hasPage = typeof payload.page_url === 'string' && payload.page_url.trim() !== '';
       const closing = hasPage
-        ? 'כשסיימתם להעלות ולמלא הכל — לוחצים בעמוד הפרויקט על "סיימתי לערוך תכנים" וזה מעדכן את דיוה מיד 🙂'
+        ? 'כשסיימתם להעלות ולמלא הכל — לוחצים בעמוד הפרויקט על "סיימתי לערוך תכנים" וזה מעדכן את דיוה מיד — או פשוט כותבים לי כאן "סיימתי" 🙂'
         : 'כשסיימת להעלות את הכל — כתבו לי כאן "סיימתי" ואני אעדכן את דיוה 🙂';
       return `עוברים לשלב החומרים${orderRef} 🙌 הכנתי לך את כל מה שצריך כדי שנוכל להתחיל:${linkBlock}\n${closing}`;
     }
@@ -144,6 +151,26 @@ export function boosterMessageFor(event, payload = {}, lead = {}) {
       // screenshot arrived — relaying the booster's ack too would
       // double-message the client. Null → acked and skipped, never retried.
       return null;
+    // ── Review deadline (terms v1.2 clause 29, owner 2026-08-29) ────────────
+    // The booster starts a 7-day clock when Diva sends a version to look at,
+    // reminds the client on day 5, and on day 7 hands DIVA the choice (close as
+    // approved / extend). The bot announces; it never decides.
+    case 'send_review_reminder': {
+      const due = hebDate(payload.due_date);
+      const hasPage = typeof payload.page_url === 'string' && payload.page_url.trim() !== '';
+      const link = hasPage ? `\nלצפייה ולהערות: ${payload.page_url}` : '';
+      return `תזכורת קטנה 🙂 הגרסה שדיוה שלחה מחכה להערות שלכם${due ? ` עד ${due}` : ''}. בלי הערות עד אז — היא נחשבת מאושרת ודיוה ממשיכה לבנות.${link}`;
+    }
+    case 'send_review_extended': {
+      const due = hebDate(payload.due_date);
+      const hasPage = typeof payload.page_url === 'string' && payload.page_url.trim() !== '';
+      const link = hasPage ? `\nלצפייה ולהערות: ${payload.page_url}` : '';
+      return `דיוה האריכה את הזמן להערות${due ? ` עד ${due}` : ''} 🙂${link}`;
+    }
+    case 'send_review_closed': {
+      const due = hebDate(payload.due_date);
+      return `לא התקבלו הערות${due ? ` עד ${due}` : ' בזמן שנקבע'}, אז הגרסה נחשבת מאושרת ודיוה ממשיכה לבנייה 🙂 אם בכל זאת יש משהו חשוב — אפשר לכתוב לי כאן.`;
+    }
     default:
       return null; // unknown event → acked and skipped, never retried forever
   }
