@@ -10,7 +10,13 @@ import { retrieveTopK, formatKbContextBlock, splitCoreRows, formatCoreKbBlock } 
 import { matchDirectKb, matchMultiDirectKb } from '../lib/kb-direct-match.js';
 import { alertCreditExhaustion } from '../lib/credit-alert.js';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Owner, 2026-08-29: one reply took 2m22s inside the model calls (Diva Ost E2E).
+// The SDK's defaults — a 10-minute timeout and 2 retries with backoff — turn an
+// API stall into minutes of silence on WhatsApp. Bound the live client: a slow
+// call fails fast and the pipeline's holding line goes out instead. 25s is well
+// above a normal Sonnet turn here (~4-8s) and below anyone's patience.
+export const CONVERSATION_CLIENT_OPTIONS = Object.freeze({ timeout: 25_000, maxRetries: 1 });
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, ...CONVERSATION_CLIENT_OPTIONS });
 const MODEL  = 'claude-sonnet-4-6';
 
 // Cost-efficiency pass (2026-08-12), item 5: business_profiles.persona.
@@ -187,7 +193,7 @@ export async function runConversation({ message, session_id, context }) {
       if (current_stage === 'escalated' || (conversation_history?.length ?? 0) >= 2) {
         try {
           phrase = await generateEscalatedAck({
-            message, persona, conversation_history,
+            message, persona, business_profile, conversation_history,
             language: intent.language ?? 'hebrew', model, usageLog,
           });
         } catch { /* keep the canned phrase */ }
@@ -664,16 +670,36 @@ async function callClaude(stableText, dynamicText, history, message, model, usag
 // The conversation is with the coach already; the customer just added another
 // message (their name, a phone number, more context). One short varied human
 // sentence instead of repeating the holding line verbatim.
-async function generateEscalatedAck({ message, persona, conversation_history, language, model, usageLog }) {
+// WHO the customer is handed to is the tenant's fact, in the tenant's words.
+// Owner, 2026-08-29: the kids bot's "coach" had been hard-coded into this shared
+// prompt, and Diva Ost's business bot told a client "העברתי למאמן". Every tenant
+// already states its own handoff in persona.escalation_phrase; the profile's
+// contact_name is the fallback, and a nameless business hands off to a neutral
+// person — never to a role borrowed from another business.
+export function buildEscalatedAckPrompt({ message, persona, business_profile, conversation_history, language }) {
   const historyTail = (conversation_history ?? []).slice(-6)
     .map(m => `${m.role === 'assistant' ? 'REP' : 'CUSTOMER'}: ${m.content}`).join('\n');
-  const prompt = `This conversation is being handed off to the coach (it may already have been earlier).
+  const ownLine = typeof persona?.escalation_phrase === 'string' && persona.escalation_phrase.trim()
+    ? persona.escalation_phrase.trim() : null;
+  const contact = typeof business_profile?.contact_name === 'string' && business_profile.contact_name.trim()
+    ? business_profile.contact_name.trim() : null;
+  const handoff = ownLine
+    ? `The business describes the handoff in its own words — keep to exactly who that line names: "${ownLine}"`
+    : contact
+      ? `The customer is being handed to ${contact}, who will get back to them.`
+      : 'The customer is being handed to the person in charge at the business, who will get back to them.';
+  return `This conversation is being handed off to a human at the business (it may already have been earlier).
 ${identityText(persona)}
-Write ONE short, warm, human sentence in ${language === 'english' ? 'English' : 'Hebrew'} that fits the customer's LATEST message: acknowledge it, and if it contains a name, phone number or preference — confirm those were passed to the coach (address them by name when you have it). The coach will get back to them. No questions, no links, no sales, and never reuse a sentence that already appears in the conversation.
+${handoff}
+Write ONE short, warm, human sentence in ${language === 'english' ? 'English' : 'Hebrew'} that fits the customer's LATEST message: acknowledge it, and if it contains a name, phone number or preference — confirm those were passed on (address them by name when you have it). Name the person exactly as the business does above — never invent a role or title for them. No questions, no links, no sales, and never reuse a sentence that already appears in the conversation.
 Conversation:
 ${historyTail}
 Customer's new message: ${message}
 Reply:`;
+}
+
+async function generateEscalatedAck({ message, persona, business_profile, conversation_history, language, model, usageLog }) {
+  const prompt = buildEscalatedAckPrompt({ message, persona, business_profile, conversation_history, language });
   const response = await createMessage({
     model, max_tokens: 120,
     messages: [{ role: 'user', content: prompt }],
