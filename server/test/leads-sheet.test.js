@@ -116,6 +116,9 @@ test('parseTrialDate: ISO, dd/mm/yyyy, dd.mm.yy AND the form slot string', () =>
   assert.equal(parseTrialDate('14.8.26'), '2026-08-14');
   // the real form's combined slot value
   assert.equal(parseTrialDate('יום רביעי 12/08/2026 · בשעה 16:00'), '2026-08-12');
+  // the 2026/27 form's slot format (since 1.9.2026): auto-dated per age group,
+  // short d.m.yy — the year token is what keeps this cell parseable here
+  assert.equal(parseTrialDate('יום ראשון 6.9.26 · בשעה 16:45'), '2026-09-06');
   assert.equal(parseTrialDate('14/13/2026'), null);
   assert.equal(parseTrialDate('מחר'), null);
   assert.equal(parseTrialDate(''), null);
@@ -127,6 +130,7 @@ test('parseTrialTime: whole-cell forms, the slot string, and no date false-posit
   assert.equal(parseTrialTime('9:00:00'), '9:00');
   // pulled out of the slot string…
   assert.equal(parseTrialTime('יום רביעי 12/08/2026 · בשעה 16:00'), '16:00');
+  assert.equal(parseTrialTime('יום ראשון 6.9.26 · בשעה 16:45'), '16:45');
   // …but a date alone must never cough up a fake time
   assert.equal(parseTrialTime('יום רביעי 12/08/2026'), null);
   assert.equal(parseTrialTime('99:00'), null);
