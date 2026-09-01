@@ -97,18 +97,32 @@ export function normalizeSheetPhone(raw) {
 
 // Tolerant date extraction — works for a clean cell ('2026-08-14',
 // '14/08/2026', '14.8.26') AND for the form's combined slot string
-// ('יום רביעי 12/08/2026 · בשעה 16:00'): the FIRST date-looking token wins.
-export function parseTrialDate(raw) {
+// ('יום רביעי 12/08/2026 · בשעה 16:00', or the 2026/27 auto-dated
+// 'יום ראשון 6.9.26 · בשעה 16:45'): the FIRST date-looking token wins.
+// A YEAR-LESS token ('6.9', '14/8' — a coach typing by hand) is accepted
+// too: it means the upcoming occurrence, so it gets the current year,
+// bumped to the next one when that date is already far in the past.
+export function parseTrialDate(raw, now = new Date()) {
   const s = String(raw ?? '').trim();
   if (!s) return null;
   let y, m, d;
   let match = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) [, y, m, d] = match.map(Number);
-  else {
-    match = s.match(/(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})/);
-    if (!match) return null;
+  else if ((match = s.match(/(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})/))) {
     [, d, m, y] = match.map(Number);
     if (y < 100) y += 2000;
+  } else {
+    // d.m / d/m with no year. Guards: not glued to other digits, ':' or more
+    // separators — '16:45' and the date inside '6.9.26' never land here.
+    match = s.match(/(?:^|[^\d:./])(\d{1,2})[/.](\d{1,2})(?![\d:./])/);
+    if (!match) return null;
+    [, d, m] = match.map(Number);
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    y = now.getFullYear();
+    // >45 days past can't be an upcoming trial — the coach meant next year.
+    // A recent past date stays put: it's history, and must not resurface as
+    // a future signup that would fire a reminder months later.
+    if ((now - new Date(y, m - 1, d)) / 86400000 > 45) y += 1;
   }
   if (m < 1 || m > 12 || d < 1 || d > 31) return null;
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -246,8 +260,49 @@ const sheetHistoryEntry = (from, to, atIso) => ({ from: from ?? null, to, at: at
 // payload keys the sheet may write — a sheet row can never smuggle other keys.
 const SHEET_PAYLOAD_FIELDS = [
   'parent_name', 'child_name', 'child_age', 'trial_date', 'trial_time',
-  'group', 'note', 'utm_source', 'utm_campaign', 'submitted_at',
+  'group', 'note', 'utm_source', 'utm_campaign', 'submitted_at', 'children',
 ];
+
+/**
+ * Sibling rows — several children signed up under one parent phone (since
+ * 1.9.2026 the trial form posts one sheet row per child) — must not overwrite
+ * each other inside the single per-phone lead. Collapse each phone's rows into
+ * one: parent fields shared, a `children` list carrying every child, and the
+ * top-level child/trial fields taken from the ACTIVE child — nearest upcoming
+ * trial date, else the latest dated, else the first row. The daily sync
+ * re-collapses, so when one child's date passes the lead re-points to the
+ * next child's date — and the unchanged reminder module fires for each trial
+ * day in turn, naming the right child.
+ * A phone with a single row passes through untouched (no `children` key), so
+ * existing single-child leads see no payload churn.
+ */
+export function collapseSiblingRows(rows, now = new Date()) {
+  const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); // YYYY-MM-DD
+  const byPhone = new Map();
+  for (const row of rows) {
+    if (!byPhone.has(row.phone)) byPhone.set(row.phone, []);
+    byPhone.get(row.phone).push(row);
+  }
+  const out = [];
+  for (const group of byPhone.values()) {
+    if (group.length === 1) { out.push(group[0]); continue; }
+    const dated = group.filter(r => r.trial_date).sort((a, b) => a.trial_date.localeCompare(b.trial_date));
+    const active = dated.find(r => r.trial_date >= today) ?? dated.at(-1) ?? group[0];
+    const firstNonEmpty = (key) => group.map(r => r[key]).find(Boolean) ?? null;
+    out.push({
+      ...active,
+      parent_name:  firstNonEmpty('parent_name'),
+      note:         firstNonEmpty('note'),
+      utm_source:   firstNonEmpty('utm_source'),
+      utm_campaign: firstNonEmpty('utm_campaign'),
+      children: group.map(r => ({
+        child_name: r.child_name, child_age: r.child_age, group: r.group,
+        trial_date: r.trial_date, trial_time: r.trial_time,
+      })),
+    });
+  }
+  return out;
+}
 
 /**
  * Upsert one parsed sheet row. Exported for tests; syncSheetLeads drives it.
@@ -265,7 +320,8 @@ export async function upsertSheetRow(businessId, row, now = new Date()) {
   const d = await getDb();
   const nowIso = now.toISOString();
   const clean = {};
-  for (const k of SHEET_PAYLOAD_FIELDS) if (row[k]) clean[k] = String(row[k]);
+  // `children` is a structured list (from collapseSiblingRows) — stored as-is.
+  for (const k of SHEET_PAYLOAD_FIELDS) if (row[k]) clean[k] = k === 'children' ? row[k] : String(row[k]);
   const target = row.trial_date ? 'trial_signed_up' : 'waitlist_next_date';
 
   const existing = await d.getLead(businessId, row.phone);
@@ -312,7 +368,8 @@ export async function syncSheetLeads(businessId, { now = new Date() } = {}) {
   if (!fileId) { const e = new Error('no sheet configured (settings.sheet_file_id)'); e.status = 400; throw e; }
 
   const csv = await fetchSheetCsv(fileId, module_.settings?.sheet_gid);
-  const { rows, skipped } = parseSheetCsv(csv);
+  const { rows: rawRows, skipped } = parseSheetCsv(csv);
+  const rows = collapseSiblingRows(rawRows, now);
 
   let updated = 0, created = 0;
   for (const row of rows) {

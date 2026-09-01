@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 const sheet = await import('../lib/leads-sheet.js');
 const {
   parseCsv, mapHeaders, normalizeSheetPhone, parseTrialDate, parseTrialTime,
-  parseSheetCsv, upsertSheetRow, syncSheetLeads,
+  parseSheetCsv, upsertSheetRow, syncSheetLeads, collapseSiblingRows,
 } = sheet;
 const leads = await import('../lib/leads.js');
 
@@ -124,6 +124,18 @@ test('parseTrialDate: ISO, dd/mm/yyyy, dd.mm.yy AND the form slot string', () =>
   assert.equal(parseTrialDate(''), null);
 });
 
+test('parseTrialDate: year-less d.m (hand-typed cell) gets the upcoming year', () => {
+  const sep1 = new Date(2026, 8, 1); // 1.9.2026
+  assert.equal(parseTrialDate('6.9', sep1), '2026-09-06');
+  assert.equal(parseTrialDate('14/8', sep1), '2026-08-14');   // recent past — history, stays put
+  assert.equal(parseTrialDate('יום ראשון 6.9 · בשעה 16:45', sep1), '2026-09-06');
+  // far past → the coach meant next year's occurrence
+  assert.equal(parseTrialDate('5.1', new Date(2026, 11, 20)), '2027-01-05');
+  // a bare time must not be read as a date; free-text stays null
+  assert.equal(parseTrialDate('16.30', sep1), null);
+  assert.equal(parseTrialDate('אשמח שתתאמו איתי מועד נוסף בהמשך', sep1), null);
+});
+
 test('parseTrialTime: whole-cell forms, the slot string, and no date false-positives', () => {
   assert.equal(parseTrialTime('16:30'), '16:30');
   assert.equal(parseTrialTime('16.30'), '16:30');
@@ -179,6 +191,66 @@ test('parseSheetCsv: an unparseable slot keeps the row, a missing phone column s
 const row = (over = {}) => ({
   phone: '972501234567', parent_name: 'שירה לוי', child_name: 'יובל',
   child_age: '8', trial_date: '2026-08-14', trial_time: '16:30', ...over,
+});
+
+// ── Sibling rows (multi-child form, one row per child) ───────────────────────
+
+test('collapseSiblingRows: one lead per phone, nearest upcoming child on top', () => {
+  const now = new Date('2026-09-01T06:00:00.000Z');
+  const rows = [
+    row({ child_name: 'יובל', trial_date: '2026-09-09', trial_time: '16:00' }),
+    row({ child_name: 'אלה', child_age: '7', trial_date: '2026-09-06', trial_time: '16:45' }),
+    row({ child_name: 'עידו', child_age: '14', trial_date: null, trial_time: null }), // teen callback
+    row({ phone: '972509999999', child_name: 'רוני' }), // unrelated phone
+  ];
+  const out = collapseSiblingRows(rows, now);
+  assert.equal(out.length, 2);
+  const fam = out.find(r => r.phone === '972501234567');
+  // nearest upcoming date (6.9) drives the top-level trial fields + child name
+  assert.equal(fam.child_name, 'אלה');
+  assert.equal(fam.trial_date, '2026-09-06');
+  assert.equal(fam.trial_time, '16:45');
+  assert.equal(fam.children.length, 3);
+  assert.deepEqual(fam.children.map(c => c.child_name), ['יובל', 'אלה', 'עידו']);
+  // once 6.9 passed, the same rows re-point to the next child's date (9.9) —
+  // so the unchanged reminder module fires for each trial day in turn
+  const later = collapseSiblingRows(rows, new Date('2026-09-07T06:00:00.000Z'))
+    .find(r => r.phone === '972501234567');
+  assert.equal(later.child_name, 'יובל');
+  assert.equal(later.trial_date, '2026-09-09');
+  // a single-row phone passes through untouched — no children key, no churn
+  assert.equal(out.find(r => r.phone === '972509999999').children, undefined);
+});
+
+test('collapseSiblingRows: all dates past → latest stays; none dated → first row', () => {
+  const now = new Date('2026-12-01T06:00:00.000Z');
+  const past = collapseSiblingRows([
+    row({ child_name: 'א', trial_date: '2026-09-06' }),
+    row({ child_name: 'ב', trial_date: '2026-09-09' }),
+  ], now)[0];
+  assert.equal(past.trial_date, '2026-09-09'); // history keeps the latest, nothing bumped forward
+  const none = collapseSiblingRows([
+    row({ child_name: 'א', trial_date: null, trial_time: null }),
+    row({ child_name: 'ב', trial_date: null, trial_time: null }),
+  ], now)[0];
+  assert.equal(none.child_name, 'א');
+  assert.equal(none.trial_date, null);
+});
+
+test('upsertSheetRow stores the collapsed children list as a structured array', async () => {
+  const db = makeFakeDb();
+  sheet._setDbForTest(db);
+  const collapsed = collapseSiblingRows([
+    row({ child_name: 'אלה', trial_date: '2026-09-06', trial_time: '16:45' }),
+    row({ child_name: 'עידו', child_age: '14', trial_date: null, trial_time: null }),
+  ], new Date('2026-09-01T06:00:00.000Z'));
+  await upsertSheetRow(BIZ, collapsed[0], new Date('2026-09-01T06:00:00.000Z'));
+  const l = db.store[0];
+  assert.equal(l.status, 'trial_signed_up');
+  assert.equal(l.payload.child_name, 'אלה');
+  assert.ok(Array.isArray(l.payload.children), 'children must stay an array, not be stringified');
+  assert.equal(l.payload.children.length, 2);
+  assert.equal(l.payload.children[1].child_name, 'עידו');
 });
 
 test('a new phone becomes a fully-formed form lead at trial_signed_up', async () => {
