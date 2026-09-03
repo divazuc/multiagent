@@ -26,3 +26,6 @@ server/scripts/backups/
 server/scripts/shot_*.png
 wa-studio/docs/prompts/
 wa-studio/public/biz/
+
+# node --test run logs dumped at the repo root (gate output redirects)
+bot-tests*.log
